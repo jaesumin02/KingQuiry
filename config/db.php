@@ -1,12 +1,17 @@
 <?php
-$host = "localhost";
-$username = "root";
-$password = "";
-$dbname = "kingquiry_db";
+mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
-$conn = new mysqli($host, $username, $password, $dbname);
+$host = getenv('KINGQUIRY_DB_HOST') ?: 'localhost';
+$username = getenv('KINGQUIRY_DB_USER') ?: 'root';
+$password = getenv('KINGQUIRY_DB_PASSWORD') ?: '';
+$dbname = getenv('KINGQUIRY_DB_NAME') ?: 'kingquiry_db';
 
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
+try {
+    $conn = new mysqli($host, $username, $password, $dbname);
+    $conn->set_charset('utf8mb4');
+} catch (mysqli_sql_exception $exception) {
+    error_log('KingQuiry database connection failed: ' . $exception->getMessage());
+    http_response_code(503);
+    exit('The service is temporarily unavailable. Please try again later.');
 }
 ?>

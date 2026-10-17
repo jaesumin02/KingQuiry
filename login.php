@@ -1,96 +1,82 @@
 <?php
 include 'config/db.php';
+require_once 'includes/auth.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+header('Cache-Control: no-store, no-cache, must-revalidate');
+header('Pragma: no-cache');
+header('Expires: 0');
+
 if (isset($_SESSION['user'])) {
-    if ($_SESSION['user']['role'] == 'Admin') {
-        header("Location: admin_dashboard.php");
-    } elseif ($_SESSION['user']['role'] == 'Sales Agent') {
-        header("Location: agent_dashboard.php");
-    } else {
-        header("Location: client_dashboard.php");
-    }
+    $role = normalized_user_role($_SESSION['user']);
+    $destination = $role === 'Admin' ? 'admin_dashboard.php' : ($role === 'Sales Agent' ? 'agent_dashboard.php' : 'client_dashboard.php');
+    header('Location: ' . $destination);
     exit();
 }
 
-include 'includes/header.php';
-$error = ""; // Pormal na in-initialize na walang laman
+$error = '';
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    if (!has_valid_csrf_token()) {
+        $error = 'Your session expired. Refresh the page and try again.';
+    }
     $postedIdentifier = $_POST['identifier'] ?? $_POST['email'] ?? '';
-    $identifier = is_string($postedIdentifier) ? trim($postedIdentifier) : '';
+    $identifier = is_string($postedIdentifier) ? trim(substr($postedIdentifier, 0, 100)) : '';
     $password = $_POST['password'] ?? '';
 
-    if ($identifier !== '' && is_string($password)) {
-        $stmt = $conn->prepare("SELECT * FROM users WHERE email = ? OR SUBSTRING_INDEX(email, '@', 1) = ?");
-        $stmt->bind_param("ss", $identifier, $identifier);
+    if ($error === '' && $identifier !== '' && is_string($password) && $password !== '') {
+        $stmt = $conn->prepare("SELECT userID, fullname, email, passwordHash, role FROM users WHERE email = ? OR SUBSTRING_INDEX(email, '@', 1) = ? LIMIT 2");
+        $stmt->bind_param('ss', $identifier, $identifier);
         $stmt->execute();
         $result = $stmt->get_result();
 
         if ($result->num_rows === 1) {
             $user = $result->fetch_assoc();
-            if (password_verify($password, $user['passwordHash'])) {
-                $_SESSION['user'] = $user;
-                if ($user['role'] == 'Admin') {
-                    header("Location: admin_dashboard.php");
-                } elseif ($user['role'] == 'Sales Agent') {
-                    header("Location: agent_dashboard.php");
-                } else {
-                    header("Location: client_dashboard.php");
+            if (password_verify($password, $user['passwordHash']) && in_array(normalized_user_role($user), ['Admin', 'Sales Agent', 'Client'], true)) {
+                session_regenerate_id(true);
+                if ($user['role'] === 'Agent') {
+                    $user['role'] = 'Sales Agent';
                 }
+                $_SESSION['user'] = $user;
+                $role = normalized_user_role($user);
+                $destination = $role === 'Admin' ? 'admin_dashboard.php' : ($role === 'Sales Agent' ? 'agent_dashboard.php' : 'client_dashboard.php');
+                header('Location: ' . $destination);
                 exit();
             }
         }
     }
 
-    $error = "Invalid username/email or password. Please try again.";
+    if ($error === '') {
+        $error = 'Invalid username/email or password. Please try again.';
+    }
 }
+include 'includes/header.php';
 ?>
 
-<style>
-    .login-form .form-control,
-    .login-form .form-control:-webkit-autofill,
-    .login-form .form-control:-webkit-autofill:hover,
-    .login-form .form-control:-webkit-autofill:focus {
-        color: #111 !important;
-        -webkit-text-fill-color: #111 !important;
-        caret-color: #000 !important;
-        background-color: #e2e5e9 !important;
-        border-color: #495057 !important;
-        -webkit-box-shadow: 0 0 0 1000px #e2e5e9 inset !important;
-        box-shadow: 0 0 0 1000px #e2e5e9 inset !important;
-    }
-
-    .login-form .form-control:focus {
-        background-color: #d1d5db !important;
-        border-color: #212529 !important;
-        outline: 2px solid #495057;
-        outline-offset: 1px;
-    }
-</style>
-
-<div class="row justify-content-center my-5">
-    <div class="col-md-5">
-        <div class="card shadow-sm border-0 p-4">
-            <h3 class="fw-bold text-center mb-4">KingQuiry Login</h3>
+<div class="row justify-content-center align-items-center py-4 py-lg-5">
+    <div class="col-md-7 col-lg-5 col-xl-4">
+        <div class="card p-4 p-lg-5">
+            <div class="page-eyebrow text-center mb-2">Welcome back</div>
+            <h1 class="page-title h2 text-center mb-2">Sign in to KingQuiry</h1>
+            <p class="text-muted text-center mb-4">Manage your property search and requests.</p>
             
-            <!-- Lalabas lamang ang pulang kahon KUNG may laman na ang $error variable pagkatapos mag-submit -->
             <?php if(!empty($error)): ?>
-                <div class="alert alert-danger"><?= $error ?></div>
+                <div class="alert alert-danger" role="alert"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>
             <?php endif; ?>
 
             <form method="POST" autocomplete="off" class="login-form">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                 <div class="mb-3">
-                    <label class="form-label">Username or Email Address</label>
-                    <input type="text" name="identifier" class="form-control" required placeholder="Enter username or email address" autocomplete="off">
+                    <label class="form-label fw-semibold" for="login-identifier">Email address or username</label>
+                    <input type="text" id="login-identifier" name="identifier" class="form-control" required maxlength="100" placeholder="name@example.com" autocomplete="off">
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Password</label>
+                    <label class="form-label fw-semibold" for="login-password">Password</label>
                     <div class="input-group">
-                        <input type="password" name="password" id="login-password" class="form-control" required placeholder="Enter password" autocomplete="off">
+                        <input type="password" name="password" id="login-password" class="form-control" required maxlength="255" placeholder="Enter your password" autocomplete="off">
                         <button type="button" class="btn btn-outline-secondary" id="toggle-password" aria-label="Show password" aria-pressed="false">
                             <svg id="show-password-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12s3.5-6 9.75-6 9.75 6 9.75 6-3.5 6-9.75 6-9.75-6-9.75-6Z"/>
@@ -103,15 +89,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         </button>
                     </div>
                 </div>
-                <button type="submit" class="btn btn-primary w-100">Login to System</button>
+                <button type="submit" class="btn btn-primary w-100 py-2">Sign in</button>
             </form>
             
-            <p class="text-center mt-3 small">Don't have an account yet? <a href="register.php">Register here</a></p>
+            <p class="text-center mt-4 mb-0 small">New to KingQuiry? <a href="register.php" class="fw-semibold">Create an account</a></p>
         </div>
     </div>
 </div>
 
 <script>
+    window.addEventListener('pageshow', (event) => {
+        if (event.persisted) {
+            window.location.reload();
+        }
+    });
+
     const passwordInput = document.getElementById('login-password');
     const passwordToggle = document.getElementById('toggle-password');
     const showPasswordIcon = document.getElementById('show-password-icon');
