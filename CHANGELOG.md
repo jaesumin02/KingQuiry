@@ -1,4 +1,4 @@
-# Changelog
+a# Changelog
 
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
@@ -90,3 +90,12 @@ Dates use `YYYY-MM-DD`.
 - Reworked dashboard charts to aggregate all property categories and request
   statuses from the database, group unexpected legacy values, provide accurate
   counts and empty states, and work without an external chart library.
+
+## 2026-11-04
+- Added "CREATE DATABASE IF NOT EXISTS kingquiry_db" and "USE kinguiry_db;" 
+  at the top of 'database/schema.sql' So that it allows you to import the SQL 
+  directly without creating the "kingquiry_db" database.
+- Replaced the solid-color with a background image with a semi-transparent 
+  gradient overlay and added 'assets/images/' directory to store the images.
+- Changed the land estimate form in the KingQuiry Assistant chat into a 
+  collapsible menu to clear up the chat view.
