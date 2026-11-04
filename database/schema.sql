@@ -3,6 +3,12 @@
 -- This file contains table definitions and the standard Batangas location
 -- directory only; it intentionally contains no accounts or live records.
 
+CREATE DATABASE IF NOT EXISTS `kingquiry_db`
+    DEFAULT CHARACTER SET utf8mb4
+    COLLATE utf8mb4_unicode_ci;
+
+USE `kingquiry_db`;
+
 CREATE TABLE IF NOT EXISTS users (
     userID INT NOT NULL AUTO_INCREMENT,
     fullname VARCHAR(100) NOT NULL,
