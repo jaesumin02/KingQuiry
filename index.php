@@ -67,15 +67,18 @@ if (normalized_user_role($_SESSION['user'] ?? null) === 'Client') {
 }
 ?>
 
-<section class="catalog-hero p-4 p-lg-5 mb-4 rounded-4 text-white">
+<section class="catalog-hero p-4 p-lg-5 mb-4 rounded-4 text-white d-flex align-items-center" style="
+    min-height: 300px;
+    background-image: linear-gradient(rgba(18, 47, 77, 0.75), rgba(29, 82, 118, 0.85)), url('assets/images/background.jpg');
+    background-position: center 50%;
+    background-size: cover;
+    background-repeat: no-repeat;
+">
     <div class="row align-items-center g-4">
-        <div class="col-lg-8">
+        <div class="col-lg-10">
             <div class="text-uppercase small fw-bold mb-2" style="letter-spacing:.14em;color:#efd29d">Kings Land Properties</div>
             <h1 class="display-5 fw-bold mb-3">Find the right land for what comes next.</h1>
             <p class="lead mb-0 text-white-50">Explore curated property listings by verified location and land type, with clear asking prices.</p>
-        </div>
-        <div class="col-lg-4 d-none d-lg-block text-lg-end">
-            <div class="catalog-hero-mark" aria-hidden="true">KQ</div>
         </div>
     </div>
 </section>
