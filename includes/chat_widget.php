@@ -117,23 +117,36 @@ $chatLocations = get_property_locations($conn);
     </header>
     <div id="kingquiry-chat-messages" class="p-3" aria-live="polite"></div>
     <div class="p-2 border-top bg-white">
-        <form id="kingquiry-estimate-form" class="border rounded p-2 mb-2">
-            <label class="form-label small mb-1" for="kingquiry-estimate-area">Land area (sq.m.)</label>
-            <input id="kingquiry-estimate-area" class="form-control form-control-sm mb-2" type="number" name="area" min="1" max="1000000" step="any" required>
-            <label class="form-label small mb-1" for="kingquiry-estimate-type">Property category</label>
-            <select id="kingquiry-estimate-type" class="form-select form-select-sm mb-2" name="property_type" required>
-                <option value="Residential">Residential</option>
-                <option value="Commercial">Commercial</option>
-                <option value="Farmlot">Farmlot</option>
-                <option value="Beachlot">Beachlot</option>
-            </select>
-            <label class="form-label small mb-1" for="kingquiry-estimate-location">City or municipality</label>
-            <select id="kingquiry-estimate-location" class="form-select form-select-sm mb-2" name="location_id" required>
-                <?= property_location_options($chatLocations) ?>
-            </select>
-            <div id="kingquiry-estimate-result" class="alert alert-success small py-2 mb-2" role="status" aria-live="polite" hidden></div>
-            <button id="kingquiry-estimate-action" type="submit" class="btn btn-sm btn-outline-primary w-100">Calculate estimate</button>
-        </form>
+        
+        <!-- === NEW CODE: Toggle Button === -->
+        <button class="btn btn-sm btn-outline-secondary w-100 mb-2" type="button" data-bs-toggle="collapse" data-bs-target="#estimateCollapse" aria-expanded="false" aria-controls="estimateCollapse">
+            Need a land estimate? Click here
+        </button>
+        
+        <!-- === NEW CODE: Collapse Wrapper Start === -->
+        <div class="collapse" id="estimateCollapse">
+            <!-- I added the 'bg-light' class to the form below to make it stand out when opened -->
+            <form id="kingquiry-estimate-form" class="border rounded p-2 mb-2 bg-light">
+                <label class="form-label small mb-1" for="kingquiry-estimate-area">Land area (sq.m.)</label>
+                <input id="kingquiry-estimate-area" class="form-control form-control-sm mb-2" type="number" name="area" min="1" max="1000000" step="any" required>
+                <label class="form-label small mb-1" for="kingquiry-estimate-type">Property category</label>
+                <select id="kingquiry-estimate-type" class="form-select form-select-sm mb-2" name="property_type" required>
+                    <option value="Residential">Residential</option>
+                    <option value="Commercial">Commercial</option>
+                    <option value="Farmlot">Farmlot</option>
+                    <option value="Beachlot">Beachlot</option>
+                </select>
+                <label class="form-label small mb-1" for="kingquiry-estimate-location">City or municipality</label>
+                <select id="kingquiry-estimate-location" class="form-select form-select-sm mb-2" name="location_id" required>
+                    <?= property_location_options($chatLocations) ?>
+                </select>
+                <div id="kingquiry-estimate-result" class="alert alert-success small py-2 mb-2" role="status" aria-live="polite" hidden></div>
+                <!-- I also changed btn-outline-primary to btn-primary here to make the submit button pop -->
+                <button id="kingquiry-estimate-action" type="submit" class="btn btn-sm btn-primary w-100">Calculate estimate</button>
+            </form>
+        <!-- === NEW CODE: Collapse Wrapper End === -->
+        </div>
+
         <form id="kingquiry-chat-form" class="input-group">
             <input id="kingquiry-chat-input" type="text" class="form-control" maxlength="1000" placeholder="Type your message..." aria-label="Your message" required>
             <button class="btn btn-primary" type="submit">Send</button>
