@@ -3,6 +3,7 @@ include 'config/db.php';
 require_once 'includes/auth.php';
 require_once 'includes/location_directory.php';
 require_once 'includes/transaction_tracking.php';
+require_once 'includes/agent_feedback.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -11,6 +12,8 @@ if (normalized_user_role($_SESSION['user'] ?? null) !== 'Client') {
     header('Location: login.php');
     exit();
 }
+
+ensure_agent_reviews_table($conn);
 
 include 'includes/header.php';
 $clientID = (int) $_SESSION['user']['userID'];
@@ -67,6 +70,72 @@ if ($trackingRows !== []) {
         $trackingEvents[(int) $event['transactionID']][] = $event;
     }
 }
+
+$reviewMessage = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_agent_review'])) {
+    if (!has_valid_csrf_token()) {
+        $reviewMessage = 'Your session expired. Refresh the page and try again.';
+    } else {
+        $transactionId = filter_var($_POST['transactionID'] ?? null, FILTER_VALIDATE_INT);
+        $rating = filter_var($_POST['rating'] ?? null, FILTER_VALIDATE_INT);
+        $comment = is_string($_POST['comment'] ?? null) ? trim($_POST['comment']) : '';
+        $comment = mb_substr($comment, 0, 1000, 'UTF-8');
+
+        if ($transactionId === false || $transactionId <= 0 || $rating === false || $rating < 1 || $rating > 5) {
+            $reviewMessage = 'Choose a valid rating before submitting feedback.';
+        } else {
+            $reviewCheck = $conn->prepare(
+                "SELECT transactionID FROM property_transactions WHERE transactionID = ? AND clientID = ? AND currentStage = 'completed'"
+            );
+            $reviewCheck->bind_param('ii', $transactionId, $clientID);
+            $reviewCheck->execute();
+            $reviewableTransaction = $reviewCheck->get_result()->fetch_assoc();
+
+            if (!$reviewableTransaction) {
+                $reviewMessage = 'This completed transaction is not eligible for a review.';
+            } else {
+                $latestAgent = $conn->prepare(
+                    "SELECT changedBy FROM property_transaction_events WHERE transactionID = ? AND changedBy IS NOT NULL ORDER BY createdAt DESC, eventID DESC LIMIT 1"
+                );
+                $latestAgent->bind_param('i', $transactionId);
+                $latestAgent->execute();
+                $latestAgentResult = $latestAgent->get_result()->fetch_assoc();
+                $agentId = $latestAgentResult !== null ? (int) $latestAgentResult['changedBy'] : null;
+
+                $insertReview = $conn->prepare(
+                    "INSERT INTO agent_reviews (transactionID, clientID, agentID, rating, comment)
+                     VALUES (?, ?, ?, ?, ?)"
+                );
+                $insertReview->bind_param('iiiss', $transactionId, $clientID, $agentId, $rating, $comment);
+                try {
+                    $insertReview->execute();
+                    header('Location: client_dashboard.php?review_submitted=1#client-reviews');
+                    exit();
+                } catch (mysqli_sql_exception $exception) {
+                    if ($exception->getCode() === 1062) {
+                        $reviewMessage = 'You have already provided feedback for this completed transaction.';
+                    } else {
+                        error_log('KingQuiry agent review insert failed: ' . $exception->getMessage());
+                        $reviewMessage = 'The review could not be saved. Please try again.';
+                    }
+                }
+            }
+        }
+    }
+}
+
+$completedReviewRows = $conn->query(
+    "SELECT t.transactionID, t.updatedAt, p.title, p.location, l.municipalityName, l.provinceName,
+            ar.reviewID, ar.rating, ar.comment, ar.createdAt AS reviewDate,
+            agent.fullname AS agentName
+     FROM property_transactions t
+     JOIN properties p ON p.propertyID = t.propertyID
+     LEFT JOIN property_locations l ON l.locationID = p.locationID
+     LEFT JOIN agent_reviews ar ON ar.transactionID = t.transactionID
+     LEFT JOIN users agent ON agent.userID = ar.agentID
+     WHERE t.clientID = $clientID AND t.currentStage = 'completed'
+     ORDER BY t.updatedAt DESC"
+);
 $stageLabels = property_transaction_stages();
 $progressStages = [
     'inquiry_received',
@@ -88,14 +157,20 @@ $progressStages = [
     <p class="text-muted mb-0">Welcome, <?= htmlspecialchars($_SESSION['user']['fullname'], ENT_QUOTES, 'UTF-8') ?>. Follow your property requests in one place.</p>
 </div>
 
+<?php if (!empty($reviewMessage)): ?>
+    <div class="alert alert-danger" role="alert"><?= htmlspecialchars($reviewMessage, ENT_QUOTES, 'UTF-8') ?></div>
+<?php endif; ?>
+<?php if (isset($_GET['review_submitted'])): ?>
+    <div class="alert alert-success" role="status">Thank you for your feedback. Your agent rating has been recorded.</div>
+<?php endif; ?>
+
 <section class="card p-3 p-lg-4 mb-4" id="transaction-tracking">
-    <div class="d-flex flex-column flex-sm-row justify-content-between gap-2 mb-3">
+    <div class="kq-panel-header mb-3">
         <div>
-        <div class="page-eyebrow">Sales progress</div>
-        <h2 class="h4 fw-bold mb-1">Transaction tracking</h2>
-            <p class="small text-muted mb-0">Follow each property request through dated updates from the sales team.</p>
+            <div class="page-eyebrow">Sales progress</div>
+            <h2 class="h4 fw-bold mb-0">Transaction tracking</h2>
         </div>
-        <span class="badge rounded-pill text-bg-light align-self-sm-start">Lazada-style status timeline</span>
+        <span class="kq-badge-soft">Lazada-style timeline</span>
     </div>
     <div class="alert alert-info small mb-4" role="note">Your latest update appears first, followed by the earlier steps. Updates are posted by the sales team; this tracks the property transaction, not parcel GPS location or online payment.</div>
     <?php if ($trackingRows !== []): ?>
@@ -168,7 +243,12 @@ $progressStages = [
 </section>
 
 <section class="card p-3 p-lg-4 mb-4">
-    <div class="mb-3"><div class="page-eyebrow">Appointments</div><h2 class="h4 fw-bold mb-0">Viewing requests</h2></div>
+    <div class="kq-panel-header mb-3">
+        <div>
+            <div class="page-eyebrow">Appointments</div>
+            <h2 class="h4 fw-bold mb-0">Viewing requests</h2>
+        </div>
+    </div>
     <?php if ($appointments && $appointments->num_rows > 0): ?>
         <?php while($appt = $appointments->fetch_assoc()): ?>
             <?php $status = $appt['status']; ?>
@@ -184,6 +264,9 @@ $progressStages = [
                     <div class="col-sm-6"><span class="text-muted">Requested viewing</span><div class="fw-semibold"><?= htmlspecialchars($appt['appointmentDate'], ENT_QUOTES, 'UTF-8') ?> at <?= htmlspecialchars(substr($appt['appointmentTime'], 0, 5), ENT_QUOTES, 'UTF-8') ?></div></div>
                     <div class="col-sm-6"><span class="text-muted">Reference number</span><div class="fw-semibold">#KQ-<?= 1000 + (int) $appt['appointmentID'] ?></div></div>
                 </div>
+                <div class="mt-3">
+                    <a href="property_summary_pdf.php?property_id=<?= (int) $appt['propertyID'] ?>&appointment_id=<?= (int) $appt['appointmentID'] ?>" target="_blank" class="btn btn-outline-primary btn-sm">Download summary PDF</a>
+                </div>
             </article>
         <?php endwhile; ?>
     <?php else: ?>
@@ -191,8 +274,80 @@ $progressStages = [
     <?php endif; ?>
 </section>
 
+<section class="card p-3 p-lg-4 mb-4" id="client-reviews">
+    <div class="kq-panel-header mb-3">
+        <div>
+            <div class="page-eyebrow">Experience review</div>
+            <h2 class="h4 fw-bold mb-0">Rate your sales experience</h2>
+        </div>
+    </div>
+    <?php if ($completedReviewRows && $completedReviewRows->num_rows > 0): ?>
+        <div class="row g-3">
+            <?php while ($completedReview = $completedReviewRows->fetch_assoc()): ?>
+                <?php $completedLocation = !empty($completedReview['municipalityName']) ? $completedReview['municipalityName'] . ', ' . $completedReview['provinceName'] : $completedReview['location']; ?>
+                <div class="col-lg-6">
+                    <article class="border rounded-3 p-3 h-100">
+                        <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                            <div>
+                                <div class="small text-primary fw-semibold">#KQT-<?= (int) $completedReview['transactionID'] ?></div>
+                                <h3 class="h6 fw-bold mb-1"><?= htmlspecialchars($completedReview['title'], ENT_QUOTES, 'UTF-8') ?></h3>
+                                <div class="small text-muted"><?= htmlspecialchars($completedLocation, ENT_QUOTES, 'UTF-8') ?></div>
+                            </div>
+                            <?php if (!empty($completedReview['reviewID'])): ?>
+                                <span class="badge rounded-pill text-bg-success">Submitted</span>
+                            <?php else: ?>
+                                <span class="badge rounded-pill text-bg-light">Awaiting review</span>
+                            <?php endif; ?>
+                        </div>
+
+                        <?php if (!empty($completedReview['reviewID'])): ?>
+                            <div class="mb-2 text-warning lh-1" aria-label="Rated <?= (int) $completedReview['rating'] ?> out of 5 stars">
+                                <?php for ($starIndex = 1; $starIndex <= 5; $starIndex++): ?>
+                                    <?= $starIndex <= (int) $completedReview['rating'] ? '★' : '☆' ?>
+                                <?php endfor; ?>
+                            </div>
+                            <div class="small text-muted mb-2">Reviewed on <?= htmlspecialchars(date('M j, Y', strtotime((string) $completedReview['reviewDate'])), ENT_QUOTES, 'UTF-8') ?></div>
+                            <?php if (!empty($completedReview['comment'])): ?>
+                                <p class="mb-0 text-break small"><?= htmlspecialchars($completedReview['comment'], ENT_QUOTES, 'UTF-8') ?></p>
+                            <?php else: ?>
+                                <p class="mb-0 text-muted small">No written comment provided.</p>
+                            <?php endif; ?>
+                        <?php else: ?>
+                            <form method="POST" class="mt-3">
+                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                                <input type="hidden" name="transactionID" value="<?= (int) $completedReview['transactionID'] ?>">
+                                <label class="form-label small fw-semibold">Your rating</label>
+                                <div class="d-flex gap-2 mb-3 flex-wrap">
+                                    <?php for ($starIndex = 1; $starIndex <= 5; $starIndex++): ?>
+                                        <label class="btn btn-outline-warning btn-sm px-2 py-1 mb-0">
+                                            <input type="radio" name="rating" value="<?= $starIndex ?>" required class="visually-hidden">
+                                            <span>★</span>
+                                        </label>
+                                    <?php endfor; ?>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label small fw-semibold" for="agent-review-comment-<?= (int) $completedReview['transactionID'] ?>">Your feedback</label>
+                                    <textarea id="agent-review-comment-<?= (int) $completedReview['transactionID'] ?>" name="comment" class="form-control" rows="3" maxlength="1000" placeholder="Tell us how the sales process worked for you."></textarea>
+                                </div>
+                                <button type="submit" name="submit_agent_review" class="btn btn-primary btn-sm">Submit review</button>
+                            </form>
+                        <?php endif; ?>
+                    </article>
+                </div>
+            <?php endwhile; ?>
+        </div>
+    <?php else: ?>
+        <div class="text-muted">No completed sales are available for rating yet.</div>
+    <?php endif; ?>
+</section>
+
 <section class="card p-3 p-lg-4">
-    <div class="mb-3"><div class="page-eyebrow">Messages</div><h2 class="h4 fw-bold mb-0">Your property inquiries</h2></div>
+    <div class="kq-panel-header mb-3">
+        <div>
+            <div class="page-eyebrow">Messages</div>
+            <h2 class="h4 fw-bold mb-0">Your property inquiries</h2>
+        </div>
+    </div>
     <?php if ($inquiries && $inquiries->num_rows > 0): ?>
         <div class="table-responsive">
             <table class="table align-middle mb-0">

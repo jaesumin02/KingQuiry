@@ -4,9 +4,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 require_once __DIR__ . '/auth.php';
 
-header('Cache-Control: no-store, no-cache, must-revalidate');
-header('Pragma: no-cache');
-header('Expires: 0');
+apply_secure_headers();
 $currentRole = normalized_user_role($_SESSION['user'] ?? null);
 ?>
 <!DOCTYPE html>
@@ -17,6 +15,7 @@ $currentRole = normalized_user_role($_SESSION['user'] ?? null);
     <meta name="theme-color" content="#142d4e">
     <title>KingQuiry | Land & Property</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <style>
         :root {
             --kq-ink: #18304c;
@@ -94,6 +93,67 @@ $currentRole = normalized_user_role($_SESSION['user'] ?? null);
             --bs-btn-border-color: #bdd0df;
             --bs-btn-hover-bg: var(--kq-primary);
             --bs-btn-hover-border-color: var(--kq-primary);
+        }
+        .kq-stat-card {
+            height: 100%;
+            padding: 1.1rem 1.2rem;
+            border: 1px solid rgba(23, 74, 112, 0.08);
+            border-radius: 1rem;
+            background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(243,247,250,.96));
+            box-shadow: 0 8px 24px rgba(17, 43, 69, 0.06);
+        }
+        .kq-stat-label {
+            display: inline-flex;
+            align-items: center;
+            gap: .45rem;
+            color: var(--kq-primary);
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+        }
+        .kq-stat-value {
+            margin-top: .55rem;
+            color: var(--kq-ink);
+            font-size: clamp(1.35rem, 2vw, 2rem);
+            font-weight: 800;
+            letter-spacing: -.04em;
+        }
+        .kq-stat-sub {
+            margin-top: .35rem;
+            color: var(--kq-muted);
+            font-size: 0.85rem;
+            line-height: 1.5;
+        }
+        .kq-panel-header {
+            position: relative;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.1rem;
+            padding-bottom: .75rem;
+            border-bottom: 1px solid var(--kq-line);
+        }
+        .kq-panel-header::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            bottom: -1px;
+            width: 56px;
+            height: 3px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, var(--kq-primary), var(--kq-accent));
+        }
+        .kq-badge-soft {
+            display: inline-flex;
+            align-items: center;
+            padding: .38rem .7rem;
+            border-radius: 999px;
+            background: rgba(23, 74, 112, 0.08);
+            color: var(--kq-primary);
+            font-size: .75rem;
+            font-weight: 700;
         }
         .form-control, .form-select {
             min-height: 44px;

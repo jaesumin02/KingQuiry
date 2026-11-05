@@ -2,6 +2,7 @@
 include 'config/db.php';
 require_once 'includes/auth.php';
 require_once 'includes/location_directory.php';
+require_once 'includes/notifications.php';
 require_once 'includes/transaction_tracking.php';
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -79,6 +80,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     create_property_transaction($conn, $propertyID, $clientID, 'appointment', (int) $conn->insert_id, $clientID);
                     $conn->commit();
                     $transactionStarted = false;
+                    send_property_notification(
+                        $conn,
+                        $clientID,
+                        'Viewing request received',
+                        "Thank you for booking a site visit for '{$property['title']}'. Your viewing request has been received and is now being reviewed by our sales team. Please monitor your dashboard for updates."
+                    );
                     $_SESSION['flash_success'] = 'Your viewing request has been sent. Track its progress and updates from your dashboard.';
                     header('Location: property_detail.php?id=' . $propertyID . '#appointment');
                     exit();
@@ -113,6 +120,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 create_property_transaction($conn, $propertyID, $clientID, 'inquiry', (int) $conn->insert_id, $clientID);
                 $conn->commit();
                 $transactionStarted = false;
+                send_property_notification(
+                    $conn,
+                    $clientID,
+                    'Property inquiry received',
+                    "Thank you for reaching out about '{$property['title']}'. Your inquiry has been received and our team will review it shortly. Please check your dashboard for updates."
+                );
                 $_SESSION['flash_success'] = 'Your inquiry has been sent. Track the progress from your dashboard.';
                 header('Location: property_detail.php?id=' . $propertyID . '#inquiry');
                 exit();
@@ -173,6 +186,11 @@ include 'includes/header.php';
 
             <h3 class="h5 fw-bold">Description</h3>
             <p class="text-muted mb-0"><?= nl2br(htmlspecialchars($property['description'], ENT_QUOTES, 'UTF-8')) ?></p>
+
+            <div class="mt-4">
+                <div class="page-eyebrow mb-2">Location overview</div>
+                <div id="property-detail-map" aria-label="Map preview for this property" style="height: 260px; width: 100%; border-radius: .9rem; overflow: hidden;"></div>
+            </div>
         </div>
     </div>
 
@@ -194,6 +212,7 @@ include 'includes/header.php';
                     </div>
                     <button type="submit" name="book_appointment" class="btn btn-primary w-100">Request a viewing</button>
                 </form>
+                <a href="property_summary_pdf.php?property_id=<?= (int) $property['propertyID'] ?>" target="_blank" class="btn btn-outline-secondary w-100 mt-3">Download summary PDF</a>
             <?php else: ?>
                 <p class="text-muted small">Sign in with a client account to request a viewing.</p>
                 <a href="login.php" class="btn btn-primary w-100">Sign in to continue</a>
@@ -219,5 +238,32 @@ include 'includes/header.php';
         </div>
     </div>
 </div>
+
+<script>
+const propertyCoordinates = {
+    Calatagan: [13.8319, 120.6340],
+    Lian: [13.9421, 120.6460],
+    Nasugbu: [14.0925, 120.6303],
+    Tuy: [13.9791, 120.7350],
+    Balayan: [13.9392, 120.7231],
+    Lobo: [13.5845, 121.1956],
+    Mabini: [13.7154, 120.9502],
+    Taal: [13.8814, 120.9327],
+    'Santo Tomas City': [14.09, 121.147],
+    'Batangas City': [13.7565, 121.0583],
+};
+const propertyLocationName = <?= json_encode((string) ($property['municipalityName'] ?? ''), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
+const propertyLocationCoords = propertyCoordinates[propertyLocationName] || [13.7565, 121.0583];
+const propertyDetailTitle = <?= json_encode((string) $property['title'], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
+const propertyDetailLocation = <?= json_encode(property_location_label($property), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
+if (document.getElementById('property-detail-map') && typeof L !== 'undefined') {
+    const map = L.map('property-detail-map', { scrollWheelZoom: true }).setView(propertyLocationCoords, 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 18,
+    }).addTo(map);
+    L.marker(propertyLocationCoords).addTo(map).bindPopup(`<div style="min-width: 180px; max-width: 220px;"><div style="font-weight: 700; margin-bottom: 4px;">${propertyDetailTitle}</div><div style="font-size: 12px; color: #5c6d7a;">${propertyDetailLocation}</div></div>`);
+}
+</script>
 
 <?php include 'includes/footer.php'; ?>

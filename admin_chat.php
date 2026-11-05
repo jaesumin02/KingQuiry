@@ -1,10 +1,11 @@
 <?php
 include 'config/db.php';
+require_once 'includes/auth.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
-if (!isset($_SESSION['user']) || ($_SESSION['user']['role'] ?? '') !== 'Admin') {
+if (!user_has_role($_SESSION['user'] ?? null, 'Admin')) {
     header('Location: login.php');
     exit();
 }

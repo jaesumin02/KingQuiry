@@ -188,6 +188,27 @@ CREATE TABLE IF NOT EXISTS property_transaction_events (
         FOREIGN KEY (changedBy) REFERENCES users (userID) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS agent_reviews (
+    reviewID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    transactionID BIGINT UNSIGNED NOT NULL,
+    clientID INT NOT NULL,
+    agentID INT DEFAULT NULL,
+    rating TINYINT UNSIGNED NOT NULL,
+    comment TEXT DEFAULT NULL,
+    createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (reviewID),
+    UNIQUE KEY uq_agent_reviews_transaction (transactionID),
+    KEY idx_agent_reviews_client (clientID),
+    KEY idx_agent_reviews_agent (agentID),
+    KEY idx_agent_reviews_rating (rating),
+    CONSTRAINT fk_agent_reviews_transaction
+        FOREIGN KEY (transactionID) REFERENCES property_transactions (transactionID) ON DELETE CASCADE,
+    CONSTRAINT fk_agent_reviews_client
+        FOREIGN KEY (clientID) REFERENCES users (userID) ON DELETE CASCADE,
+    CONSTRAINT fk_agent_reviews_agent
+        FOREIGN KEY (agentID) REFERENCES users (userID) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 INSERT INTO property_locations (regionCode, regionName, provinceName, municipalityName) VALUES
 ('PH-40', 'CALABARZON (Region IV-A)', 'Batangas', 'Agoncillo'),
 ('PH-40', 'CALABARZON (Region IV-A)', 'Batangas', 'Alitagtag'),

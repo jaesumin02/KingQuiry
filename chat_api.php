@@ -3,9 +3,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store, no-cache, must-revalidate');
-header('Pragma: no-cache');
+apply_secure_headers('application/json; charset=utf-8');
 
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/includes/auth.php';

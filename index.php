@@ -47,6 +47,8 @@ if ($parameters) {
 }
 $stmt->execute();
 $result = $stmt->get_result();
+$visibleProperties = $result->fetch_all(MYSQLI_ASSOC);
+$result->data_seek(0);
 $locations = get_property_locations($conn);
 
 $myAppointments = null;
@@ -80,6 +82,30 @@ if (normalized_user_role($_SESSION['user'] ?? null) === 'Client') {
             <h1 class="display-5 fw-bold mb-3">Find the right land for what comes next.</h1>
             <p class="lead mb-0 text-white-50">Explore curated property listings by verified location and land type, with clear asking prices.</p>
         </div>
+    </div>
+</section>
+
+<section class="row g-3 mb-4" aria-label="Property highlights">
+    <div class="col-md-4">
+        <article class="kq-stat-card">
+            <div class="kq-stat-label">Verified listings</div>
+            <div class="kq-stat-value"><?= number_format((int) $result->num_rows) ?></div>
+            <div class="kq-stat-sub">Curated land opportunities across the region.</div>
+        </article>
+    </div>
+    <div class="col-md-4">
+        <article class="kq-stat-card">
+            <div class="kq-stat-label">Coastal access</div>
+            <div class="kq-stat-value">4 key towns</div>
+            <div class="kq-stat-sub">Calatagan, Lian, Nasugbu, and Tuy for prime location focus.</div>
+        </article>
+    </div>
+    <div class="col-md-4">
+        <article class="kq-stat-card">
+            <div class="kq-stat-label">Client process</div>
+            <div class="kq-stat-value">Fast & clear</div>
+            <div class="kq-stat-sub">Book visits, track updates, and review completed sales with confidence.</div>
+        </article>
     </div>
 </section>
 
@@ -154,9 +180,50 @@ if (normalized_user_role($_SESSION['user'] ?? null) === 'Client') {
     </section>
 <?php endif; ?>
 
+<?php
+$municipalityCoordinates = [
+    'Calatagan' => [13.8319, 120.6340],
+    'Lian' => [13.9421, 120.6460],
+    'Nasugbu' => [14.0925, 120.6303],
+    'Tuy' => [13.9791, 120.7350],
+    'Balayan' => [13.9392, 120.7231],
+    'Lobo' => [13.5845, 121.1956],
+    'Mabini' => [13.7154, 120.9502],
+    'Taal' => [13.8814, 120.9327],
+    'Santo Tomas City' => [14.09, 121.147],
+    'Batangas City' => [13.7565, 121.0583],
+];
+$propertyMapData = [];
+foreach ($visibleProperties as $propertyRow) {
+    $municipality = trim((string) ($propertyRow['municipalityName'] ?? ''));
+    $coords = $municipalityCoordinates[$municipality] ?? [13.7565, 121.0583];
+    $propertyMapData[] = [
+        'id' => (int) $propertyRow['propertyID'],
+        'title' => (string) $propertyRow['title'],
+        'location' => property_location_label($propertyRow),
+        'type' => (string) $propertyRow['propertyType'],
+        'price' => (float) $propertyRow['price'],
+        'link' => 'property_detail.php?id=' . (int) $propertyRow['propertyID'],
+        'lat' => (float) $coords[0],
+        'lng' => (float) $coords[1],
+    ];
+}
+?>
+
+<section class="card p-3 p-lg-4 mb-4" aria-labelledby="property-map-title">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 mb-3">
+        <div>
+            <div class="page-eyebrow">Interactive location view</div>
+            <h2 class="h4 fw-bold mb-1" id="property-map-title">Batangas property map</h2>
+        </div>
+        <div class="small text-muted">Explore properties by municipality</div>
+    </div>
+    <div id="property-map" aria-label="Map of available properties" style="height: 420px; width: 100%; border-radius: .9rem; overflow: hidden;"></div>
+</section>
+
 <div class="row g-4">
-    <?php if ($result->num_rows > 0): ?>
-        <?php while($row = $result->fetch_assoc()): ?>
+    <?php if ($visibleProperties !== []): ?>
+        <?php foreach ($visibleProperties as $row): ?>
             <?php
             $imageName = basename((string) ($row['image'] ?? ''));
             $imagePath = __DIR__ . '/assets/images/' . $imageName;
@@ -191,7 +258,7 @@ if (normalized_user_role($_SESSION['user'] ?? null) === 'Client') {
                     </div>
                 </article>
             </div>
-        <?php endwhile; ?>
+        <?php endforeach; ?>
     <?php else: ?>
         <div class="col-12">
             <div class="card text-center px-4 py-5">
@@ -202,5 +269,34 @@ if (normalized_user_role($_SESSION['user'] ?? null) === 'Client') {
         </div>
     <?php endif; ?>
 </div>
+
+<script>
+const propertyMapData = <?= json_encode($propertyMapData, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
+if (document.getElementById('property-map') && typeof L !== 'undefined' && propertyMapData.length > 0) {
+    const map = L.map('property-map', { scrollWheelZoom: true }).setView([13.8, 120.7], 10);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 18,
+    }).addTo(map);
+
+    const bounds = [];
+    propertyMapData.forEach((property) => {
+        const marker = L.marker([property.lat, property.lng]).addTo(map);
+        marker.bindPopup(`
+            <div style="min-width: 180px; max-width: 230px;">
+                <div style="font-weight: 700; margin-bottom: 4px;">${property.title}</div>
+                <div style="font-size: 12px; color: #5c6d7a; margin-bottom: 6px;">${property.location}</div>
+                <div style="font-size: 12px; color: #234c70; font-weight: 700; margin-bottom: 6px;">${property.type} · ₱${Number(property.price).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                <a href="${property.link}" style="display: inline-block; margin-top: 4px; font-weight: 600; color: #174a70; text-decoration: none;">View property</a>
+            </div>
+        `);
+        bounds.push([property.lat, property.lng]);
+    });
+
+    if (bounds.length > 0) {
+        map.fitBounds(bounds, { padding: [30, 30] });
+    }
+}
+</script>
 
 <?php include 'includes/footer.php'; ?>

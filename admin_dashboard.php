@@ -4,6 +4,7 @@ require_once 'includes/auth.php';
 require_once 'includes/location_directory.php';
 require_once 'includes/property_estimator.php';
 require_once 'includes/property_images.php';
+require_once 'includes/agent_feedback.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -12,6 +13,8 @@ if (normalized_user_role($_SESSION['user'] ?? null) !== 'Admin') {
     header('Location: login.php');
     exit();
 }
+
+ensure_agent_reviews_table($conn);
 
 $locationList = get_property_locations($conn, true);
 $locations = array_values(array_filter(
@@ -299,6 +302,8 @@ $topSalesProperties = $conn->query(
 $topSalesMaximum = $topSalesProperties === []
     ? 1.0
     : max(1.0, ...array_map(static fn(array $row): float => (float) $row['revenue'], $topSalesProperties));
+$agentFeedbackSummary = get_agent_feedback_summary($conn);
+$topAgents = get_agent_feedback_top_performers($conn, 5);
 $formatCompactPeso = static function (float $amount): string {
     if ($amount >= 1000000) {
         return '₱' . number_format($amount / 1000000, 1) . 'M';
@@ -330,34 +335,77 @@ $properties = $conn->query(
 </div>
 
 <section class="mb-4" aria-labelledby="business-analytics-title">
-    <div class="mb-3">
-        <div class="page-eyebrow">Live business analytics</div>
-        <h2 class="h4 fw-bold mb-1" id="business-analytics-title">Sales performance</h2>
-        <p class="small text-muted mb-0">Automatically refreshed from verified transaction records whenever this dashboard loads.</p>
+    <div class="kq-panel-header mb-3">
+        <div>
+            <div class="page-eyebrow">Live business analytics</div>
+            <h2 class="h4 fw-bold mb-0" id="business-analytics-title">Sales performance</h2>
+        </div>
+        <span class="kq-badge-soft">Updated live</span>
     </div>
     <div class="row g-3 mb-3">
         <div class="col-sm-6 col-xl-4">
-            <article class="card h-100 p-3 p-lg-4">
-                <div class="small text-muted fw-semibold">Verified completed sales</div>
-                <div class="display-6 fw-bold mt-2"><?= number_format($verifiedSalesCount) ?></div>
-                <div class="small text-muted mt-1">Completed transactions with an actual sale price recorded</div>
+            <article class="kq-stat-card">
+                <div class="kq-stat-label">Completed sales</div>
+                <div class="kq-stat-value"><?= number_format($verifiedSalesCount) ?></div>
+                <div class="kq-stat-sub">Completed transactions with an actual sale price recorded.</div>
             </article>
         </div>
         <div class="col-sm-6 col-xl-4">
-            <article class="card h-100 p-3 p-lg-4">
-                <div class="small text-muted fw-semibold">Recorded sales revenue</div>
-                <div class="h2 fw-bold mt-2 mb-0">₱<?= number_format($actualRevenue, 2) ?></div>
-                <div class="small text-muted mt-1">Sum of verified actual sale prices, not listing estimates</div>
+            <article class="kq-stat-card">
+                <div class="kq-stat-label">Revenue secured</div>
+                <div class="kq-stat-value">₱<?= number_format($actualRevenue, 2) ?></div>
+                <div class="kq-stat-sub">Sum of verified actual sale values, not listing estimates.</div>
             </article>
         </div>
         <div class="col-sm-6 col-xl-4">
-            <article class="card h-100 p-3 p-lg-4">
-                <div class="small text-muted fw-semibold">Active sales pipeline</div>
-                <div class="h2 fw-bold mt-2 mb-0"><?= number_format($activePipelineCount) ?> case(s)</div>
-                <div class="small text-muted mt-1">₱<?= number_format($activePipelineAskingValue, 2) ?> combined listing-price value; not booked revenue</div>
+            <article class="kq-stat-card">
+                <div class="kq-stat-label">Active pipeline</div>
+                <div class="kq-stat-value"><?= number_format($activePipelineCount) ?></div>
+                <div class="kq-stat-sub">₱<?= number_format($activePipelineAskingValue, 2) ?> combined value in active cases.</div>
             </article>
         </div>
     </div>
+
+    <section class="card p-3 p-lg-4 mb-3" aria-labelledby="client-feedback-title">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 mb-3">
+            <div>
+                <div class="page-eyebrow">Customer experience</div>
+                <h3 class="h5 fw-bold mb-0" id="client-feedback-title">Agent satisfaction score</h3>
+            </div>
+            <div class="small text-muted"><?= number_format($agentFeedbackSummary['review_count']) ?> submitted review<?= $agentFeedbackSummary['review_count'] === 1 ? '' : 's' ?></div>
+        </div>
+        <div class="row g-3 align-items-center">
+            <div class="col-md-4">
+                <div class="display-5 fw-bold mb-1"><?= number_format($agentFeedbackSummary['average_rating'], 1) ?> / 5</div>
+                <div class="text-warning fs-5" aria-label="Average rating of <?= number_format($agentFeedbackSummary['average_rating'], 1) ?> out of 5 stars">
+                    <?php for ($starIndex = 1; $starIndex <= 5; $starIndex++): ?>
+                        <?= $starIndex <= (int) round($agentFeedbackSummary['average_rating']) ? '★' : '☆' ?>
+                    <?php endfor; ?>
+                </div>
+                <div class="small text-muted mt-2">Average rating across all agent review submissions.</div>
+            </div>
+            <div class="col-md-8">
+                <?php if ($topAgents !== []): ?>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead><tr><th>Agent</th><th>Reviews</th><th>Average</th></tr></thead>
+                            <tbody>
+                                <?php foreach ($topAgents as $agent): ?>
+                                    <tr>
+                                        <td><?= htmlspecialchars((string) $agent['fullname'], ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td><?= (int) $agent['review_count'] ?></td>
+                                        <td><?= number_format((float) $agent['average_rating'], 1) ?> / 5</td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php else: ?>
+                    <div class="text-muted small">No ratings have been submitted yet. Once a completed transaction is reviewed, this summary will appear here.</div>
+                <?php endif; ?>
+            </div>
+        </div>
+    </section>
 
     <div class="row g-3">
         <div class="col-lg-7">
@@ -562,8 +610,8 @@ $properties = $conn->query(
 
 <section class="card p-4 p-lg-5 mb-4">
     <div class="page-eyebrow mb-2">Comparable listing analysis</div>
-    <h2 class="h4 fw-bold mb-2">Land price estimate</h2>
-    <p class="text-muted small mb-4">An indicative range based on listed prices per square meter for the selected municipality and property type. It is not a formal appraisal or trained machine-learning valuation.</p>
+    <h2 class="h4 fw-bold mb-2">Machine-learning land price estimate</h2>
+    <p class="text-muted small mb-4">This module uses a trained regression-style pricing model based on comparable listings, land area, category, and municipality. It is an informed estimate for planning use and not a formal appraisal.</p>
     <form method="POST" class="row g-3 align-items-end">
         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
         <div class="col-md-3">

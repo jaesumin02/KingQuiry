@@ -6,9 +6,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-header('Cache-Control: no-store, no-cache, must-revalidate');
-header('Pragma: no-cache');
-header('Expires: 0');
+apply_secure_headers();
 
 if (isset($_SESSION['user'])) {
     $role = normalized_user_role($_SESSION['user']);

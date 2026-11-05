@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/notifications.php';
+
 function property_transaction_stages(): array
 {
     return [
@@ -193,6 +195,31 @@ function advance_property_transaction(
             $appointmentStmt->execute();
         }
 
+        $detailsStmt = $conn->prepare(
+            'SELECT t.propertyID, t.clientID, p.title, u.fullname
+             FROM property_transactions t
+             JOIN properties p ON p.propertyID = t.propertyID
+             JOIN users u ON u.userID = t.clientID
+             WHERE t.transactionID = ?
+             LIMIT 1'
+        );
+        $detailsStmt->bind_param('i', $transactionId);
+        $detailsStmt->execute();
+        $details = $detailsStmt->get_result()->fetch_assoc();
+
+        if (is_array($details) && !empty($details['clientID'])) {
+            $statusLabel = $newStage === 'completed' ? 'closed' : str_replace('_', ' ', $newStage);
+            $notificationSubject = 'Property transaction update';
+            $notificationMessage = sprintf(
+                "Hello %s,\n\nYour property transaction for '%s' has been updated to '%s'.\n\nNote: %s\n\nPlease check your dashboard to review the latest status.",
+                (string) ($details['fullname'] ?? 'there'),
+                (string) ($details['title'] ?? 'the property'),
+                ucfirst($statusLabel),
+                $note
+            );
+            send_property_notification($conn, (int) $details['clientID'], $notificationSubject, $notificationMessage);
+        }
+
         $conn->commit();
     } catch (Throwable $exception) {
         $conn->rollback();
@@ -265,6 +292,32 @@ function update_appointment_tracking_status(
         );
         $updateAppointment->bind_param('si', $newStatus, $appointmentId);
         $updateAppointment->execute();
+
+        $detailsStmt = $conn->prepare(
+            'SELECT a.clientID, a.appointmentDate, a.appointmentTime, p.title, u.fullname
+             FROM appointments a
+             JOIN properties p ON p.propertyID = a.propertyID
+             JOIN users u ON u.userID = a.clientID
+             WHERE a.appointmentID = ?
+             LIMIT 1'
+        );
+        $detailsStmt->bind_param('i', $appointmentId);
+        $detailsStmt->execute();
+        $details = $detailsStmt->get_result()->fetch_assoc();
+
+        if (is_array($details) && !empty($details['clientID'])) {
+            $statusLabel = $newStatus === 'Approved' ? 'approved' : 'cancelled';
+            $notificationSubject = 'Property viewing request ' . $statusLabel;
+            $notificationMessage = sprintf(
+                "Hello %s,\n\nYour viewing request for '%s' on %s at %s has been %s.\n\nPlease check your dashboard for the latest updates.",
+                (string) ($details['fullname'] ?? 'there'),
+                (string) ($details['title'] ?? 'the property'),
+                (string) $details['appointmentDate'],
+                (string) $details['appointmentTime'],
+                $statusLabel
+            );
+            send_property_notification($conn, (int) $details['clientID'], $notificationSubject, $notificationMessage);
+        }
 
         $conn->commit();
     } catch (Throwable $exception) {

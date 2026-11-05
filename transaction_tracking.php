@@ -7,7 +7,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 $role = normalized_user_role($_SESSION['user'] ?? null);
-if (!in_array($role, ['Admin', 'Sales Agent'], true)) {
+if (!user_has_role($_SESSION['user'] ?? null, 'Admin', 'Sales Agent')) {
     header('Location: login.php');
     exit();
 }

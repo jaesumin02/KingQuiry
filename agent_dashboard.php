@@ -6,7 +6,8 @@ require_once 'includes/transaction_tracking.php';
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
-if (normalized_user_role($_SESSION['user'] ?? null) !== 'Sales Agent') {
+apply_secure_headers();
+if (!user_has_role($_SESSION['user'] ?? null, 'Sales Agent')) {
     header('Location: login.php');
     exit();
 }
@@ -36,6 +37,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_status'])) {
 
 $appointments = $conn->query("SELECT a.*, p.title, p.location, p.barangay, l.municipalityName, l.provinceName, u.fullname as clientName, u.email as clientEmail FROM appointments a JOIN properties p ON a.propertyID = p.propertyID JOIN users u ON a.clientID = u.userID LEFT JOIN property_locations l ON l.locationID = p.locationID ORDER BY a.appointmentDate DESC, a.appointmentTime DESC, a.appointmentID DESC LIMIT 300");
 $inquiries = $conn->query("SELECT i.*, p.title, u.fullname as clientName, u.email as clientEmail FROM feedbackinquiries i JOIN properties p ON i.propertyID = p.propertyID JOIN users u ON i.clientID = u.userID ORDER BY i.createdAt DESC, i.inquiryID DESC LIMIT 300");
+$stats = $conn->query("SELECT
+    COUNT(*) AS total_appointments,
+    SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END) AS pending_appointments,
+    SUM(CASE WHEN status = 'Approved' THEN 1 ELSE 0 END) AS approved_appointments,
+    SUM(CASE WHEN status = 'Cancelled' THEN 1 ELSE 0 END) AS cancelled_appointments,
+    (SELECT COUNT(*) FROM feedbackinquiries) AS total_inquiries
+FROM appointments");
+$statsRow = $stats && $stats->num_rows > 0 ? $stats->fetch_assoc() : ['total_appointments' => 0, 'pending_appointments' => 0, 'approved_appointments' => 0, 'cancelled_appointments' => 0, 'total_inquiries' => 0];
 include 'includes/header.php';
 ?>
 
@@ -51,8 +60,53 @@ include 'includes/header.php';
 <?php if ($statusMessage !== ''): ?><div class="alert alert-success" role="status"><?= htmlspecialchars($statusMessage, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
 <?php if ($statusError !== ''): ?><div class="alert alert-danger" role="alert"><?= htmlspecialchars($statusError, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
 
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body">
+                <div class="page-eyebrow">Appointments</div>
+                <h3 class="h2 mb-0"><?= (int) ($statsRow['total_appointments'] ?? 0) ?></h3>
+                <small class="text-muted">Total viewing requests</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body">
+                <div class="page-eyebrow">Pending</div>
+                <h3 class="h2 mb-0"><?= (int) ($statsRow['pending_appointments'] ?? 0) ?></h3>
+                <small class="text-muted">Needs action</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body">
+                <div class="page-eyebrow">Approved</div>
+                <h3 class="h2 mb-0"><?= (int) ($statsRow['approved_appointments'] ?? 0) ?></h3>
+                <small class="text-muted">Confirmed site visits</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body">
+                <div class="page-eyebrow">Inquiries</div>
+                <h3 class="h2 mb-0"><?= (int) ($statsRow['total_inquiries'] ?? 0) ?></h3>
+                <small class="text-muted">Customer messages</small>
+            </div>
+        </div>
+    </div>
+</div>
+
 <section class="card p-3 p-lg-4 mb-4">
-    <div class="mb-3"><div class="page-eyebrow">Scheduling</div><h2 class="h4 fw-bold mb-0">Viewing requests</h2></div>
+    <div class="kq-panel-header mb-3">
+        <div>
+            <div class="page-eyebrow">Scheduling</div>
+            <h2 class="h4 fw-bold mb-0">Viewing requests</h2>
+        </div>
+        <span class="kq-badge-soft">Live queue</span>
+    </div>
     <div class="table-responsive">
         <table class="table table-bordered align-middle">
             <thead class="table-light"><tr><th>Ref ID</th><th>Client</th><th>Property</th><th>Location</th><th>Date & Time</th><th>Status</th><th>Action</th></tr></thead>
@@ -96,7 +150,13 @@ include 'includes/header.php';
 </section>
 
 <section class="card p-3 p-lg-4">
-    <div class="mb-3"><div class="page-eyebrow">Customer questions</div><h2 class="h4 fw-bold mb-0">Property inquiries</h2></div>
+    <div class="kq-panel-header mb-3">
+        <div>
+            <div class="page-eyebrow">Customer questions</div>
+            <h2 class="h4 fw-bold mb-0">Property inquiries</h2>
+        </div>
+        <span class="kq-badge-soft">Inbox</span>
+    </div>
     <div class="table-responsive">
         <table class="table align-middle">
             <thead><tr><th>Client</th><th>Property</th><th>Message</th><th>Received</th><th>Status</th></tr></thead>
