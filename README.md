@@ -153,7 +153,7 @@ documented `KINGQUIRY_DB_*` environment variables.
 | `includes/property_images.php` | Validated property image upload and storage |
 | `database/chat_schema.sql` | Tables required for client conversations, chat messages, and admin presence |
 | `database/location_schema.sql` | Batangas seed data and one-time nullable structured property location and area migration for existing installations |
-| `database/transaction_tracking_schema.sql` | Additive transaction timeline tables and safe starting-state backfill for existing appointments and inquiries |
+| `database/transaction_tracking_schema.sql` | Additive transaction timeline/payment tables and safe starting-state backfill for existing appointments and inquiries |
 | `database/schema.sql` | Complete fresh-install schema for all application tables plus the initial Batangas location seed data; no live user or transaction records |
 | `update_pass.php` | CLI-only administrator password reset utility |
 | `CHANGELOG.md` | Dated record of project changes |
@@ -183,7 +183,7 @@ documented `KINGQUIRY_DB_*` environment variables.
    columns to `properties`, so do not run it more than once. It repeats the
    location table and seed definitions from `schema.sql` so it can independently
    upgrade an older database; it is not needed for a fresh install. The tracking
-   migration creates its tables, adds the sale-price column if missing, and
+   migration creates its tables (including payment records), adds the sale-price column if missing, and
    creates an initial state for existing appointments and inquiries; it does
    not invent past step-by-step history or sales amounts. After migration, the
    same codebase powers client chat, tracking, and analytics.
@@ -279,20 +279,25 @@ the case in **Transaction Tracking**. The normal progression is:
 5. Offer / negotiation
 6. Reservation processing
 7. Document verification
-8. Payment confirmation
+8. Client records a payment made through any method; staff verifies it and
+   confirms payment
 9. Successful / completed
 
 A case may be cancelled before completion. Staff updates are manual and each
 step/note is time-stamped and linked to the staff account. Marking a case
 successful also requires the actual agreed sale price, which is then included
-in the revenue analytics. The app does not
-process payments, verify escrow/bank transfers, send receipts, or track a
-physical parcel with GPS. Staff must verify the sale and its documents outside
-the app before recording the successful step; its required note is visible to
-the client. Payment confirmation and successful completion both require staff
-notes. Existing records only receive a migration-time starting status because
-their previous transition history was not stored; no old sale prices are
-invented.
+in the revenue analytics. During document verification, a client can record an
+amount, any payment method, and an optional reference; staff confirms or rejects
+the submission after checking it against the organization's records. A confirmed
+payment is required before the case can move to payment confirmation. This is
+payment recordkeeping, not an online checkout: the app does not transfer money,
+verify a bank or e-wallet account automatically, or send receipts. Do not enter
+card numbers, passwords, or other sensitive account details. Staff must verify
+the sale and its documents outside the app before recording the successful
+step; its required note is visible to the client. Payment confirmation and
+successful completion both require staff notes. Existing records only receive
+a migration-time starting status because their previous transition history was
+not stored; no old sale prices are invented.
 
 ### Price estimator limitations
 

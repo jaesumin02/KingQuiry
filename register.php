@@ -374,7 +374,7 @@ include 'includes/header.php';
                 <label for="register-password">Password</label>
                 <div class="kq-password-wrap">
                     <input type="password" id="register-pass" name="password" required minlength="8" maxlength="72" placeholder="At least 8 characters" autocomplete="new-password">
-                    <button type="button" class="kq-toggle-password" data-show-target="register-pass" aria-label="Show password" aria-pressed="false">Show</button>
+                    <button type="button" class="kq-toggle-password" data-toggle-password="register-pass" aria-label="Show password" aria-pressed="false">Show</button>
                 </div>
                 <div class="form-text mt-2">Use at least 8 characters.</div>
             </div>
@@ -397,18 +397,6 @@ include 'includes/header.php';
         }
     });
 
-    const passwordInput = document.getElementById('register-pass');
-    const passwordToggle = document.querySelector('[data-show-target="register-pass"]');
-
-    if (passwordInput && passwordToggle) {
-        passwordToggle.addEventListener('click', () => {
-            const isHidden = passwordInput.type === 'password';
-            passwordInput.type = isHidden ? 'text' : 'password';
-            passwordToggle.textContent = isHidden ? 'Hide' : 'Show';
-            passwordToggle.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
-            passwordToggle.setAttribute('aria-pressed', String(isHidden));
-        });
-    }
 </script>
 
 <?php include 'includes/footer.php'; ?>

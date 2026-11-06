@@ -16,7 +16,30 @@ $formError = '';
 $formSuccess = isset($_GET['updated']) ? 'Transaction tracking was updated.' : '';
 $actorId = (int) $_SESSION['user']['userID'];
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_transaction'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_payment_review'])) {
+    $paymentId = filter_var($_POST['paymentID'] ?? null, FILTER_VALIDATE_INT);
+    $status = is_string($_POST['paymentStatus'] ?? null) ? $_POST['paymentStatus'] : '';
+    $reviewNote = is_string($_POST['reviewNote'] ?? null) ? trim($_POST['reviewNote']) : '';
+    if (!has_valid_csrf_token()) {
+        $formError = 'Your session expired. Refresh the page and try again.';
+    } elseif ($paymentId === false || $paymentId <= 0) {
+        $formError = 'Choose a valid payment.';
+    } else {
+        try {
+            review_property_transaction_payment($conn, (int) $paymentId, $status, $reviewNote, $actorId);
+            header('Location: transaction_tracking.php?updated=1#transactions');
+            exit();
+        } catch (InvalidArgumentException $exception) {
+            $formError = $exception->getMessage();
+        } catch (mysqli_sql_exception $exception) {
+            error_log('KingQuiry payment review failed: ' . $exception->getMessage());
+            $formError = 'The payment review could not be saved. Please retry.';
+        } catch (Throwable $exception) {
+            error_log('KingQuiry payment review failed: ' . $exception->getMessage());
+            $formError = 'The payment review could not be saved. Please retry.';
+        }
+    }
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_transaction'])) {
     $transactionId = filter_var($_POST['transactionID'] ?? null, FILTER_VALIDATE_INT);
     $newStage = is_string($_POST['stage'] ?? null) ? $_POST['stage'] : '';
     $note = is_string($_POST['note'] ?? null) ? trim($_POST['note']) : '';
@@ -68,6 +91,22 @@ $transactions = $conn->query(
      ORDER BY (t.currentStage IN ('completed', 'cancelled')) ASC, t.updatedAt DESC, t.transactionID DESC
      LIMIT 300"
 );
+$transactionRows = $transactions->fetch_all(MYSQLI_ASSOC);
+$paymentRowsByTransaction = [];
+if ($transactionRows !== []) {
+    $transactionIds = array_map(static fn(array $row): int => (int) $row['transactionID'], $transactionRows);
+    $transactionIdList = implode(',', $transactionIds);
+    $paymentRows = $conn->query(
+        "SELECT paymentID, transactionID, clientID, amount, paymentMethod, referenceNumber,
+                status, submittedAt, reviewNote
+         FROM property_transaction_payments
+         WHERE transactionID IN ($transactionIdList)
+         ORDER BY submittedAt DESC, paymentID DESC"
+    );
+    while ($payment = $paymentRows->fetch_assoc()) {
+        $paymentRowsByTransaction[(int) $payment['transactionID']][] = $payment;
+    }
+}
 $stageLabels = property_transaction_stages();
 
 include 'includes/header.php';
@@ -84,7 +123,7 @@ include 'includes/header.php';
 </div>
 
 <div class="alert alert-info small" role="note">
-    Updates are entered by staff and appear in the client's dashboard. This is a real-estate case timeline, not GPS/package tracking or payment processing. Mark a sale successful only after your organization verifies its completion.
+    Clients may record payments made through any method. Review each submission against your organization's actual payment records; this page does not collect or transfer money. A payment must be confirmed before the case can move to payment confirmation.
 </div>
 
 <?php if ($formSuccess !== ''): ?><div class="alert alert-success" role="status"><?= htmlspecialchars($formSuccess, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
@@ -95,8 +134,8 @@ include 'includes/header.php';
         <table class="table align-middle">
             <thead><tr><th>Tracking ref</th><th>Client / property</th><th>Current step</th><th>Last updated</th><th>Record next step</th></tr></thead>
             <tbody>
-            <?php if ($transactions->num_rows > 0): ?>
-                <?php while ($transaction = $transactions->fetch_assoc()):
+            <?php if ($transactionRows !== []): ?>
+                <?php foreach ($transactionRows as $transaction):
                     $currentStage = (string) $transaction['currentStage'];
                     $nextStages = property_transaction_next_stages($currentStage);
                     $location = !empty($transaction['municipalityName'])
@@ -123,6 +162,36 @@ include 'includes/header.php';
                         <td><span class="badge rounded-pill <?= $currentStage === 'completed' ? 'text-bg-success' : ($currentStage === 'cancelled' ? 'text-bg-secondary' : 'text-bg-primary') ?>"><?= htmlspecialchars($stageLabels[$currentStage] ?? 'Status unavailable', ENT_QUOTES, 'UTF-8') ?></span></td>
                         <td class="small"><?= htmlspecialchars($transaction['updatedAt'], ENT_QUOTES, 'UTF-8') ?></td>
                         <td>
+                            <?php $transactionPayments = $paymentRowsByTransaction[(int) $transaction['transactionID']] ?? []; ?>
+                            <?php if ($transactionPayments !== []): ?>
+                                <div class="mb-3">
+                                    <div class="small fw-bold mb-2">Payment records</div>
+                                    <?php foreach ($transactionPayments as $payment): ?>
+                                        <div class="border rounded-2 p-2 mb-2 small">
+                                            <div class="d-flex justify-content-between gap-2">
+                                                <strong>₱<?= number_format((float) $payment['amount'], 2) ?> · <?= htmlspecialchars($payment['paymentMethod'], ENT_QUOTES, 'UTF-8') ?></strong>
+                                                <span class="badge <?= $payment['status'] === 'confirmed' ? 'text-bg-success' : ($payment['status'] === 'rejected' ? 'text-bg-danger' : 'text-bg-warning') ?>"><?= htmlspecialchars(ucfirst($payment['status']), ENT_QUOTES, 'UTF-8') ?></span>
+                                            </div>
+                                            <div class="text-muted">Submitted <?= htmlspecialchars($payment['submittedAt'], ENT_QUOTES, 'UTF-8') ?></div>
+                                            <?php if (!empty($payment['referenceNumber'])): ?><div>Reference: <?= htmlspecialchars($payment['referenceNumber'], ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
+                                            <?php if (!empty($payment['reviewNote'])): ?><div class="text-muted"><?= htmlspecialchars($payment['reviewNote'], ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
+                                            <?php if ($payment['status'] === 'pending'): ?>
+                                                <form method="POST" class="d-grid gap-2 mt-2">
+                                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                                                    <input type="hidden" name="paymentID" value="<?= (int) $payment['paymentID'] ?>">
+                                                    <label class="visually-hidden" for="payment-review-note-<?= (int) $payment['paymentID'] ?>">Payment review note</label>
+                                                    <input id="payment-review-note-<?= (int) $payment['paymentID'] ?>" type="text" name="reviewNote" class="form-control form-control-sm" maxlength="1000" placeholder="Optional note for client">
+                                                    <div class="d-flex gap-2">
+                                                        <button type="submit" name="paymentStatus" value="confirmed" class="btn btn-sm btn-success">Confirm</button>
+                                                        <button type="submit" name="paymentStatus" value="rejected" class="btn btn-sm btn-outline-danger">Reject</button>
+                                                    </div>
+                                                    <input type="hidden" name="submit_payment_review" value="1">
+                                                </form>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
                             <?php if ($nextStages !== []): ?>
                                 <form method="POST" class="d-grid gap-2" style="min-width: 220px;">
                                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
@@ -148,7 +217,7 @@ include 'includes/header.php';
                             <?php endif; ?>
                         </td>
                     </tr>
-                <?php endwhile; ?>
+                <?php endforeach; ?>
             <?php else: ?>
                 <tr><td colspan="5" class="text-center text-muted py-4">No tracked inquiries or viewings yet. New client requests will appear here.</td></tr>
             <?php endif; ?>

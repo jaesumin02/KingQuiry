@@ -3,6 +3,13 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-06
+
+- Added client-submitted payment records for any payment method, with optional
+  reference numbers and staff confirmation/rejection. A confirmed payment is
+  required before advancing to payment confirmation. Documented that payments
+  are manually recorded and verified, not processed by an online gateway.
+
 ## 2026-10-17
 
 - Simplified customer land estimates to one context-aware action button that
@@ -96,9 +103,10 @@ Dates use `YYYY-MM-DD`.
 - Improved text contrast in the transaction tracking page and admin dashboard,
   making muted labels, placeholders, analytics headings, and status text easier
   to read against their backgrounds.
-- Clarified agent account setup: public registration creates client accounts,
-  so an administrator must assign the `Agent` role to the registered account
-  before it can sign in through the private agent portal.
+- Clarified agent account setup: register the agent's name, email, and password
+  through public registration (which creates a client account), then have an
+  administrator assign that exact email the `Agent` role in phpMyAdmin before
+  signing in through the private agent portal.
 - Finalized the premium 4 KINGS luxury polish across the client, agent, and
   admin dashboards with a more cohesive dark-brand hero treatment, gold
   accenting, and a cleaner high-end portal presentation that matches the

@@ -43,6 +43,29 @@ CREATE TABLE IF NOT EXISTS property_transaction_events (
         FOREIGN KEY (changedBy) REFERENCES users (userID) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS property_transaction_payments (
+    paymentID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    transactionID BIGINT UNSIGNED NOT NULL,
+    clientID INT NOT NULL,
+    amount DECIMAL(12,2) NOT NULL,
+    paymentMethod VARCHAR(50) NOT NULL,
+    referenceNumber VARCHAR(100) DEFAULT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    submittedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    reviewedAt TIMESTAMP NULL DEFAULT NULL,
+    reviewedBy INT DEFAULT NULL,
+    reviewNote VARCHAR(1000) DEFAULT NULL,
+    PRIMARY KEY (paymentID),
+    KEY idx_transaction_payments_transaction (transactionID, submittedAt),
+    KEY idx_transaction_payments_status (status, submittedAt),
+    CONSTRAINT fk_transaction_payments_transaction
+        FOREIGN KEY (transactionID) REFERENCES property_transactions (transactionID) ON DELETE CASCADE,
+    CONSTRAINT fk_transaction_payments_client
+        FOREIGN KEY (clientID) REFERENCES users (userID) ON DELETE CASCADE,
+    CONSTRAINT fk_transaction_payments_reviewer
+        FOREIGN KEY (reviewedBy) REFERENCES users (userID) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS agent_reviews (
     reviewID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     transactionID BIGINT UNSIGNED NOT NULL,

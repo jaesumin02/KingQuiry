@@ -108,7 +108,7 @@ include 'includes/header.php';
                 <label for="login-password">Password</label>
                 <div class="kq-password-wrap">
                     <input type="password" id="login-password" name="password" required maxlength="255" placeholder="Enter your password" autocomplete="off">
-                    <button type="button" class="kq-toggle-password" id="toggle-password" aria-label="Show password" aria-pressed="false">Show</button>
+                    <button type="button" class="kq-toggle-password" id="toggle-password" data-toggle-password="login-password" aria-label="Show password" aria-pressed="false">Show</button>
                 </div>
             </div>
 
@@ -124,19 +124,5 @@ include 'includes/header.php';
         </form>
     </aside>
 </div>
-
-<script>
-    const passwordInput = document.getElementById('login-password');
-    const passwordToggle = document.getElementById('toggle-password');
-    if (passwordInput && passwordToggle) {
-        passwordToggle.addEventListener('click', () => {
-            const isHidden = passwordInput.type === 'password';
-            passwordInput.type = isHidden ? 'text' : 'password';
-            passwordToggle.textContent = isHidden ? 'Hide' : 'Show';
-            passwordToggle.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
-            passwordToggle.setAttribute('aria-pressed', String(isHidden));
-        });
-    }
-</script>
 
 <?php include 'includes/footer.php'; ?>

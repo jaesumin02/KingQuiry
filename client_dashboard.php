@@ -142,6 +142,45 @@ include 'includes/header.php';
 </style>
 <?php
 $clientID = (int) $_SESSION['user']['userID'];
+$paymentMessage = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_transaction_payment'])) {
+    $postedTransactionId = $_POST['transactionID'] ?? null;
+    $transactionId = is_string($postedTransactionId)
+        ? filter_var($postedTransactionId, FILTER_VALIDATE_INT)
+        : false;
+    $postedAmount = $_POST['amount'] ?? null;
+    $amount = is_string($postedAmount) && $postedAmount !== ''
+        ? filter_var($postedAmount, FILTER_VALIDATE_FLOAT)
+        : false;
+    $paymentMethod = is_string($_POST['paymentMethod'] ?? null) ? trim($_POST['paymentMethod']) : '';
+    $referenceNumber = is_string($_POST['referenceNumber'] ?? null) ? trim($_POST['referenceNumber']) : '';
+    if (!has_valid_csrf_token()) {
+        $paymentMessage = 'Your session expired. Refresh the page and try again.';
+    } elseif ($transactionId === false || $transactionId <= 0 || $amount === false || $amount === null) {
+        $paymentMessage = 'Enter a valid payment amount and transaction.';
+    } else {
+        try {
+            submit_property_transaction_payment(
+                $conn,
+                (int) $transactionId,
+                $clientID,
+                (float) $amount,
+                $paymentMethod,
+                $referenceNumber
+            );
+            header('Location: client_dashboard.php?payment_submitted=1#transaction-tracking');
+            exit();
+        } catch (InvalidArgumentException $exception) {
+            $paymentMessage = $exception->getMessage();
+        } catch (mysqli_sql_exception $exception) {
+            error_log('KingQuiry client payment submission failed: ' . $exception->getMessage());
+            $paymentMessage = 'Your payment details could not be saved. Please try again.';
+        } catch (Throwable $exception) {
+            error_log('KingQuiry client payment submission failed: ' . $exception->getMessage());
+            $paymentMessage = 'Your payment details could not be saved. Please try again.';
+        }
+    }
+}
 $appointmentStmt = $conn->prepare(
     "SELECT a.*, p.title, p.location, p.barangay, l.municipalityName, l.provinceName
      FROM appointments a
@@ -180,6 +219,7 @@ $trackingStmt->bind_param('i', $clientID);
 $trackingStmt->execute();
 $trackingRows = $trackingStmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $trackingEvents = [];
+$paymentRowsByTransaction = [];
 if ($trackingRows !== []) {
     $transactionIds = array_map(static fn(array $row): int => (int) $row['transactionID'], $trackingRows);
     $transactionIdList = implode(',', $transactionIds);
@@ -193,6 +233,16 @@ if ($trackingRows !== []) {
     );
     while ($event = $events->fetch_assoc()) {
         $trackingEvents[(int) $event['transactionID']][] = $event;
+    }
+    $payments = $conn->query(
+        "SELECT paymentID, transactionID, amount, paymentMethod, referenceNumber, status,
+                submittedAt, reviewedAt, reviewNote
+         FROM property_transaction_payments
+         WHERE transactionID IN ($transactionIdList)
+         ORDER BY submittedAt DESC, paymentID DESC"
+    );
+    while ($payment = $payments->fetch_assoc()) {
+        $paymentRowsByTransaction[(int) $payment['transactionID']][] = $payment;
     }
 }
 
@@ -296,6 +346,12 @@ $progressStages = [
 <?php if (isset($_GET['review_submitted'])): ?>
     <div class="alert alert-success" role="status">Thank you for your feedback. Your agent rating has been recorded.</div>
 <?php endif; ?>
+<?php if ($paymentMessage !== ''): ?>
+    <div class="alert alert-danger" role="alert"><?= htmlspecialchars($paymentMessage, ENT_QUOTES, 'UTF-8') ?></div>
+<?php endif; ?>
+<?php if (isset($_GET['payment_submitted'])): ?>
+    <div class="alert alert-success" role="status">Payment details submitted. The sales team will review and confirm the payment.</div>
+<?php endif; ?>
 
 <section class="card p-3 p-lg-4 mb-4" id="transaction-tracking">
     <div class="kq-panel-header mb-3">
@@ -305,7 +361,7 @@ $progressStages = [
         </div>
         <span class="kq-badge-soft">Lazada-style timeline</span>
     </div>
-    <div class="alert alert-info small mb-4" role="note">Your latest update appears first, followed by the earlier steps. Updates are posted by the sales team; this tracks the property transaction, not parcel GPS location or online payment.</div>
+    <div class="alert alert-info small mb-4" role="note">You can record a payment made through any method during document verification. Payment details are reviewed by the sales team; this form does not transfer money. Do not enter card numbers, passwords, or other sensitive account details.</div>
     <?php if ($trackingRows !== []): ?>
         <?php foreach ($trackingRows as $tracking):
             $transactionId = (int) $tracking['transactionID'];
@@ -334,6 +390,50 @@ $progressStages = [
                     <div class="alert alert-success small py-2 mb-3" role="status">
                         Verified sale price: <strong>₱<?= number_format((float) $tracking['salePrice'], 2) ?></strong>
                     </div>
+                <?php endif; ?>
+                <?php $transactionPayments = $paymentRowsByTransaction[$transactionId] ?? []; ?>
+                <?php if ($transactionPayments !== []): ?>
+                    <div class="border rounded-3 p-3 mb-3">
+                        <h4 class="h6 fw-bold mb-2">Payments</h4>
+                        <?php foreach ($transactionPayments as $payment): ?>
+                            <div class="d-flex flex-wrap justify-content-between gap-2 small py-2 border-bottom">
+                                <div>
+                                    <strong>₱<?= number_format((float) $payment['amount'], 2) ?></strong>
+                                    via <?= htmlspecialchars($payment['paymentMethod'], ENT_QUOTES, 'UTF-8') ?>
+                                    <?php if (!empty($payment['referenceNumber'])): ?>
+                                        <span class="text-muted">· Ref: <?= htmlspecialchars($payment['referenceNumber'], ENT_QUOTES, 'UTF-8') ?></span>
+                                    <?php endif; ?>
+                                    <?php if (!empty($payment['reviewNote'])): ?>
+                                        <div class="text-muted"><?= htmlspecialchars($payment['reviewNote'], ENT_QUOTES, 'UTF-8') ?></div>
+                                    <?php endif; ?>
+                                </div>
+                                <span class="badge <?= $payment['status'] === 'confirmed' ? 'text-bg-success' : ($payment['status'] === 'rejected' ? 'text-bg-danger' : 'text-bg-warning') ?>"><?= htmlspecialchars(ucfirst($payment['status']), ENT_QUOTES, 'UTF-8') ?></span>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+                <?php if (in_array($stage, ['document_verification', 'payment_confirmation'], true)): ?>
+                    <form method="POST" class="border rounded-3 p-3 mb-3">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                        <input type="hidden" name="transactionID" value="<?= $transactionId ?>">
+                        <h4 class="h6 fw-bold">Record a payment</h4>
+                        <p class="small text-muted">After paying through your agreed method, submit the amount and method so the sales team can verify it. Any method is accepted; this does not charge your account.</p>
+                        <div class="row g-2">
+                            <div class="col-sm-4">
+                                <label class="form-label small fw-semibold" for="payment-amount-<?= $transactionId ?>">Amount (₱)</label>
+                                <input id="payment-amount-<?= $transactionId ?>" type="number" name="amount" class="form-control form-control-sm" min="0.01" max="9999999999.99" step="0.01" required>
+                            </div>
+                            <div class="col-sm-4">
+                                <label class="form-label small fw-semibold" for="payment-method-<?= $transactionId ?>">Payment method</label>
+                                <input id="payment-method-<?= $transactionId ?>" type="text" name="paymentMethod" class="form-control form-control-sm" list="payment-method-options" maxlength="50" placeholder="Cash, bank transfer, e-wallet, etc." required>
+                            </div>
+                            <div class="col-sm-4">
+                                <label class="form-label small fw-semibold" for="payment-reference-<?= $transactionId ?>">Reference (optional)</label>
+                                <input id="payment-reference-<?= $transactionId ?>" type="text" name="referenceNumber" class="form-control form-control-sm" maxlength="100">
+                            </div>
+                        </div>
+                        <button type="submit" name="submit_transaction_payment" value="1" class="btn btn-sm btn-primary mt-3">Submit payment details</button>
+                    </form>
                 <?php endif; ?>
                 <?php if ($stage !== 'cancelled'): ?>
                     <div class="d-flex justify-content-between align-items-center small mb-2">
@@ -374,6 +474,14 @@ $progressStages = [
         </div>
     <?php endif; ?>
 </section>
+
+<datalist id="payment-method-options">
+    <option value="Cash">
+    <option value="Bank transfer">
+    <option value="E-wallet">
+    <option value="Check">
+    <option value="Other">
+</datalist>
 
 <section class="card p-3 p-lg-4 mb-4">
     <div class="kq-panel-header mb-3">

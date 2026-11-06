@@ -164,6 +164,19 @@ function advance_property_transaction(
             throw new InvalidArgumentException('That step cannot follow the current status. Update the transaction in order or cancel it.');
         }
 
+        if ($newStage === 'payment_confirmation') {
+            $paymentStmt = $conn->prepare(
+                "SELECT paymentID FROM property_transaction_payments
+                 WHERE transactionID = ? AND status = 'confirmed'
+                 LIMIT 1"
+            );
+            $paymentStmt->bind_param('i', $transactionId);
+            $paymentStmt->execute();
+            if (!$paymentStmt->get_result()->fetch_assoc()) {
+                throw new InvalidArgumentException('Confirm at least one recorded payment before moving this transaction to payment confirmation.');
+            }
+        }
+
         if ($newStage === 'completed') {
             $updateStmt = $conn->prepare(
                 'UPDATE property_transactions
@@ -219,6 +232,158 @@ function advance_property_transaction(
             );
             send_property_notification($conn, (int) $details['clientID'], $notificationSubject, $notificationMessage);
         }
+
+        $conn->commit();
+    } catch (Throwable $exception) {
+        $conn->rollback();
+        throw $exception;
+    }
+}
+
+function submit_property_transaction_payment(
+    mysqli $conn,
+    int $transactionId,
+    int $clientId,
+    float $amount,
+    string $paymentMethod,
+    string $referenceNumber
+): void {
+    $paymentMethod = trim($paymentMethod);
+    $referenceNumber = trim($referenceNumber);
+    if ($transactionId <= 0 || $clientId <= 0 || !is_finite($amount) || $amount <= 0 || $amount > 9999999999.99) {
+        throw new InvalidArgumentException('Enter a valid payment amount.');
+    }
+    if ($paymentMethod === '' || strlen($paymentMethod) > 50) {
+        throw new InvalidArgumentException('Enter a payment method of 1 to 50 characters.');
+    }
+    if (strlen($referenceNumber) > 100) {
+        throw new InvalidArgumentException('The payment reference must be 100 characters or fewer.');
+    }
+
+    $conn->begin_transaction();
+    try {
+        $transactionStmt = $conn->prepare(
+            'SELECT currentStage FROM property_transactions
+             WHERE transactionID = ? AND clientID = ?
+             FOR UPDATE'
+        );
+        $transactionStmt->bind_param('ii', $transactionId, $clientId);
+        $transactionStmt->execute();
+        $transaction = $transactionStmt->get_result()->fetch_assoc();
+        if (!$transaction) {
+            throw new InvalidArgumentException('The selected transaction was not found.');
+        }
+        if (!in_array((string) $transaction['currentStage'], ['document_verification', 'payment_confirmation'], true)) {
+            throw new InvalidArgumentException('Payment details can be submitted during document verification or payment confirmation.');
+        }
+
+        $paymentStmt = $conn->prepare(
+            "INSERT INTO property_transaction_payments
+                (transactionID, clientID, amount, paymentMethod, referenceNumber)
+             VALUES (?, ?, ?, ?, ?)"
+        );
+        $paymentStmt->bind_param('iidss', $transactionId, $clientId, $amount, $paymentMethod, $referenceNumber);
+        $paymentStmt->execute();
+        $paymentNote = sprintf(
+            'Client submitted a payment of PHP %s via %s for staff review.',
+            number_format($amount, 2),
+            $paymentMethod
+        );
+        add_property_transaction_event(
+            $conn,
+            $transactionId,
+            (string) $transaction['currentStage'],
+            $paymentNote,
+            $clientId
+        );
+        $touchStmt = $conn->prepare(
+            'UPDATE property_transactions SET updatedAt = CURRENT_TIMESTAMP WHERE transactionID = ?'
+        );
+        $touchStmt->bind_param('i', $transactionId);
+        $touchStmt->execute();
+        $conn->commit();
+    } catch (Throwable $exception) {
+        $conn->rollback();
+        throw $exception;
+    }
+}
+
+function review_property_transaction_payment(
+    mysqli $conn,
+    int $paymentId,
+    string $status,
+    string $reviewNote,
+    int $actorId
+): void {
+    if ($paymentId <= 0 || $actorId <= 0 || !in_array($status, ['confirmed', 'rejected'], true)) {
+        throw new InvalidArgumentException('Choose a valid payment and review status.');
+    }
+    if (strlen($reviewNote) > 1000) {
+        throw new InvalidArgumentException('The payment review note must be 1,000 characters or fewer.');
+    }
+
+    $conn->begin_transaction();
+    try {
+        $paymentStmt = $conn->prepare(
+            'SELECT p.transactionID, p.clientID, p.amount, p.paymentMethod, p.status,
+                    t.currentStage, u.fullname, pr.title
+             FROM property_transaction_payments p
+             JOIN property_transactions t ON t.transactionID = p.transactionID
+             JOIN users u ON u.userID = p.clientID
+             JOIN properties pr ON pr.propertyID = t.propertyID
+             WHERE p.paymentID = ?
+             FOR UPDATE'
+        );
+        $paymentStmt->bind_param('i', $paymentId);
+        $paymentStmt->execute();
+        $payment = $paymentStmt->get_result()->fetch_assoc();
+        if (!$payment) {
+            throw new InvalidArgumentException('The selected payment was not found.');
+        }
+        if ($payment['status'] !== 'pending') {
+            throw new InvalidArgumentException('This payment has already been reviewed.');
+        }
+
+        $transactionId = (int) $payment['transactionID'];
+        $updateStmt = $conn->prepare(
+            'UPDATE property_transaction_payments
+             SET status = ?, reviewedAt = CURRENT_TIMESTAMP, reviewedBy = ?, reviewNote = ?
+             WHERE paymentID = ?'
+        );
+        $updateStmt->bind_param('sisi', $status, $actorId, $reviewNote, $paymentId);
+        $updateStmt->execute();
+        $touchStmt = $conn->prepare(
+            'UPDATE property_transactions SET updatedAt = CURRENT_TIMESTAMP WHERE transactionID = ?'
+        );
+        $touchStmt->bind_param('i', $transactionId);
+        $touchStmt->execute();
+
+        $amount = number_format((float) $payment['amount'], 2);
+        $note = sprintf(
+            'Payment of PHP %s via %s was %s by staff.%s',
+            $amount,
+            (string) $payment['paymentMethod'],
+            $status,
+            $reviewNote === '' ? '' : ' ' . $reviewNote
+        );
+        add_property_transaction_event(
+            $conn,
+            $transactionId,
+            (string) $payment['currentStage'],
+            $note,
+            $actorId
+        );
+
+        $notificationSubject = 'Property payment ' . $status;
+        $notificationMessage = sprintf(
+            "Hello %s,\n\nYour payment of PHP %s for '%s' was %s by the sales team.%s\n\nPlease check your dashboard for the latest update.",
+            (string) $payment['fullname'],
+            $amount,
+            (string) $payment['title'],
+            $status,
+            $reviewNote === '' ? '' : "\n\nNote: " . $reviewNote
+        );
+        send_property_notification($conn, (int) $payment['clientID'], $notificationSubject, $notificationMessage);
 
         $conn->commit();
     } catch (Throwable $exception) {
