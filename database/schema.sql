@@ -13,8 +13,11 @@ CREATE TABLE IF NOT EXISTS users (
     userID INT NOT NULL AUTO_INCREMENT,
     fullname VARCHAR(100) NOT NULL,
     email VARCHAR(100) NOT NULL,
+    phone VARCHAR(30) DEFAULT NULL,
+    address VARCHAR(255) DEFAULT NULL,
     passwordHash VARCHAR(255) NOT NULL,
     role ENUM('Client', 'Agent', 'Admin') DEFAULT 'Client',
+    accountStatus ENUM('Active', 'Inactive') NOT NULL DEFAULT 'Active',
     createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (userID),
     UNIQUE KEY uq_users_email (email)
@@ -230,6 +233,34 @@ CREATE TABLE IF NOT EXISTS agent_reviews (
         FOREIGN KEY (clientID) REFERENCES users (userID) ON DELETE CASCADE,
     CONSTRAINT fk_agent_reviews_agent
         FOREIGN KEY (agentID) REFERENCES users (userID) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS payments (
+    paymentID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    transactionID BIGINT UNSIGNED DEFAULT NULL,
+    clientID INT NOT NULL,
+    amount DECIMAL(12,2) NOT NULL,
+    paymentType ENUM('Reservation', 'Down Payment', 'Installment', 'Full Payment', 'Other')
+        NOT NULL DEFAULT 'Other',
+    paymentMethod ENUM('Cash', 'Bank Transfer', 'GCash', 'Check', 'Other')
+        NOT NULL DEFAULT 'Cash',
+    referenceNo VARCHAR(100) DEFAULT NULL,
+    status ENUM('Pending', 'Verified', 'Rejected') NOT NULL DEFAULT 'Pending',
+    paidAt DATE NOT NULL,
+    note VARCHAR(1000) DEFAULT NULL,
+    recordedBy INT DEFAULT NULL,
+    createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (paymentID),
+    KEY idx_payments_transaction (transactionID),
+    KEY idx_payments_client (clientID, paidAt),
+    KEY idx_payments_status_date (status, paidAt),
+    CONSTRAINT fk_payments_transaction
+        FOREIGN KEY (transactionID) REFERENCES property_transactions (transactionID) ON DELETE SET NULL,
+    CONSTRAINT fk_payments_client
+        FOREIGN KEY (clientID) REFERENCES users (userID) ON DELETE CASCADE,
+    CONSTRAINT fk_payments_recorded_by
+        FOREIGN KEY (recordedBy) REFERENCES users (userID) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO property_locations (regionCode, regionName, provinceName, municipalityName) VALUES

@@ -293,7 +293,16 @@ $currentRole = normalized_user_role($_SESSION['user'] ?? null);
                             <li class="nav-item"><a class="nav-link" href="transaction_tracking.php">Transaction Tracking</a></li>
                         <?php elseif($currentRole === 'Admin'): ?>
                             <li class="nav-item"><a class="nav-link text-warning fw-bold" href="admin_dashboard.php">Admin Analytics Panel</a></li>
-                            <li class="nav-item"><a class="nav-link" href="transaction_tracking.php">Transaction Tracking</a></li>
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Manage</a>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><a class="dropdown-item" href="admin_clients.php">Clients</a></li>
+                                    <li><a class="dropdown-item" href="admin_payments.php">Payments</a></li>
+                                    <li><a class="dropdown-item" href="admin_sales.php">Sales &amp; transactions</a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item" href="transaction_tracking.php">Transaction tracking</a></li>
+                                </ul>
+                            </li>
                         <?php endif; ?>
                         <li class="nav-item"><a class="nav-link btn btn-danger text-white ms-2 px-3" href="logout.php">Logout</a></li>
                     <?php else: ?>
