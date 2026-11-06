@@ -200,9 +200,25 @@ documented `KINGQUIRY_DB_*` environment variables.
    ```
 
    Replace the example email with the account you just registered and confirm
-   exactly one row was changed. Sign in again so the new role is loaded. Create
-   or import agent accounts using the database's `Agent` role; the application
-   presents this role as "Sales Agent".
+   exactly one row was changed. Sign in again so the new role is loaded.
+   Registration does not create agent accounts: register an account for the
+   agent, then assign its exact email the database's `Agent` role in phpMyAdmin:
+
+   ```sql
+   UPDATE users
+   SET role = 'Agent'
+   WHERE email = 'agent@example.com' AND role = 'Client';
+   ```
+
+   Replace `agent@example.com` with the email used during registration and
+   confirm exactly one row was changed. The `agent@example.com` value is only
+   an example; the fresh database has no pre-created agent accounts. After
+   assigning the role, sign in at `http://localhost/kingquiry/agent_login.php`
+   with that account's email and password.
+   If registration does not save, confirm Apache and MySQL are running, that
+   `database/schema.sql` was imported into `kingquiry_db`, and that the
+   connection settings in `config/db.php` match your MySQL setup. An email
+   address can only be registered once.
 8. Sign in with the administrator account, open **Manage locations**, and add
    any verified locations not in the initial Batangas directory. The region
    code, region name, province, and city/municipality become available

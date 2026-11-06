@@ -8,7 +8,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 $role = normalized_user_role($_SESSION['user'] ?? null);
 if (!user_has_role($_SESSION['user'] ?? null, 'Admin', 'Sales Agent')) {
-    header('Location: login.php');
+    header('Location: client_login.php');
     exit();
 }
 
@@ -73,6 +73,7 @@ $stageLabels = property_transaction_stages();
 include 'includes/header.php';
 ?>
 
+<div class="transaction-tracking-page">
 <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-3 mb-4" id="transactions">
     <div>
         <div class="page-eyebrow">Sales pipeline</div>
@@ -155,5 +156,6 @@ include 'includes/header.php';
         </table>
     </div>
 </section>
+</div>
 
 <?php include 'includes/footer.php'; ?>

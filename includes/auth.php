@@ -48,7 +48,21 @@ function user_has_role(?array $user, string ...$roles): bool
 function require_role(string ...$roles): void
 {
     if (!user_has_role($_SESSION['user'] ?? null, ...$roles)) {
-        header('Location: login.php');
+        $preferredRole = 'Client';
+
+        foreach ($roles as $role) {
+            $normalizedRole = normalize_role_name($role);
+            if ($normalizedRole === 'Admin' || $normalizedRole === 'Sales Agent' || $normalizedRole === 'Client') {
+                $preferredRole = $normalizedRole;
+                break;
+            }
+        }
+
+        $portal = $preferredRole === 'Admin'
+            ? 'admin_login.php'
+            : ($preferredRole === 'Sales Agent' ? 'agent_login.php' : 'client_login.php');
+
+        header('Location: ' . $portal);
         exit();
     }
 }

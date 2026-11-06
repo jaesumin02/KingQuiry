@@ -16,6 +16,7 @@ $currentRole = normalized_user_role($_SESSION['user'] ?? null);
     <title>KingQuiry | Land & Property</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <link rel="stylesheet" href="assets/css/style.css">
     <style>
         :root {
             --kq-ink: #18304c;
@@ -296,7 +297,7 @@ $currentRole = normalized_user_role($_SESSION['user'] ?? null);
                         <?php endif; ?>
                         <li class="nav-item"><a class="nav-link btn btn-danger text-white ms-2 px-3" href="logout.php">Logout</a></li>
                     <?php else: ?>
-                        <li class="nav-item"><a class="nav-link" href="login.php">Sign in</a></li>
+                        <li class="nav-item"><a class="nav-link" href="client_login.php">Client Sign in</a></li>
                         <li class="nav-item"><a class="nav-link btn btn-primary text-white ms-2 px-3" href="register.php">Register</a></li>
                     <?php endif; ?>
                 </ul>

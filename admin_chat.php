@@ -6,7 +6,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 if (!user_has_role($_SESSION['user'] ?? null, 'Admin')) {
-    header('Location: login.php');
+    header('Location: admin_login.php');
     exit();
 }
 

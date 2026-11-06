@@ -9,13 +9,138 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 if (normalized_user_role($_SESSION['user'] ?? null) !== 'Client') {
-    header('Location: login.php');
+    header('Location: client_login.php');
     exit();
 }
 
 ensure_agent_reviews_table($conn);
 
 include 'includes/header.php';
+?>
+<style>
+    body {
+        background: radial-gradient(circle at top, rgba(13, 37, 43, 0.85), rgba(6, 15, 19, 1) 52%);
+    }
+
+    .kq-client-shell {
+        max-width: 1220px;
+        margin: 0 auto;
+        padding: 1.2rem 0 2rem;
+    }
+
+    .kq-dashboard-hero {
+        display: flex;
+        align-items: center;
+        gap: 0.9rem;
+        padding: 1rem 1.2rem;
+        margin-bottom: 1.5rem;
+        border: 1px solid rgba(212, 175, 110, 0.28);
+        border-radius: 1.1rem;
+        background: linear-gradient(135deg, rgba(14, 29, 39, 0.92), rgba(25, 47, 58, 0.82));
+        box-shadow: 0 14px 32px rgba(0, 0, 0, 0.14);
+    }
+
+    .kq-dashboard-brand {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 86px;
+        padding: 0.5rem 0.8rem;
+        border: 1px solid rgba(212, 175, 110, 0.4);
+        border-radius: 999px;
+        background: rgba(212, 175, 110, 0.12);
+        color: #f2d79f;
+        font-size: 0.7rem;
+        font-weight: 800;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+    }
+
+    .page-eyebrow {
+        letter-spacing: .15em;
+        color: #d9b87d;
+    }
+
+    .page-title {
+        color: #f7f5f0;
+        letter-spacing: -.05em;
+    }
+
+    .text-muted {
+        color: rgba(245, 238, 227, 0.74) !important;
+    }
+
+    .card {
+        border: 1px solid rgba(20, 34, 41, 0.08) !important;
+        border-radius: 1.2rem !important;
+        background: rgba(255, 255, 255, 0.98);
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.12);
+    }
+
+    .kq-panel-header {
+        border-bottom: 1px solid rgba(19, 45, 66, 0.08);
+        padding-bottom: .75rem;
+    }
+
+    .kq-badge-soft {
+        background: rgba(17, 53, 71, 0.08);
+        color: #123b5a;
+    }
+
+    .kq-tracking-card,
+    article.border.rounded-3,
+    .table-responsive {
+        border-color: rgba(19, 45, 66, 0.08) !important;
+        border-radius: 1rem !important;
+    }
+
+    .btn-primary {
+        background: linear-gradient(180deg, #173d56, #102334);
+        border-color: #173d56;
+    }
+
+    .btn-primary:hover,
+    .btn-primary:focus {
+        background: linear-gradient(180deg, #1d486b, #132a3f);
+        border-color: #1d486b;
+    }
+
+    .btn-outline-primary {
+        border-color: rgba(17, 53, 71, 0.3);
+        color: #123b5a;
+    }
+
+    .btn-outline-primary:hover,
+    .btn-outline-primary:focus {
+        background: rgba(17, 53, 71, 0.05);
+        color: #123b5a;
+    }
+
+    .alert-info {
+        background: rgba(17, 53, 71, 0.06);
+        border-color: rgba(17, 53, 71, 0.12);
+        color: #1b3f58;
+    }
+
+    .alert-success {
+        background: rgba(25, 98, 73, 0.08);
+        border-color: rgba(25, 98, 73, 0.18);
+        color: #164b3b;
+    }
+
+    .alert-danger {
+        background: rgba(166, 52, 52, 0.08);
+        border-color: rgba(166, 52, 52, 0.18);
+        color: #8f2f2f;
+    }
+
+    @media (max-width: 767.98px) {
+        .kq-client-shell {
+            padding-top: .75rem;
+        }
+    }
+</style>
+<?php
 $clientID = (int) $_SESSION['user']['userID'];
 $appointmentStmt = $conn->prepare(
     "SELECT a.*, p.title, p.location, p.barangay, l.municipalityName, l.provinceName
@@ -151,11 +276,19 @@ $progressStages = [
 ];
 ?>
 
-<div class="mb-4">
-    <div class="page-eyebrow">Your account</div>
-    <h1 class="page-title h2 mb-1">Client dashboard</h1>
-    <p class="text-muted mb-0">Welcome, <?= htmlspecialchars($_SESSION['user']['fullname'], ENT_QUOTES, 'UTF-8') ?>. Follow your property requests in one place.</p>
-</div>
+<div class="kq-client-shell">
+    <div class="kq-dashboard-hero">
+        <span class="kq-dashboard-brand">4 KINGS</span>
+        <div>
+            <div class="page-eyebrow">Your account</div>
+            <div class="text-white fw-semibold mb-0">Luxury client portal</div>
+        </div>
+    </div>
+    <div class="mb-4">
+        <div class="page-eyebrow">Your account</div>
+        <h1 class="page-title h2 mb-1">Client dashboard</h1>
+        <p class="text-muted mb-0">Welcome, <?= htmlspecialchars($_SESSION['user']['fullname'], ENT_QUOTES, 'UTF-8') ?>. Follow your property requests in one place.</p>
+    </div>
 
 <?php if (!empty($reviewMessage)): ?>
     <div class="alert alert-danger" role="alert"><?= htmlspecialchars($reviewMessage, ENT_QUOTES, 'UTF-8') ?></div>
@@ -368,5 +501,6 @@ $progressStages = [
         <div class="text-muted">No property inquiries yet.</div>
     <?php endif; ?>
 </section>
+</div>
 
 <?php include 'includes/footer.php'; ?>

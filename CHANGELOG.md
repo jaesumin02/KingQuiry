@@ -3,26 +3,6 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
-## 2026-11-06
-
-- Added the transaction tracking and client progress updates that feed the
-  dashboard, agent workflow, and admin verification process with timestamped
-  notes and stage validation.
-- Expanded the project with a shared notification system, agent feedback
-  handling, and property summary PDF export for client-facing updates and
-  record sharing.
-- Improved the estimator, dashboard analytics, and chat-related pricing flow so
-  the land estimate and sales calculations use the same validated logic across
-  the app.
-- Updated the database schema to support the latest tracking, analytics, and
-  chat-related fields required by the current admin, agent, and client pages.
-- Refined the admin, agent, and client dashboard interfaces, including the
-  login/session flow, property detail presentation, and the new compact
-  estimate form behavior in the customer chat.
-- Reworked the visual styling and layout to use the branded background image
-  treatment while keeping the chat estimate input more compact and easier to
-  use.
-
 ## 2026-10-17
 
 - Simplified customer land estimates to one context-aware action button that
@@ -110,6 +90,59 @@ Dates use `YYYY-MM-DD`.
 - Reworked dashboard charts to aggregate all property categories and request
   statuses from the database, group unexpected legacy values, provide accurate
   counts and empty states, and work without an external chart library.
+
+## 2026-11-06
+
+- Improved text contrast in the transaction tracking page and admin dashboard,
+  making muted labels, placeholders, analytics headings, and status text easier
+  to read against their backgrounds.
+- Clarified agent account setup: public registration creates client accounts,
+  so an administrator must assign the `Agent` role to the registered account
+  before it can sign in through the private agent portal.
+- Finalized the premium 4 KINGS luxury polish across the client, agent, and
+  admin dashboards with a more cohesive dark-brand hero treatment, gold
+  accenting, and a cleaner high-end portal presentation that matches the
+  dedicated role-separated login flow.
+- Corrected the remaining admin-only redirect to the dedicated admin portal and
+  made role-based guard redirects choose the correct client, agent, or admin
+  login page so the role-separated access flow remains consistent across
+  protected pages.
+- Refined the login and registration pages to a cleaner luxury property style
+  with a stronger 4 KINGS wordmark, crown branding, dark premium backdrop, and
+  simplified sign-in/sign-up labels that match the intended logo direction.
+- Applied the same KINGS premium theme to the client dashboard, sales-agent
+  dashboard, and admin dashboard so the overall system feels more cohesive and
+  aligned with the property-brand identity.
+- Added a dedicated `assets/css/style.css` and `assets/js/app.js` structure for
+  reusable UI and interaction logic, and linked both through the shared header
+  and footer so the styling remains consistent across pages.
+- Refined the registration experience by giving the account form a cleaner
+  auth-card layout and adding a password visibility toggle for easier input
+  handling.
+- Added the transaction tracking and client progress updates that feed the
+  dashboard, agent workflow, and admin verification process with timestamped
+  notes and stage validation.
+- Expanded the project with a shared notification system, agent feedback
+  handling, and property summary PDF export for client-facing updates and
+  record sharing.
+- Improved the estimator, dashboard analytics, and chat-related pricing flow so
+  the land estimate and sales calculations use the same validated logic across
+  the app.
+- Updated the database schema to support the latest tracking, analytics, and
+  chat-related fields required by the current admin, agent, and client pages.
+- Refined the admin, agent, and client dashboard interfaces, including the
+  login/session flow, property detail presentation, and the new compact
+  estimate form behavior in the customer chat.
+- Reworked the visual styling and layout to use the branded background image
+  treatment while keeping the chat estimate input more compact and easier to
+  use.
+- Finalized the custom 4 KINGS luxury sign-in and sign-up branding so the
+  authentication flow matches the same premium real-estate identity on every
+  role-based screen, with a cleaner brand logo treatment, stronger dark
+  contrast, and a working password visibility toggle on the registration form.
+- Separated client, agent, and admin access into distinct portal sign-in
+  paths so public client registration stays visible while staff-only portals
+  remain private and clearly segmented for privacy and role control.
 
 ## 2026-11-04
 - Added "CREATE DATABASE IF NOT EXISTS kingquiry_db" and "USE kinguiry_db;" 

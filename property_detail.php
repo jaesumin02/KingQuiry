@@ -40,7 +40,7 @@ if (!empty($_SESSION['flash_success'])) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (normalized_user_role($_SESSION['user'] ?? null) !== 'Client') {
-        header("Location: login.php");
+        header("Location: client_login.php");
         exit();
     }
 
@@ -215,7 +215,7 @@ include 'includes/header.php';
                 <a href="property_summary_pdf.php?property_id=<?= (int) $property['propertyID'] ?>" target="_blank" class="btn btn-outline-secondary w-100 mt-3">Download summary PDF</a>
             <?php else: ?>
                 <p class="text-muted small">Sign in with a client account to request a viewing.</p>
-                <a href="login.php" class="btn btn-primary w-100">Sign in to continue</a>
+                <a href="client_login.php" class="btn btn-primary w-100">Sign in to continue</a>
             <?php endif; ?>
         </div>
 
@@ -233,7 +233,7 @@ include 'includes/header.php';
                 </form>
             <?php else: ?>
                 <p class="text-muted small">Sign in with a client account to send a question about this listing.</p>
-                <a href="login.php" class="btn btn-outline-primary w-100">Sign in to continue</a>
+                <a href="client_login.php" class="btn btn-outline-primary w-100">Sign in to continue</a>
             <?php endif; ?>
         </div>
     </div>

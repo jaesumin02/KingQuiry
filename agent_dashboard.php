@@ -8,7 +8,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 apply_secure_headers();
 if (!user_has_role($_SESSION['user'] ?? null, 'Sales Agent')) {
-    header('Location: login.php');
+    header('Location: agent_login.php');
     exit();
 }
 
@@ -47,15 +47,119 @@ FROM appointments");
 $statsRow = $stats && $stats->num_rows > 0 ? $stats->fetch_assoc() : ['total_appointments' => 0, 'pending_appointments' => 0, 'approved_appointments' => 0, 'cancelled_appointments' => 0, 'total_inquiries' => 0];
 include 'includes/header.php';
 ?>
+<style>
+    body {
+        background: radial-gradient(circle at top, rgba(13, 37, 43, 0.85), rgba(6, 15, 19, 1) 52%);
+    }
 
-<div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
-    <div>
-        <div class="page-eyebrow">Client services</div>
-        <h1 class="page-title h2 mb-1">Sales agent portal</h1>
-        <p class="text-muted mb-0">Welcome, <?= htmlspecialchars($_SESSION['user']['fullname'], ENT_QUOTES, 'UTF-8') ?>. Manage viewing requests and share verified transaction progress.</p>
+    .kq-agent-shell {
+        max-width: 1220px;
+        margin: 0 auto;
+        padding: 1.2rem 0 2rem;
+    }
+
+    .kq-dashboard-hero {
+        display: flex;
+        align-items: center;
+        gap: 0.9rem;
+        padding: 1rem 1.2rem;
+        margin-bottom: 1.5rem;
+        border: 1px solid rgba(212, 175, 110, 0.28);
+        border-radius: 1.1rem;
+        background: linear-gradient(135deg, rgba(14, 29, 39, 0.92), rgba(25, 47, 58, 0.82));
+        box-shadow: 0 14px 32px rgba(0, 0, 0, 0.14);
+    }
+
+    .kq-dashboard-brand {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 86px;
+        padding: 0.5rem 0.8rem;
+        border: 1px solid rgba(212, 175, 110, 0.4);
+        border-radius: 999px;
+        background: rgba(212, 175, 110, 0.12);
+        color: #f2d79f;
+        font-size: 0.7rem;
+        font-weight: 800;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+    }
+
+    .page-eyebrow {
+        letter-spacing: .15em;
+        color: #d9b87d;
+    }
+
+    .page-title {
+        color: #f7f5f0;
+        letter-spacing: -.05em;
+    }
+
+    .text-muted {
+        color: rgba(245, 238, 227, 0.74) !important;
+    }
+
+    .card {
+        border: 1px solid rgba(20, 34, 41, 0.08) !important;
+        border-radius: 1.2rem !important;
+        background: rgba(255, 255, 255, 0.98);
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.12);
+    }
+
+    .kq-panel-header {
+        border-bottom: 1px solid rgba(19, 45, 66, 0.08);
+        padding-bottom: .75rem;
+    }
+
+    .kq-badge-soft {
+        background: rgba(17, 53, 71, 0.08);
+        color: #123b5a;
+    }
+
+    .btn-primary {
+        background: linear-gradient(180deg, #173d56, #102334);
+        border-color: #173d56;
+    }
+
+    .btn-primary:hover,
+    .btn-primary:focus {
+        background: linear-gradient(180deg, #1d486b, #132a3f);
+        border-color: #1d486b;
+    }
+
+    .badge.text-bg-warning {
+        color: #6d4a09 !important;
+    }
+
+    .table-responsive,
+    table {
+        border-radius: 1rem;
+    }
+
+    @media (max-width: 767.98px) {
+        .kq-agent-shell {
+            padding-top: .75rem;
+        }
+    }
+</style>
+
+<div class="kq-agent-shell">
+    <div class="kq-dashboard-hero">
+        <span class="kq-dashboard-brand">4 KINGS</span>
+        <div>
+            <div class="page-eyebrow">Client services</div>
+            <div class="text-white fw-semibold mb-0">Private sales operations</div>
+        </div>
     </div>
-    <a href="transaction_tracking.php" class="btn btn-primary">Open transaction tracker</a>
-</div>
+    <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+        <div>
+            <div class="page-eyebrow">Client services</div>
+            <h1 class="page-title h2 mb-1">Sales agent portal</h1>
+            <p class="text-muted mb-0">Welcome, <?= htmlspecialchars($_SESSION['user']['fullname'], ENT_QUOTES, 'UTF-8') ?>. Manage viewing requests and share verified transaction progress.</p>
+        </div>
+        <a href="transaction_tracking.php" class="btn btn-primary">Open transaction tracker</a>
+    </div>
 
 <?php if ($statusMessage !== ''): ?><div class="alert alert-success" role="status"><?= htmlspecialchars($statusMessage, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
 <?php if ($statusError !== ''): ?><div class="alert alert-danger" role="alert"><?= htmlspecialchars($statusError, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
@@ -178,5 +282,6 @@ include 'includes/header.php';
         </table>
     </div>
 </section>
+</div>
 
 <?php include 'includes/footer.php'; ?>
