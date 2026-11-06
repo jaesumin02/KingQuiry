@@ -3,6 +3,35 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-06
+
+- Added administrator client management at `admin_clients.php`: create client
+  accounts with a temporary password, search and filter by status, edit contact
+  details, reset passwords, and activate or deactivate accounts. Accounts with
+  appointments, inquiries, transactions, or payments cannot be deleted; they
+  must be deactivated so linked history is preserved.
+- Added client profile fields `phone`, `address`, and `accountStatus` to
+  `users`. Inactive client accounts are blocked at client login with an
+  explanatory message.
+- Added the `payments` table and `admin_payments.php` payment register. Staff
+  can record payments tied to a tracked transaction, verify, reject, or mark
+  them pending, remove records, and review six months of verified collections in
+  a server-rendered SVG bar chart. Verified payments notify the client and are
+  prevented from exceeding a recorded sale price.
+- Added `admin_sales.php`, a sales and transaction dashboard with verified
+  sales, actual and average revenue, conversion rate, active pipeline value,
+  outstanding balances, stage distribution, a six-month revenue chart, payment
+  reconciliation, and a searchable/filterable transaction register linked to the
+  tracker and payment form.
+- Added property listing status management (`Available`, `Reserved`, `Sold`)
+  directly from the admin dashboard property table.
+- Added collections, client, and sales-pipeline summary cards plus management
+  shortcuts to the admin dashboard, and a **Manage** navigation dropdown for
+  Clients, Payments, Sales & transactions, and Transaction tracking.
+- Added `includes/admin_management.php` for shared helpers and idempotent schema
+  setup, `database/admin_management_schema.sql` for legacy databases, and
+  updated `database/schema.sql` for fresh installs.
+
 ## 2026-10-17
 
 - Simplified customer land estimates to one context-aware action button that

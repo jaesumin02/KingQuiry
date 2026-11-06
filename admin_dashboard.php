@@ -5,6 +5,7 @@ require_once 'includes/location_directory.php';
 require_once 'includes/property_estimator.php';
 require_once 'includes/property_images.php';
 require_once 'includes/agent_feedback.php';
+require_once 'includes/admin_management.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -15,6 +16,7 @@ if (normalized_user_role($_SESSION['user'] ?? null) !== 'Admin') {
 }
 
 ensure_agent_reviews_table($conn);
+ensure_admin_management_schema($conn);
 
 $locationList = get_property_locations($conn, true);
 $locations = array_values(array_filter(
@@ -154,6 +156,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $formError = 'The property could not be removed. Check for related appointments and try again.';
             }
         }
+    } elseif (isset($_POST['set_property_status'])) {
+        $propertyId = filter_var($_POST['propertyID'] ?? null, FILTER_VALIDATE_INT);
+        $propertyStatus = is_string($_POST['propertyStatus'] ?? null) ? $_POST['propertyStatus'] : '';
+        $allowedPropertyStatuses = ['Available', 'Reserved', 'Sold'];
+        if ($propertyId === false || $propertyId <= 0 || !in_array($propertyStatus, $allowedPropertyStatuses, true)) {
+            $formError = 'Choose a valid property and listing status.';
+        } else {
+            $statusStmt = $conn->prepare('UPDATE properties SET status = ? WHERE propertyID = ?');
+            $statusStmt->bind_param('si', $propertyStatus, $propertyId);
+            $statusStmt->execute();
+            if ($statusStmt->affected_rows > 0) {
+                header('Location: admin_dashboard.php?property_status_updated=1#properties');
+                exit();
+            }
+
+            $checkStmt = $conn->prepare('SELECT propertyID FROM properties WHERE propertyID = ?');
+            $checkStmt->bind_param('i', $propertyId);
+            $checkStmt->execute();
+            if (!$checkStmt->get_result()->fetch_assoc()) {
+                $formError = 'The selected property was not found.';
+            } else {
+                header('Location: admin_dashboard.php?property_status_updated=1#properties');
+                exit();
+            }
+        }
     } elseif (isset($_POST['run_prediction'])) {
         $inputSqm = filter_var($_POST['sqm_input'] ?? null, FILTER_VALIDATE_FLOAT);
         $inputType = is_string($_POST['property_type'] ?? null) ? $_POST['property_type'] : '';
@@ -172,6 +199,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 if (isset($_GET['property_deleted'])) {
     $formSuccess = 'The property listing has been removed.';
+}
+if (isset($_GET['property_status_updated'])) {
+    $formSuccess = 'The property listing status has been updated.';
 }
 if (isset($_GET['location_added'])) {
     $formSuccess = 'The location has been added and is available in listing filters.';
@@ -320,6 +350,18 @@ $properties = $conn->query(
      LEFT JOIN property_locations l ON l.locationID = p.locationID
      ORDER BY p.createdAt DESC, p.propertyID DESC"
 );
+$collectionOverview = $conn->query(
+    "SELECT COALESCE(SUM(CASE WHEN status = 'Verified' THEN amount ELSE 0 END), 0) AS verifiedTotal,
+            COALESCE(SUM(CASE WHEN status = 'Pending' THEN amount ELSE 0 END), 0) AS pendingTotal,
+            COUNT(*) AS paymentCount
+     FROM payments"
+)->fetch_assoc();
+$clientOverview = $conn->query(
+    "SELECT COUNT(*) AS totalClients,
+            COALESCE(SUM(accountStatus = 'Active'), 0) AS activeClients
+     FROM users
+     WHERE role = 'Client'"
+)->fetch_assoc();
 ?>
 <style>
     body {
@@ -461,7 +503,10 @@ $properties = $conn->query(
             <p class="text-muted mb-0">A clear overview of listings and customer activity.</p>
         </div>
         <div class="d-flex flex-wrap gap-2">
-            <a href="transaction_tracking.php" class="btn btn-primary">Transaction tracking</a>
+            <a href="admin_sales.php" class="btn btn-primary">Sales &amp; transactions</a>
+            <a href="admin_clients.php" class="btn btn-outline-primary">Clients</a>
+            <a href="admin_payments.php" class="btn btn-outline-primary">Payments</a>
+            <a href="transaction_tracking.php" class="btn btn-outline-primary">Transaction tracking</a>
             <a href="admin_chat.php" class="btn btn-outline-primary">Customer inbox</a>
         </div>
     </div>
@@ -617,6 +662,39 @@ $properties = $conn->query(
     <div class="col-6 col-xl-3"><div class="card h-100 p-3 p-lg-4"><div class="small text-muted fw-semibold">Registered users</div><div class="display-6 fw-bold mt-2"><?= number_format((int) $totalUsers) ?></div></div></div>
     <div class="col-6 col-xl-3"><div class="card h-100 p-3 p-lg-4"><div class="small text-muted fw-semibold">Viewing requests</div><div class="display-6 fw-bold mt-2"><?= number_format((int) $totalAppointments) ?></div></div></div>
     <div class="col-6 col-xl-3"><div class="card h-100 p-3 p-lg-4"><div class="small text-muted fw-semibold">Property inquiries</div><div class="display-6 fw-bold mt-2"><?= number_format((int) $totalInquiries) ?></div></div></div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card h-100 p-3 p-lg-4">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+                <div class="small text-muted fw-semibold">Verified collections</div>
+                <a href="admin_payments.php" class="small text-decoration-none">Open register</a>
+            </div>
+            <div class="h3 fw-bold mt-2 mb-1">₱<?= number_format((float) $collectionOverview['verifiedTotal'], 2) ?></div>
+            <div class="small text-muted"><?= number_format((int) $collectionOverview['paymentCount']) ?> payment record(s), <?= htmlspecialchars(kq_format_peso((float) $collectionOverview['pendingTotal']), ENT_QUOTES, 'UTF-8') ?> awaiting verification.</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 p-3 p-lg-4">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+                <div class="small text-muted fw-semibold">Clients</div>
+                <a href="admin_clients.php" class="small text-decoration-none">Manage clients</a>
+            </div>
+            <div class="h3 fw-bold mt-2 mb-1"><?= number_format((int) $clientOverview['totalClients']) ?></div>
+            <div class="small text-muted"><?= number_format((int) $clientOverview['activeClients']) ?> active client account(s) in the directory.</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100 p-3 p-lg-4">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+                <div class="small text-muted fw-semibold">Sales operations</div>
+                <a href="admin_sales.php" class="small text-decoration-none">Open sales</a>
+            </div>
+            <div class="h3 fw-bold mt-2 mb-1"><?= number_format($activePipelineCount) ?> active</div>
+            <div class="small text-muted"><?= htmlspecialchars(kq_format_peso($activePipelineAskingValue), ENT_QUOTES, 'UTF-8') ?> in asking-price pipeline value.</div>
+        </div>
+    </div>
 </div>
 
 <div class="row g-3 mb-4">
@@ -809,14 +887,33 @@ $properties = $conn->query(
     </div>
     <div class="table-responsive">
         <table class="table table-bordered align-middle">
-            <thead><tr><th>Title</th><th>Category</th><th>Location</th><th>Asking price</th><th>Action</th></tr></thead>
+            <thead><tr><th>Title</th><th>Category</th><th>Location</th><th>Asking price</th><th>Listing status</th><th>Action</th></tr></thead>
             <tbody>
-                <?php while($row = $properties->fetch_assoc()): ?>
+                <?php while($row = $properties->fetch_assoc()):
+                    $rowPropertyStatus = (string) ($row['status'] ?? 'Available');
+                    $propertyStatusOptions = ['Available', 'Reserved', 'Sold'];
+                ?>
                     <tr>
                         <td class="fw-bold"><?= htmlspecialchars($row['title']) ?></td>
                         <td><span class="badge rounded-pill text-bg-light"><?= htmlspecialchars($row['propertyType']) ?></span></td>
                         <td><?= htmlspecialchars(property_location_label($row)) ?><?php if (!empty($row['barangay'])): ?><br><small class="text-muted"><?= htmlspecialchars($row['barangay']) ?></small><?php endif; ?></td>
                         <td>₱<?= number_format((float) $row['price'], 2) ?><br><small class="text-muted"><?= $row['areaSqm'] !== null ? number_format((float) $row['areaSqm'], 2) . ' sq.m. · ₱' . number_format((float) $row['pricePerSqm'], 2) . '/sq.m.' : 'Legacy area not recorded' ?></small></td>
+                        <td>
+                            <form method="POST" class="d-flex align-items-center gap-2" style="min-width: 12rem;">
+                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                                <input type="hidden" name="propertyID" value="<?= (int) $row['propertyID'] ?>">
+                                <label class="visually-hidden" for="property-status-<?= (int) $row['propertyID'] ?>">Listing status</label>
+                                <select id="property-status-<?= (int) $row['propertyID'] ?>" name="propertyStatus" class="form-select form-select-sm">
+                                    <?php if (!in_array($rowPropertyStatus, $propertyStatusOptions, true)): ?>
+                                        <option value="<?= htmlspecialchars($rowPropertyStatus, ENT_QUOTES, 'UTF-8') ?>" selected><?= htmlspecialchars($rowPropertyStatus !== '' ? $rowPropertyStatus : 'Unspecified', ENT_QUOTES, 'UTF-8') ?></option>
+                                    <?php endif; ?>
+                                    <?php foreach ($propertyStatusOptions as $propertyStatusOption): ?>
+                                        <option value="<?= htmlspecialchars($propertyStatusOption, ENT_QUOTES, 'UTF-8') ?>" <?= $rowPropertyStatus === $propertyStatusOption ? 'selected' : '' ?>><?= htmlspecialchars($propertyStatusOption, ENT_QUOTES, 'UTF-8') ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <button type="submit" name="set_property_status" class="btn btn-sm btn-outline-primary">Save</button>
+                            </form>
+                        </td>
                         <td>
                             <form method="POST" onsubmit="return confirm('Remove this listing? Related booking records may prevent deletion.');">
                                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
@@ -826,7 +923,7 @@ $properties = $conn->query(
                         </td>
                     </tr>
                 <?php endwhile; ?>
-                <?php if ($properties->num_rows === 0): ?><tr><td colspan="5" class="text-center text-muted py-4">No property listings found.</td></tr><?php endif; ?>
+                <?php if ($properties->num_rows === 0): ?><tr><td colspan="6" class="text-center text-muted py-4">No property listings found.</td></tr><?php endif; ?>
             </tbody>
         </table>
     </div>

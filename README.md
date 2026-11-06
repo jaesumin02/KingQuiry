@@ -4,7 +4,7 @@
 Land Properties. It provides a public property catalog and different pages for
 clients, sales agents, and administrators.
 
-- **Last reviewed:** 2026-10-17
+- **Last reviewed:** 2026-11-06
 - **Application type:** Server-rendered PHP website
 - **Database:** MySQL, accessed with PHP `mysqli`
 - **Local development environment:** XAMPP
@@ -29,12 +29,13 @@ required:
 6. After this one-time setup, start Apache and MySQL in XAMPP and open
    `http://localhost/kingquiry/` to use the system.
 
-The fresh schema creates the tables, tracking and analytics fields, chat
-storage, and initial Batangas locations. It intentionally contains no users,
-properties, messages, appointments, inquiries, or sales; create or import only
-business data you are authorized to use. If the XAMPP folder or database
-credentials differ, update the settings in `config/db.php` or set the
-documented `KINGQUIRY_DB_*` environment variables.
+The fresh schema creates the tables, tracking and analytics fields, client
+profile fields, the payments register, chat storage, and initial Batangas
+locations. It intentionally contains no users, properties, messages,
+appointments, inquiries, payments, or sales; create or import only business data
+you are authorized to use. If the XAMPP folder or database credentials differ,
+update the settings in `config/db.php` or set the documented
+`KINGQUIRY_DB_*` environment variables.
 
 ## Features
 
@@ -111,6 +112,27 @@ documented `KINGQUIRY_DB_*` environment variables.
   attributed to the staff account. Successful completion requires a
   verification note and the actual agreed sale price; that recorded price
   automatically updates the sales analytics.
+- Manage the client directory from **Clients**: create client accounts with a
+  temporary password, update contact details, reset passwords, search and filter
+  the directory, deactivate or reactivate accounts, and remove accounts that
+  have no appointments, inquiries, transactions, or payments. Inactive clients
+  cannot sign in to the client portal, and linked history is preserved by
+  requiring deactivation instead of deletion.
+- Record and reconcile collections from **Payments**. Each payment is linked to
+  a tracked transaction and stores its amount, type, method, reference number,
+  payment date, note, and status. Staff can record pending or verified payments,
+  verify or reject them later, and see six months of verified collections in a
+  chart. A verified payment cannot push the total collected beyond the recorded
+  sale price when one exists.
+- Use **Sales & transactions** for a consolidated pipeline view: verified sales,
+  actual revenue, average sale value, active pipeline, outstanding balances,
+  stage distribution, six-month revenue chart, payment reconciliation, and a
+  searchable transaction register with quick links to the tracker and payment
+  form.
+- Set each property's listing status to `Available`, `Reserved`, or `Sold`
+  directly from the inventory table on the admin dashboard.
+- View a compact collections, client, and sales-pipeline summary on the admin
+  dashboard, alongside the existing charts, with shortcuts to the new modules.
 - Add and remove property listings, with a validated type, asking price,
   land area, standardized municipality selection, and optional validated
   property image. New price-per-square-meter values are calculated from total
@@ -139,7 +161,10 @@ documented `KINGQUIRY_DB_*` environment variables.
 | `register.php` | Client account registration |
 | `login.php` | Login form, authentication, role-based redirects, and login-page cache handling |
 | `logout.php` | Ends the current session and redirects to login |
-| `admin_dashboard.php` | Business analytics, dynamic location directory, property management, and price estimator |
+| `admin_dashboard.php` | Business analytics, dynamic location directory, property management and listing status, and price estimator |
+| `admin_clients.php` | Client directory: create and edit client accounts, reset passwords, and activate or deactivate accounts |
+| `admin_payments.php` | Payment register: record, verify, reject, and remove collections with a six-month verified-collections chart |
+| `admin_sales.php` | Sales and transaction dashboard: revenue, pipeline, stage breakdown, reconciliation, and transaction register |
 | `admin_chat.php` | Admin inbox for client and chatbot conversations |
 | `agent_dashboard.php` | Sales-agent appointment and inquiry list; appointment status updates |
 | `client_dashboard.php` | Client appointment tracking |
@@ -151,9 +176,11 @@ documented `KINGQUIRY_DB_*` environment variables.
 | `includes/chat_widget.php` | Floating customer chat, comparable-listing estimate form, and automated assistant interface |
 | `includes/property_estimator.php` | Shared weighted comparable-listing estimator |
 | `includes/property_images.php` | Validated property image upload and storage |
+| `includes/admin_management.php` | Shared client, payment, and sales helpers, including idempotent schema setup |
 | `database/chat_schema.sql` | Tables required for client conversations, chat messages, and admin presence |
 | `database/location_schema.sql` | Batangas seed data and one-time nullable structured property location and area migration for existing installations |
 | `database/transaction_tracking_schema.sql` | Additive transaction timeline tables and safe starting-state backfill for existing appointments and inquiries |
+| `database/admin_management_schema.sql` | Additive client profile columns and payments table for existing databases |
 | `database/schema.sql` | Complete fresh-install schema for all application tables plus the initial Batangas location seed data; no live user or transaction records |
 | `update_pass.php` | CLI-only administrator password reset utility |
 | `CHANGELOG.md` | Dated record of project changes |
@@ -178,15 +205,19 @@ documented `KINGQUIRY_DB_*` environment variables.
    so the UI needs internet access unless those assets are later self-hosted.
 6. For a **legacy database that already has the original application tables**,
    back it up first, then import `database/chat_schema.sql`, run
-   `database/location_schema.sql` once, and import
-   `database/transaction_tracking_schema.sql`. The location migration adds
+   `database/location_schema.sql` once, import
+   `database/transaction_tracking_schema.sql`, and import
+   `database/admin_management_schema.sql`. The location migration adds
    columns to `properties`, so do not run it more than once. It repeats the
    location table and seed definitions from `schema.sql` so it can independently
    upgrade an older database; it is not needed for a fresh install. The tracking
    migration creates its tables, adds the sale-price column if missing, and
    creates an initial state for existing appointments and inquiries; it does
-   not invent past step-by-step history or sales amounts. After migration, the
-   same codebase powers client chat, tracking, and analytics.
+   not invent past step-by-step history or sales amounts. The client/payments
+   migration adds the `phone`, `address`, and `accountStatus` columns to `users`
+   and creates the `payments` table; it is safe to re-run because it only adds
+   missing objects. After migration, the same codebase powers client chat,
+   tracking, analytics, client management, and payments.
    Existing free-text locations are retained and left unmapped; only verified
    location data should be assigned to a standardized municipality.
 7. Create the first administrator securely: register that account through the
@@ -231,10 +262,11 @@ documented `KINGQUIRY_DB_*` environment variables.
 
 The code expects these tables and corresponding fields:
 
-- `users`: `userID`, `fullname`, `email`, `passwordHash`, `role`
+- `users`: `userID`, `fullname`, `email`, optional `phone` and `address`,
+  `passwordHash`, `role`, and `accountStatus` (`Active` or `Inactive`)
 - `properties`: `propertyID`, `title`, `description`, `price`, `pricePerSqm`,
   `location`, `locationID`, optional `barangay` and `areaSqm`, `propertyType`,
-  `landCharacteristics`, and optional `image`
+  `landCharacteristics`, optional `image`, and `status`
 - `property_locations`: standardized region/province/municipality records
 - `appointments`: `appointmentID`, `propertyID`, `clientID`, `appointmentDate`,
   `appointmentTime`, `status`
@@ -246,6 +278,9 @@ The code expects these tables and corresponding fields:
 - `property_transactions` and `property_transaction_events`: the current
   transaction stage, verified sale price when completed, and append-only
   timestamped updates
+- `payments`: `paymentID`, optional `transactionID`, `clientID`, `amount`,
+  `paymentType`, `paymentMethod`, `referenceNo`, `status` (`Pending`,
+  `Verified`, or `Rejected`), `paidAt`, `note`, `recordedBy`, and timestamps
 
 `database/schema.sql` is the portable source for a fresh database, not a backup
 of an active installation. Keep real records and database credentials out of
@@ -285,11 +320,13 @@ the case in **Transaction Tracking**. The normal progression is:
 A case may be cancelled before completion. Staff updates are manual and each
 step/note is time-stamped and linked to the staff account. Marking a case
 successful also requires the actual agreed sale price, which is then included
-in the revenue analytics. The app does not
-process payments, verify escrow/bank transfers, send receipts, or track a
-physical parcel with GPS. Staff must verify the sale and its documents outside
-the app before recording the successful step; its required note is visible to
-the client. Payment confirmation and successful completion both require staff
+in the revenue analytics. The app can record and reconcile manually verified
+client payments against a tracked transaction, but it does not process online
+payments, verify escrow or bank transfers automatically, send official
+receipts, or track a physical parcel with GPS. Staff must verify each payment
+and the sale documents outside the app before marking a payment verified or the
+sale successful; the successful-step note is visible to the client. Payment
+confirmation and successful completion both require staff
 notes. Existing records only receive a migration-time starting status because
 their previous transition history was not stored; no old sale prices are
 invented.
