@@ -1,7 +1,27 @@
-a# Changelog
+# Changelog
 
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
+
+## 2026-11-06
+
+- Added the transaction tracking and client progress updates that feed the
+  dashboard, agent workflow, and admin verification process with timestamped
+  notes and stage validation.
+- Expanded the project with a shared notification system, agent feedback
+  handling, and property summary PDF export for client-facing updates and
+  record sharing.
+- Improved the estimator, dashboard analytics, and chat-related pricing flow so
+  the land estimate and sales calculations use the same validated logic across
+  the app.
+- Updated the database schema to support the latest tracking, analytics, and
+  chat-related fields required by the current admin, agent, and client pages.
+- Refined the admin, agent, and client dashboard interfaces, including the
+  login/session flow, property detail presentation, and the new compact
+  estimate form behavior in the customer chat.
+- Reworked the visual styling and layout to use the branded background image
+  treatment while keeping the chat estimate input more compact and easier to
+  use.
 
 ## 2026-10-17
 
