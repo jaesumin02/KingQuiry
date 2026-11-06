@@ -3,6 +3,32 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-06 — Admin management additions
+
+- Administrator client management at `admin_clients.php`: create client accounts
+  with a temporary password, edit contact details, reset passwords, search and
+  filter by status, activate/deactivate accounts, and delete only accounts with
+  no linked appointments, inquiries, transactions, or payments.
+- Client profile fields `phone`, `address`, and `accountStatus` on `users`;
+  inactive client accounts are blocked from signing in.
+- Payments register at `admin_payments.php` backed by the new `payments` table:
+  record payments against tracked transactions, verify/reject/mark pending,
+  remove records, notify clients on verification, and chart six months of
+  verified collections.
+- Sales and transactions dashboard at `admin_sales.php`: verified sales,
+  revenue and average sale, conversion, active pipeline, outstanding balances,
+  stage breakdown, six-month revenue chart, payment reconciliation, and a
+  searchable transaction register.
+- Property listing status controls (`Available`, `Reserved`, `Sold`) on the
+  admin dashboard, plus collections/client/sales summary cards, management
+  shortcuts, and a **Manage** navigation dropdown.
+- Shared helpers and idempotent schema setup in `includes/admin_management.php`;
+  legacy migration in `database/admin_management_schema.sql`; fresh-install
+  updates in `database/schema.sql`; documentation in `README.md`.
+- Verification: `php -l` on all 32 PHP files, fresh-schema import, the legacy
+  migration run twice, and end-to-end admin/client flows on a separate test
+  database.
+
 ## 2026-11-06
 
 <<<<<<< HEAD
