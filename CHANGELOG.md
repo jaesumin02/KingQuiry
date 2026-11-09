@@ -3,6 +3,36 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-09 — Property map explorer, homepage search redesign, and 5-category portfolio
+
+- Interactive property map explorer at `property_map.php` backed by the
+  `api/map_properties.php` JSON endpoint: Leaflet.js map with OpenStreetMap
+  tiles, real-time municipality centering, responsive card filtering, and
+  category pills for all five listing categories.
+- Hoverable map markers on `property_map.php`: pin cards display property
+  image, pricing, specs, and details link after a 0.5-second (500ms) hover
+  delay, with an interactive popup body and instant click-to-card scrolling.
+- Panoramic edge-to-edge hero on `index.php` with a brightened background image
+  (overlay opacity reduced to a 28%–42% wash), updated headline "Find the right
+  land for what comes next", and Kings Land Properties (Philippines) company
+  identity subtitle.
+- Wide 1,080px search bar on `index.php` with municipality autocomplete,
+  dropdown filters, and an orange search action button; removed the verified
+  medal badge and removed the embedded map so available listings display
+  directly in a responsive 3-column grid.
+- Expanded portfolio across the platform to five core categories:
+  `Residential` (Residential Lot), `Farmlot` (Farm Lot), `Beachlot` (Beach Lot),
+  `Condo` (Condo), and `Commercial` (Commercial Property) across `index.php`,
+  `property_map.php`, `property_detail.php`, `admin_dashboard.php`,
+  `includes/property_estimator.php`, and `includes/chat_widget.php`.
+- Test properties dataset in `database/test_properties_seed.sql` containing 26
+  curated listings across high-volume, low-volume, and zero-volume Batangas
+  locations with dynamic `locationID` lookups, plus a 1-click web runner at
+  `database/seed_runner.php` showing real-time inventory counts.
+- Navigation and verification: added **Map Explorer** link to
+  `includes/header.php`, updated quick access links across navigation, and
+  verified `php -l` lint syntax across modified PHP files.
+
 ## 2026-11-06 — Admin management additions
 
 - Administrator client management at `admin_clients.php`: create client accounts
@@ -28,42 +58,6 @@ Dates use `YYYY-MM-DD`.
 - Verification: `php -l` on all 32 PHP files, fresh-schema import, the legacy
   migration run twice, and end-to-end admin/client flows on a separate test
   database.
-
-## 2026-11-06
-
-<<<<<<< HEAD
-- Added client-submitted payment records for any payment method, with optional
-  reference numbers and staff confirmation/rejection. A confirmed payment is
-  required before advancing to payment confirmation. Documented that payments
-  are manually recorded and verified, not processed by an online gateway.
-=======
-- Added administrator client management at `admin_clients.php`: create client
-  accounts with a temporary password, search and filter by status, edit contact
-  details, reset passwords, and activate or deactivate accounts. Accounts with
-  appointments, inquiries, transactions, or payments cannot be deleted; they
-  must be deactivated so linked history is preserved.
-- Added client profile fields `phone`, `address`, and `accountStatus` to
-  `users`. Inactive client accounts are blocked at client login with an
-  explanatory message.
-- Added the `payments` table and `admin_payments.php` payment register. Staff
-  can record payments tied to a tracked transaction, verify, reject, or mark
-  them pending, remove records, and review six months of verified collections in
-  a server-rendered SVG bar chart. Verified payments notify the client and are
-  prevented from exceeding a recorded sale price.
-- Added `admin_sales.php`, a sales and transaction dashboard with verified
-  sales, actual and average revenue, conversion rate, active pipeline value,
-  outstanding balances, stage distribution, a six-month revenue chart, payment
-  reconciliation, and a searchable/filterable transaction register linked to the
-  tracker and payment form.
-- Added property listing status management (`Available`, `Reserved`, `Sold`)
-  directly from the admin dashboard property table.
-- Added collections, client, and sales-pipeline summary cards plus management
-  shortcuts to the admin dashboard, and a **Manage** navigation dropdown for
-  Clients, Payments, Sales & transactions, and Transaction tracking.
-- Added `includes/admin_management.php` for shared helpers and idempotent schema
-  setup, `database/admin_management_schema.sql` for legacy databases, and
-  updated `database/schema.sql` for fresh installs.
->>>>>>> ec857e417d2253282bb2591891f1036a7cca49ba
 
 ## 2026-10-17
 
