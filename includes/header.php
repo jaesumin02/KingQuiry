@@ -284,6 +284,7 @@ $currentRole = normalized_user_role($_SESSION['user'] ?? null);
             <div class="collapse navbar-collapse justify-content-end" id="navbarNav">
                 <ul class="navbar-nav">
                     <li class="nav-item"><a class="nav-link" href="index.php">Property Catalog</a></li>
+                    <li class="nav-item"><a class="nav-link" href="property_map.php">Map Explorer</a></li>
                     <?php if($currentRole !== null): ?>
                         <?php if($currentRole === 'Client'): ?>
                             <li class="nav-item"><a class="nav-link" href="client_dashboard.php">Client Dashboard</a></li>
@@ -313,4 +314,8 @@ $currentRole = normalized_user_role($_SESSION['user'] ?? null);
             </div>
         </div>
     </nav>
-    <main class="container py-4 py-lg-5">
+    <?php
+    $currentPageName = basename($_SERVER['SCRIPT_NAME'] ?? '');
+    $mainClass = $currentPageName === 'index.php' ? 'main-catalog' : 'container py-4 py-lg-5';
+    ?>
+    <main class="<?= $mainClass ?>">

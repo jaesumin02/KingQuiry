@@ -103,7 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $formError = 'Enter a title (3-150 characters) and a description (10-10,000 characters).';
         } elseif ($price === false || $price <= 0 || $price > 9999999999.99 || $areaSqm === false || $areaSqm < 0.01 || $areaSqm > 1000000) {
             $formError = 'Enter a valid total price and a land area between 0 and 1,000,000 sq.m.';
-        } elseif (!in_array($propertyType, ['Residential', 'Commercial', 'Farmlot', 'Beachlot'], true)) {
+        } elseif (!in_array($propertyType, ['Residential', 'Commercial', 'Farmlot', 'Beachlot', 'Condo'], true)) {
             $formError = 'Choose a valid property category.';
         } elseif (!$location || strlen($barangay) > 120 || strlen($landCharacteristics) > 2000) {
             $formError = 'Choose an active directory location and check the optional land details.';
@@ -215,12 +215,13 @@ $totalUsers = $conn->query("SELECT COUNT(*) as count FROM users")->fetch_assoc()
 $totalAppointments = $conn->query("SELECT COUNT(*) as count FROM appointments")->fetch_assoc()['count'];
 $totalInquiries = $conn->query("SELECT COUNT(*) as count FROM feedbackinquiries")->fetch_assoc()['count'];
 
-$standardPropertyCategories = ['Residential', 'Commercial', 'Farmlot', 'Beachlot'];
+$standardPropertyCategories = ['Residential', 'Commercial', 'Farmlot', 'Beachlot', 'Condo'];
 $propertyCategoryCounts = [
     'Residential' => 0,
     'Commercial' => 0,
     'Farmlot' => 0,
     'Beachlot' => 0,
+    'Condo' => 0,
 ];
 foreach ($conn->query('SELECT propertyType, COUNT(*) AS total FROM properties GROUP BY propertyType') as $row) {
     $category = trim((string) $row['propertyType']);
@@ -715,6 +716,7 @@ $clientOverview = $conn->query(
                             'Commercial' => 'bg-success',
                             'Farmlot' => 'bg-warning',
                             'Beachlot' => 'bg-info',
+                            'Condo' => 'bg-purple text-white',
                             'Other / legacy' => 'bg-secondary',
                         ][$category] ?? 'bg-secondary';
                     ?>
@@ -831,7 +833,7 @@ $clientOverview = $conn->query(
         <div class="col-md-3">
             <label class="form-label fw-semibold" for="estimate-type">Category</label>
             <select id="estimate-type" name="property_type" class="form-select" required>
-                <?php foreach (['Residential', 'Commercial', 'Farmlot', 'Beachlot'] as $propertyType): ?>
+                <?php foreach (['Residential', 'Commercial', 'Farmlot', 'Beachlot', 'Condo'] as $propertyType): ?>
                     <option value="<?= $propertyType ?>" <?= $inputType === $propertyType ? 'selected' : '' ?>><?= $propertyType ?></option>
                 <?php endforeach; ?>
             </select>
@@ -869,7 +871,7 @@ $clientOverview = $conn->query(
             <div class="col-md-6"><label class="form-label fw-semibold" for="property-title">Listing title</label><input id="property-title" type="text" name="title" class="form-control" required minlength="3" maxlength="150" placeholder="e.g. Residential lot near the town center"></div>
             <div class="col-md-4"><label class="form-label fw-semibold" for="property-area">Land area (sq.m.)</label><input id="property-area" type="number" min="0.01" max="1000000" step="0.01" name="areaSqm" class="form-control" required placeholder="e.g. 500"></div>
             <div class="col-md-4"><label class="form-label fw-semibold" for="property-price">Total asking price (PHP)</label><input id="property-price" type="number" min="0.01" max="9999999999.99" step="0.01" name="price" class="form-control" required placeholder="1500000"></div>
-            <div class="col-md-4"><label class="form-label fw-semibold" for="property-type">Property category</label><select id="property-type" name="propertyType" class="form-select" required><option value="">Choose a category</option><option value="Residential">Residential</option><option value="Commercial">Commercial</option><option value="Farmlot">Farmlot</option><option value="Beachlot">Beachlot</option></select></div>
+            <div class="col-md-4"><label class="form-label fw-semibold" for="property-type">Property category</label><select id="property-type" name="propertyType" class="form-select" required><option value="">Choose a category</option><option value="Residential">Residential Lot</option><option value="Farmlot">Farm Lot</option><option value="Beachlot">Beach Lot</option><option value="Condo">Condo</option><option value="Commercial">Commercial</option></select></div>
             <div class="col-md-6">            <label class="form-label fw-semibold" for="property-location">City / municipality</label><select id="property-location" name="locationID" class="form-select" required><?= property_location_options($locations) ?></select></div>
             <div class="col-md-6"><label class="form-label fw-semibold" for="property-barangay">Barangay <span class="text-muted fw-normal">(optional)</span></label><input id="property-barangay" type="text" maxlength="120" name="barangay" class="form-control" placeholder="Enter verified barangay"></div>
             <div class="col-12"><label class="form-label fw-semibold" for="property-characteristics">Land characteristics <span class="text-muted fw-normal">(optional)</span></label><input id="property-characteristics" type="text" maxlength="2000" name="landCharacteristics" class="form-control" placeholder="Road access, terrain, utilities, lot dimensions"></div>

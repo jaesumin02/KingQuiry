@@ -142,7 +142,7 @@ function fallback_weighted_median_estimate(array $comparables, float $area): arr
 
 function estimate_property_value(mysqli $conn, float $area, string $propertyType, int $locationId): array
 {
-    $allowedTypes = ['Residential', 'Commercial', 'Farmlot', 'Beachlot'];
+    $allowedTypes = ['Residential', 'Commercial', 'Farmlot', 'Beachlot', 'Condo'];
 
     if ($area <= 0 || $area > 1000000 || !in_array($propertyType, $allowedTypes, true) || $locationId <= 0) {
         throw new InvalidArgumentException('Enter a valid land area, category, and location.');

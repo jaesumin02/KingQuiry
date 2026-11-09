@@ -131,10 +131,11 @@ $chatLocations = get_property_locations($conn);
                 <input id="kingquiry-estimate-area" class="form-control form-control-sm mb-2" type="number" name="area" min="1" max="1000000" step="any" required>
                 <label class="form-label small mb-1" for="kingquiry-estimate-type">Property category</label>
                 <select id="kingquiry-estimate-type" class="form-select form-select-sm mb-2" name="property_type" required>
-                    <option value="Residential">Residential</option>
+                    <option value="Residential">Residential Lot</option>
+                    <option value="Farmlot">Farm Lot</option>
+                    <option value="Beachlot">Beach Lot</option>
+                    <option value="Condo">Condo</option>
                     <option value="Commercial">Commercial</option>
-                    <option value="Farmlot">Farmlot</option>
-                    <option value="Beachlot">Beachlot</option>
                 </select>
                 <label class="form-label small mb-1" for="kingquiry-estimate-location">City or municipality</label>
                 <select id="kingquiry-estimate-location" class="form-select form-select-sm mb-2" name="location_id" required>

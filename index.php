@@ -3,7 +3,14 @@ include 'config/db.php';
 require_once 'includes/location_directory.php';
 include 'includes/header.php';
 
-$allowedCategories = ['Residential', 'Commercial', 'Farmlot', 'Beachlot'];
+$allowedCategories = ['Residential', 'Commercial', 'Farmlot', 'Beachlot', 'Condo'];
+$categoryLabels = [
+    'Residential' => 'Residential Lot',
+    'Farmlot'     => 'Farm Lot',
+    'Beachlot'    => 'Beach Lot',
+    'Condo'       => 'Condo',
+    'Commercial'  => 'Commercial Property',
+];
 $search = $_GET['search'] ?? '';
 $search = is_string($search) ? trim(substr($search, 0, 120)) : '';
 $category = $_GET['category'] ?? '';
@@ -67,37 +74,304 @@ if (normalized_user_role($_SESSION['user'] ?? null) === 'Client') {
     $appointmentStmt->execute();
     $myAppointments = $appointmentStmt->get_result();
 }
+
+$isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0);
 ?>
 
-<section class="catalog-hero p-4 p-lg-5 mb-4 rounded-4 text-white d-flex align-items-center" style="
-    min-height: 300px;
-    background-image: linear-gradient(rgba(18, 47, 77, 0.75), rgba(29, 82, 118, 0.85)), url('assets/images/background.jpg');
-    background-position: center 50%;
-    background-size: cover;
-    background-repeat: no-repeat;
-">
-    <div class="row align-items-center g-4">
-        <div class="col-lg-10">
-            <div class="text-uppercase small fw-bold mb-2" style="letter-spacing:.14em;color:#efd29d">Kings Land Properties</div>
-            <h1 class="display-5 fw-bold mb-3">Find the right land for what comes next.</h1>
-            <p class="lead mb-0 text-white-50">Explore curated property listings by verified location and land type, with clear asking prices.</p>
+<style>
+    /* ══════════ FULL-WIDTH, BRIGHTER HERO SECTION ══════════ */
+    .hero-banner {
+        position: relative;
+        width: 100%;
+        min-height: 480px;
+        background: linear-gradient(180deg, rgba(12, 32, 60, 0.28) 0%, rgba(14, 38, 70, 0.42) 100%),
+                    url('assets/images/background.jpg') center 42% / cover no-repeat;
+        box-shadow: 0 12px 36px rgba(10, 24, 44, 0.1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 5.5rem 1.5rem;
+    }
+
+    .hero-content {
+        width: 100%;
+        max-width: 1180px;
+        margin: 0 auto;
+        text-align: center;
+    }
+
+    .hero-title {
+        color: #ffffff;
+        font-size: clamp(2.3rem, 4.4vw, 3.5rem);
+        font-weight: 800;
+        letter-spacing: -0.035em;
+        line-height: 1.15;
+        margin-bottom: 0.85rem;
+        text-shadow: 0 3px 18px rgba(0, 0, 0, 0.75), 0 1px 4px rgba(0, 0, 0, 0.9);
+    }
+
+    .hero-subtitle {
+        color: rgba(255, 255, 255, 0.96);
+        font-size: clamp(1.05rem, 1.45vw, 1.25rem);
+        font-weight: 500;
+        max-width: 860px;
+        margin: 0 auto 2.5rem auto;
+        text-shadow: 0 2px 12px rgba(0, 0, 0, 0.7), 0 1px 3px rgba(0, 0, 0, 0.85);
+    }
+
+    /* ══════════ WIDER UNIFIED SEARCH BAR ══════════ */
+    .hero-search-wrapper {
+        position: relative;
+        background: rgba(10, 26, 48, 0.65);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        border: 1px solid rgba(255, 255, 255, 0.32);
+        border-radius: 1rem;
+        padding: 0.65rem;
+        box-shadow: 0 24px 50px rgba(0, 0, 0, 0.42);
+        max-width: 1080px;
+        margin: 0 auto;
+        z-index: 20;
+    }
+
+    .hero-search-bar {
+        display: flex;
+        align-items: stretch;
+        background: #ffffff;
+        border-radius: 0.75rem;
+        overflow: visible;
+        position: relative;
+    }
+
+    .search-input-box {
+        flex: 1 1 400px;
+        position: relative;
+    }
+
+    .search-input-box input {
+        width: 100%;
+        height: 56px;
+        border: 0;
+        outline: none;
+        padding: 0 1rem 0 3rem;
+        font-size: 1rem;
+        color: var(--kq-ink);
+        background: transparent;
+        border-radius: 0.75rem 0 0 0.75rem;
+    }
+
+    .search-input-box input:focus {
+        box-shadow: inset 0 0 0 2px var(--kq-primary);
+    }
+
+    .search-input-box .search-icon {
+        position: absolute;
+        left: 1.15rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #728498;
+        pointer-events: none;
+    }
+
+    .search-select-box {
+        flex: 1 1 240px;
+        border-left: 1px solid #e3eaf0;
+        position: relative;
+    }
+
+    .search-select-box select {
+        width: 100%;
+        height: 56px;
+        border: 0;
+        outline: none;
+        padding: 0 2rem 0 1.15rem;
+        font-size: 0.95rem;
+        color: var(--kq-ink);
+        background: transparent;
+        cursor: pointer;
+    }
+
+    .search-select-box select:focus {
+        box-shadow: inset 0 0 0 2px var(--kq-primary);
+    }
+
+    .search-btn-box {
+        flex: 0 0 auto;
+    }
+
+    .hero-search-submit {
+        height: 56px;
+        padding: 0 2.5rem;
+        font-size: 1.05rem;
+        font-weight: 750;
+        letter-spacing: -0.01em;
+        background: linear-gradient(135deg, #f26522 0%, #e04e0b 100%);
+        color: #ffffff;
+        border: 0;
+        border-radius: 0 0.75rem 0.75rem 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.45rem;
+        transition: background 0.18s ease, transform 0.15s ease;
+        white-space: nowrap;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.25);
+    }
+
+    .hero-search-submit:hover {
+        background: linear-gradient(135deg, #e04e0b 0%, #c43e04 100%);
+        color: #ffffff;
+    }
+
+    /* Mobile Responsive Search Bar */
+    @media (max-width: 880px) {
+        .hero-search-bar {
+            flex-direction: column;
+        }
+        .search-input-box input {
+            border-radius: 0.75rem 0.75rem 0 0;
+        }
+        .search-select-box {
+            border-left: 0;
+            border-top: 1px solid #e3eaf0;
+        }
+        .hero-search-submit {
+            border-radius: 0 0 0.75rem 0.75rem;
+            width: 100%;
+        }
+    }
+
+    /* Autocomplete dropdown */
+    .search-autocomplete-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        z-index: 1050;
+        max-height: 280px;
+        overflow-y: auto;
+        margin-top: 6px;
+        border: 1px solid var(--kq-line);
+        border-radius: 0.75rem;
+        background: #ffffff;
+        box-shadow: 0 16px 36px rgba(18, 38, 64, 0.18);
+        display: none;
+        text-align: left;
+    }
+    .search-autocomplete-dropdown.show { display: block; }
+    .search-autocomplete-item {
+        padding: 0.7rem 1rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+        font-size: 0.92rem;
+        color: var(--kq-ink);
+        border-bottom: 1px solid rgba(0,0,0,0.04);
+        transition: background 0.15s ease;
+    }
+    .search-autocomplete-item:last-child { border-bottom: 0; }
+    .search-autocomplete-item:hover,
+    .search-autocomplete-item.active {
+        background: rgba(23, 74, 112, 0.08);
+        color: var(--kq-primary);
+    }
+
+    /* Active filter pill in catalog header */
+    .filter-active-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.35rem 0.75rem;
+        border-radius: 999px;
+        background: rgba(23, 74, 112, 0.08);
+        color: var(--kq-primary);
+        font-size: 0.82rem;
+        font-weight: 600;
+    }
+</style>
+
+<!-- ═══════════════════ FULL-WIDTH HERO BANNER (WIDER & BRIGHTER) ═══════════════════ -->
+<section class="hero-banner">
+    <div class="hero-content">
+        <!-- Replaced Title -->
+        <h1 class="hero-title">Find the right land for what comes next.</h1>
+        <p class="hero-subtitle">Kings Land Properties (Philippines) — Your trusted real estate service catering to buyers looking for residential lots, farm lots, beach lots, condos, and commercial properties.</p>
+
+        <!-- Centered Search Bar at the bottom of hero text -->
+        <div class="hero-search-wrapper">
+            <form method="GET" action="index.php" id="property-search-form">
+                <div class="hero-search-bar">
+                    <!-- 1. Text input -->
+                    <div class="search-input-box">
+                        <span class="search-icon">
+                            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                        </span>
+                        <input id="property-search" type="search" name="search" maxlength="120" placeholder="Search by location, keyword, or municipality" value="<?= htmlspecialchars($search, ENT_QUOTES, 'UTF-8') ?>" autocomplete="off">
+                        <div id="search-autocomplete" class="search-autocomplete-dropdown"></div>
+                    </div>
+
+                    <!-- 2. City or municipality dropdown -->
+                    <div class="search-select-box">
+                        <select id="location-filter" name="location_filter" aria-label="City or municipality">
+                            <option value="0">All municipalities</option>
+                            <?php foreach ($locations as $location): ?>
+                                <option value="<?= (int) $location['locationID'] ?>" data-municipality="<?= htmlspecialchars($location['municipalityName'], ENT_QUOTES, 'UTF-8') ?>" <?= $locationFilter === (int) $location['locationID'] ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($location['municipalityName'] . ', ' . $location['provinceName'], ENT_QUOTES, 'UTF-8') ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <!-- 3. Property type dropdown -->
+                    <div class="search-select-box">
+                        <select id="property-category" name="category" aria-label="Property type">
+                            <option value="">All property types</option>
+                            <?php foreach ($allowedCategories as $propertyCategory): ?>
+                                <option value="<?= $propertyCategory ?>" <?= $category === $propertyCategory ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($categoryLabels[$propertyCategory] ?? $propertyCategory, ENT_QUOTES, 'UTF-8') ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <!-- 4. Vibrant Search button -->
+                    <div class="search-btn-box">
+                        <button class="hero-search-submit" type="submit">
+                            Search &rsaquo;
+                        </button>
+                    </div>
+                </div>
+            </form>
         </div>
+
+        <?php if ($isFiltered): ?>
+            <div class="mt-3">
+                <a href="index.php" class="text-white text-decoration-underline small fw-bold" style="text-shadow: 0 1px 4px rgba(0,0,0,.85);">
+                    Reset search filters &times;
+                </a>
+            </div>
+        <?php endif; ?>
     </div>
 </section>
 
+<!-- Content container for stats and property collection -->
+<div class="container py-4 py-lg-5">
+
+<!-- ═══════════════════ PROPERTY HIGHLIGHTS (STAT CARDS) ═══════════════════ -->
 <section class="row g-3 mb-4" aria-label="Property highlights">
     <div class="col-md-4">
         <article class="kq-stat-card">
             <div class="kq-stat-label">Verified listings</div>
             <div class="kq-stat-value"><?= number_format((int) $result->num_rows) ?></div>
-            <div class="kq-stat-sub">Curated land opportunities across the region.</div>
+            <div class="kq-stat-sub">Curated properties &amp; land opportunities across the Philippines.</div>
         </article>
     </div>
     <div class="col-md-4">
         <article class="kq-stat-card">
-            <div class="kq-stat-label">Coastal access</div>
-            <div class="kq-stat-value">4 key towns</div>
-            <div class="kq-stat-sub">Calatagan, Lian, Nasugbu, and Tuy for prime location focus.</div>
+            <div class="kq-stat-label">Property portfolio</div>
+            <div class="kq-stat-value">5 categories</div>
+            <div class="kq-stat-sub">Residential lots, farm lots, beach lots, condos &amp; commercial.</div>
         </article>
     </div>
     <div class="col-md-4">
@@ -109,48 +383,25 @@ if (normalized_user_role($_SESSION['user'] ?? null) === 'Client') {
     </div>
 </section>
 
-<section class="card filter-card p-3 p-lg-4 mb-4" aria-label="Search properties">
-    <form method="GET" action="index.php" class="row g-3 align-items-end">
-        <div class="col-lg-5">
-            <label class="form-label fw-semibold" for="property-search">Search listings</label>
-            <input id="property-search" type="search" name="search" class="form-control" maxlength="120" placeholder="Search by property, details, or municipality" value="<?= htmlspecialchars($search, ENT_QUOTES, 'UTF-8') ?>">
-        </div>
-        <div class="col-sm-6 col-lg-3">
-            <label class="form-label fw-semibold" for="location-filter">City or municipality</label>
-            <select id="location-filter" name="location_filter" class="form-select">
-                <option value="0">All locations</option>
-                <?php foreach ($locations as $location): ?>
-                    <option value="<?= (int) $location['locationID'] ?>" <?= $locationFilter === (int) $location['locationID'] ? 'selected' : '' ?>>
-                        <?= htmlspecialchars($location['municipalityName'] . ', ' . $location['provinceName'], ENT_QUOTES, 'UTF-8') ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-        <div class="col-sm-6 col-lg-2">
-            <label class="form-label fw-semibold" for="property-category">Property type</label>
-            <select id="property-category" name="category" class="form-select">
-                <option value="">All types</option>
-                <?php foreach ($allowedCategories as $propertyCategory): ?>
-                    <option value="<?= $propertyCategory ?>" <?= $category === $propertyCategory ? 'selected' : '' ?>><?= $propertyCategory ?></option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-        <div class="col-lg-2">
-            <button class="btn btn-primary w-100" type="submit">Search properties</button>
-        </div>
-    </form>
-</section>
-
+<!-- ═══════════════════ PROPERTY COLLECTION HEADER ═══════════════════ -->
 <div class="d-flex flex-column flex-sm-row align-items-sm-end justify-content-between gap-2 mb-3">
     <div>
         <div class="page-eyebrow">Property collection</div>
         <h2 class="page-title h3 mb-0">Explore available listings</h2>
     </div>
-    <div class="text-muted small"><?= number_format($result->num_rows) ?> listing<?= $result->num_rows === 1 ? '' : 's' ?> found</div>
+    <div class="d-flex align-items-center gap-2">
+        <?php if ($isFiltered): ?>
+            <div class="filter-active-indicator">
+                <span>Filtered results</span>
+                <a href="index.php" class="text-danger ms-1 text-decoration-none fw-bold" title="Clear all filters">&times;</a>
+            </div>
+        <?php endif; ?>
+        <div class="text-muted small"><?= number_format($result->num_rows) ?> listing<?= $result->num_rows === 1 ? '' : 's' ?> found</div>
+    </div>
 </div>
 
 <?php if (normalized_user_role($_SESSION['user'] ?? null) === 'Client'): ?>
-    <section class="card p-3 p-lg-4 mb-5">
+    <section class="card p-3 p-lg-4 mb-4">
         <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
             <div>
                 <div class="page-eyebrow">Your activity</div>
@@ -180,57 +431,17 @@ if (normalized_user_role($_SESSION['user'] ?? null) === 'Client') {
     </section>
 <?php endif; ?>
 
-<?php
-$municipalityCoordinates = [
-    'Calatagan' => [13.8319, 120.6340],
-    'Lian' => [13.9421, 120.6460],
-    'Nasugbu' => [14.0925, 120.6303],
-    'Tuy' => [13.9791, 120.7350],
-    'Balayan' => [13.9392, 120.7231],
-    'Lobo' => [13.5845, 121.1956],
-    'Mabini' => [13.7154, 120.9502],
-    'Taal' => [13.8814, 120.9327],
-    'Santo Tomas City' => [14.09, 121.147],
-    'Batangas City' => [13.7565, 121.0583],
-];
-$propertyMapData = [];
-foreach ($visibleProperties as $propertyRow) {
-    $municipality = trim((string) ($propertyRow['municipalityName'] ?? ''));
-    $coords = $municipalityCoordinates[$municipality] ?? [13.7565, 121.0583];
-    $propertyMapData[] = [
-        'id' => (int) $propertyRow['propertyID'],
-        'title' => (string) $propertyRow['title'],
-        'location' => property_location_label($propertyRow),
-        'type' => (string) $propertyRow['propertyType'],
-        'price' => (float) $propertyRow['price'],
-        'link' => 'property_detail.php?id=' . (int) $propertyRow['propertyID'],
-        'lat' => (float) $coords[0],
-        'lng' => (float) $coords[1],
-    ];
-}
-?>
-
-<section class="card p-3 p-lg-4 mb-4" aria-labelledby="property-map-title">
-    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 mb-3">
-        <div>
-            <div class="page-eyebrow">Interactive location view</div>
-            <h2 class="h4 fw-bold mb-1" id="property-map-title">Batangas property map</h2>
-        </div>
-        <div class="small text-muted">Explore properties by municipality</div>
-    </div>
-    <div id="property-map" aria-label="Map of available properties" style="height: 420px; width: 100%; border-radius: .9rem; overflow: hidden;"></div>
-</section>
-
-<div class="row g-4">
+<!-- ═══════════════════ ALL AVAILABLE LAND & PROPERTIES ═══════════════════ -->
+<div class="row g-4 mb-5">
     <?php if ($visibleProperties !== []): ?>
         <?php foreach ($visibleProperties as $row): ?>
             <?php
             $imageName = basename((string) ($row['image'] ?? ''));
             $imagePath = __DIR__ . '/assets/images/' . $imageName;
-            $hasImage = $imageName !== '' && is_file($imagePath);
+            $hasImage = $imageName !== '' && $imageName !== 'default.jpg' && is_file($imagePath);
             ?>
             <div class="col-md-6 col-xl-4">
-                <article class="card property-card h-100">
+                <article class="card property-card h-100" id="prop-card-<?= (int) $row['propertyID'] ?>">
                     <?php if ($hasImage): ?>
                         <img src="assets/images/<?= rawurlencode($imageName) ?>" class="card-img-top property-card-image" alt="<?= htmlspecialchars($row['title'], ENT_QUOTES, 'UTF-8') ?>">
                     <?php else: ?>
@@ -240,11 +451,13 @@ foreach ($visibleProperties as $propertyRow) {
                     <?php endif; ?>
                     <div class="card-body p-4 d-flex flex-column">
                         <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
-                            <span class="badge rounded-pill text-bg-light"><?= htmlspecialchars($row['propertyType'], ENT_QUOTES, 'UTF-8') ?></span>
+                            <span class="badge rounded-pill text-bg-light"><?= htmlspecialchars($categoryLabels[$row['propertyType']] ?? $row['propertyType'], ENT_QUOTES, 'UTF-8') ?></span>
                             <span class="small text-muted"><?= htmlspecialchars(property_location_label($row), ENT_QUOTES, 'UTF-8') ?></span>
                         </div>
                         <h3 class="h5 fw-bold mb-2"><?= htmlspecialchars($row['title'], ENT_QUOTES, 'UTF-8') ?></h3>
-                        <?php if (!empty($row['areaSqm'])): ?><div class="small text-muted mb-2"><?= number_format((float) $row['areaSqm'], 2) ?> sq.m. lot</div><?php endif; ?>
+                        <?php if (!empty($row['areaSqm'])): ?>
+                            <div class="small text-muted mb-2"><?= number_format((float) $row['areaSqm'], 2) ?> sq.m. lot</div>
+                        <?php endif; ?>
                         <p class="text-muted small mb-3"><?= htmlspecialchars($row['landCharacteristics'] ?: 'Contact our team for property characteristics.', ENT_QUOTES, 'UTF-8') ?></p>
                         <div class="border-top pt-3 mt-auto">
                             <div class="property-price">₱<?= number_format((float) $row['price'], 2) ?></div>
@@ -269,34 +482,70 @@ foreach ($visibleProperties as $propertyRow) {
         </div>
     <?php endif; ?>
 </div>
+</div> <!-- /container -->
 
 <script>
-const propertyMapData = <?= json_encode($propertyMapData, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
-if (document.getElementById('property-map') && typeof L !== 'undefined' && propertyMapData.length > 0) {
-    const map = L.map('property-map', { scrollWheelZoom: true }).setView([13.8, 120.7], 10);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors',
-        maxZoom: 18,
-    }).addTo(map);
+document.addEventListener('DOMContentLoaded', () => {
+    // ─── Search input autocomplete for municipalities ───
+    const searchInput = document.getElementById('property-search');
+    const autocompleteDropdown = document.getElementById('search-autocomplete');
+    const locationSelect = document.getElementById('location-filter');
+    const searchForm = document.getElementById('property-search-form');
 
-    const bounds = [];
-    propertyMapData.forEach((property) => {
-        const marker = L.marker([property.lat, property.lng]).addTo(map);
-        marker.bindPopup(`
-            <div style="min-width: 180px; max-width: 230px;">
-                <div style="font-weight: 700; margin-bottom: 4px;">${property.title}</div>
-                <div style="font-size: 12px; color: #5c6d7a; margin-bottom: 6px;">${property.location}</div>
-                <div style="font-size: 12px; color: #234c70; font-weight: 700; margin-bottom: 6px;">${property.type} · ₱${Number(property.price).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                <a href="${property.link}" style="display: inline-block; margin-top: 4px; font-weight: 600; color: #174a70; text-decoration: none;">View property</a>
-            </div>
-        `);
-        bounds.push([property.lat, property.lng]);
-    });
-
-    if (bounds.length > 0) {
-        map.fitBounds(bounds, { padding: [30, 30] });
+    const municipalities = [];
+    if (locationSelect) {
+        for (const opt of locationSelect.options) {
+            if (opt.value === '0') continue;
+            municipalities.push({
+                id: opt.value,
+                name: opt.dataset.municipality || opt.textContent.split(',')[0].trim(),
+                label: opt.textContent.trim(),
+            });
+        }
     }
-}
+
+    if (searchInput && autocompleteDropdown) {
+        searchInput.addEventListener('input', () => {
+            const val = searchInput.value.trim().toLowerCase();
+            if (val.length === 0) {
+                autocompleteDropdown.classList.remove('show');
+                return;
+            }
+
+            const matches = municipalities.filter(m =>
+                m.name.toLowerCase().includes(val) || m.label.toLowerCase().includes(val)
+            ).slice(0, 6);
+
+            if (matches.length === 0) {
+                autocompleteDropdown.classList.remove('show');
+                return;
+            }
+
+            autocompleteDropdown.innerHTML = matches.map(m => `
+                <div class="search-autocomplete-item" data-id="${m.id}" data-name="${m.name}">
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                    <span>${m.label}</span>
+                </div>
+            `).join('');
+            autocompleteDropdown.classList.add('show');
+
+            autocompleteDropdown.querySelectorAll('.search-autocomplete-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    locationSelect.value = item.dataset.id;
+                    searchInput.value = item.dataset.name;
+                    autocompleteDropdown.classList.remove('show');
+                    searchForm.submit();
+                });
+            });
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!searchInput.contains(e.target) && !autocompleteDropdown.contains(e.target)) {
+                autocompleteDropdown.classList.remove('show');
+            }
+        });
+    }
+});
 </script>
 
 <?php include 'includes/footer.php'; ?>
