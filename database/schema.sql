@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS properties (
     pricePerSqm DECIMAL(12,2) NOT NULL DEFAULT 0.00,
     location VARCHAR(200) NOT NULL,
     locationID INT UNSIGNED DEFAULT NULL,
+    latitude DECIMAL(10, 7) DEFAULT NULL,
+    longitude DECIMAL(10, 7) DEFAULT NULL,
     barangay VARCHAR(120) DEFAULT NULL,
     areaSqm DECIMAL(12,2) DEFAULT NULL,
     propertyType VARCHAR(50) NOT NULL,

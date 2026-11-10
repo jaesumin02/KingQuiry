@@ -5,7 +5,11 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/auth.php';
 
 apply_secure_headers();
-$currentRole = normalized_user_role($_SESSION['user'] ?? null);
+$currentUser = $_SESSION['user'] ?? null;
+$currentRole = normalized_user_role($currentUser);
+$displayName = is_array($currentUser) && !empty($currentUser['fullname'])
+    ? (string) $currentUser['fullname']
+    : (is_array($currentUser) && !empty($currentUser['email']) ? explode('@', (string) $currentUser['email'])[0] : 'My Account');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -16,6 +20,7 @@ $currentRole = normalized_user_role($_SESSION['user'] ?? null);
     <title>KingQuiry | Land & Property</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <link rel="stylesheet" href="assets/css/style.css">
     <style>
         :root {
@@ -278,17 +283,30 @@ $currentRole = normalized_user_role($_SESSION['user'] ?? null);
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
         <div class="container">
             <a class="navbar-brand fw-bold" href="index.php">King<span>Quiry</span></a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
+            <div class="d-flex align-items-center gap-2">
+                <?php if ($currentRole === null || $currentRole === 'Client'): ?>
+                    <button type="button" class="btn btn-warning btn-sm fw-bold text-dark d-lg-none d-inline-flex align-items-center gap-1 kq-contact-btn-mobile" data-bs-toggle="modal" data-bs-target="#contactUsModal" title="Contact Kings Land Properties">
+                        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                        <span>Contact Us</span>
+                    </button>
+                <?php endif; ?>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+            </div>
             <div class="collapse navbar-collapse justify-content-end" id="navbarNav">
                 <ul class="navbar-nav">
                     <li class="nav-item"><a class="nav-link" href="index.php">Property Catalog</a></li>
-                    <li class="nav-item"><a class="nav-link" href="property_map.php">Map Explorer</a></li>
                     <?php if($currentRole !== null): ?>
                         <?php if($currentRole === 'Client'): ?>
                             <li class="nav-item"><a class="nav-link" href="client_dashboard.php">Client Dashboard</a></li>
                             <li class="nav-item"><a class="nav-link" href="client_dashboard.php#transaction-tracking">My Tracking</a></li>
+                            <li class="nav-item ms-lg-2">
+                                <button type="button" class="btn btn-warning fw-bold text-dark px-3 d-inline-flex align-items-center gap-2 kq-contact-btn" data-bs-toggle="modal" data-bs-target="#contactUsModal">
+                                    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                                    <span>Contact Us</span>
+                                </button>
+                            </li>
                         <?php elseif($currentRole === 'Sales Agent'): ?>
                             <li class="nav-item"><a class="nav-link text-info fw-bold" href="agent_dashboard.php">Agent Portal</a></li>
                             <li class="nav-item"><a class="nav-link" href="transaction_tracking.php">Transaction Tracking</a></li>
@@ -305,10 +323,48 @@ $currentRole = normalized_user_role($_SESSION['user'] ?? null);
                                 </ul>
                             </li>
                         <?php endif; ?>
-                        <li class="nav-item"><a class="nav-link btn btn-danger text-white ms-2 px-3" href="logout.php">Logout</a></li>
+                        <!-- Account Management Dropdown (Logged In) -->
+                        <li class="nav-item dropdown ms-lg-2">
+                            <a class="nav-link dropdown-toggle text-white fw-bold d-inline-flex align-items-center gap-2 kq-user-nav-btn" href="#" id="userAccountDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <span class="kq-user-avatar-circle" aria-hidden="true">
+                                    <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
+                                </span>
+                                <span class="kq-user-display-name text-truncate" style="max-width: 170px;"><?= htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8') ?></span>
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3 mt-2 py-2" aria-labelledby="userAccountDropdown" style="min-width: 220px;">
+                                <li class="px-3 py-2 border-bottom mb-1 bg-light rounded-top">
+                                    <div class="fw-bold small text-dark text-truncate"><?= htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8') ?></div>
+                                    <?php if (!empty($currentUser['email'])): ?>
+                                        <div class="text-muted small text-truncate" style="font-size: 0.78rem;"><?= htmlspecialchars($currentUser['email'], ENT_QUOTES, 'UTF-8') ?></div>
+                                    <?php endif; ?>
+                                    <?php if ($currentRole === 'Admin' || $currentRole === 'Sales Agent'): ?>
+                                        <span class="badge bg-secondary-subtle text-secondary border mt-1" style="font-size: 0.68rem;"><?= htmlspecialchars($currentRole, ENT_QUOTES, 'UTF-8') ?></span>
+                                    <?php endif; ?>
+                                </li>
+                                <li>
+                                    <a class="dropdown-item d-flex align-items-center gap-2 py-2" href="manage_account.php" data-bs-toggle="modal" data-bs-target="#manageAccountModal">
+                                        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                                        <span>Manage Account</span>
+                                    </a>
+                                </li>
+                                <li><hr class="dropdown-divider my-1"></li>
+                                <li>
+                                    <button type="button" class="dropdown-item d-flex align-items-center gap-2 py-2 text-danger fw-semibold" data-bs-toggle="modal" data-bs-target="#logoutConfirmModal">
+                                        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                                        <span>Log Out</span>
+                                    </button>
+                                </li>
+                            </ul>
+                        </li>
                     <?php else: ?>
                         <li class="nav-item"><a class="nav-link" href="client_login.php">Client Sign in</a></li>
                         <li class="nav-item"><a class="nav-link btn btn-primary text-white ms-2 px-3" href="register.php">Register</a></li>
+                        <li class="nav-item ms-lg-2">
+                            <button type="button" class="btn btn-warning fw-bold text-dark px-3 d-inline-flex align-items-center gap-2 kq-contact-btn" data-bs-toggle="modal" data-bs-target="#contactUsModal">
+                                <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                                <span>Contact Us</span>
+                            </button>
+                        </li>
                     <?php endif; ?>
                 </ul>
             </div>

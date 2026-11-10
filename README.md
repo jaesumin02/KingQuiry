@@ -42,6 +42,8 @@ update the settings in `config/db.php` or set the documented
 ### Public catalog
 
 - Browse property listings and filter by keyword, category, or location.
+- Sort properties by price (ascending or descending), alphabetical title (A to Z or Z to A), or newest listings.
+- Configurable per-page viewing limits (10 properties by default, 6, 15, 24, or all) with responsive numbered pagination and next/previous page navigation.
 - Open a property's details, price, price per square meter, land characteristics,
   and description.
 - See optional property images from `assets/images/`.
@@ -61,6 +63,10 @@ update the settings in `config/db.php` or set the documented
   administrator, sales agent, or client.
 - A signed-in user who opens the login page is redirected to their role-based
   dashboard. Legacy `Agent` role records are treated as `Sales Agent`.
+- Account management dropdown in the navbar displays the signed-in user's name,
+  quick profile summary, a "Manage Account" modal/page for editing passwords
+  with current password verification, and a red "Log Out" button with a
+  confirmation pop-up.
 - Logout clears and destroys the session.
 - Login and pages that use the shared header send no-cache headers. If the
   browser restores the login page from its back-forward cache, the page reloads

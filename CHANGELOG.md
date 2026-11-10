@@ -3,6 +3,65 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-10 — Interactive property pin map picker, single-property detail map, catalog sorting, and account management
+
+- Added an interactive Leaflet map picker feature when adding/publishing properties in both `admin_dashboard.php` and `agent_dashboard.php`:
+  - Agents and Admins can click anywhere on the map or drag the pin marker to pin the exact coordinates (`latitude` and `longitude`) of the land.
+  - Automatically pans and centers the map when a municipality is chosen, with an option to recenter.
+  - Automatically migrates existing and fresh database schemas with `latitude` and `longitude` fields in the `properties` table.
+- Enhanced the single-property detail map on `property_detail.php`:
+  - Directly displays the exact coordinates pinned by the agent with an auto-opened branded pin popup.
+  - Falls back smoothly to municipality center coordinates for legacy listings without custom coordinates.
+- Retired the standalone Map Explorer page (`property_map.php`) and removed its navigation link from `includes/header.php`. Direct requests to `property_map.php` cleanly redirect to `index.php`.
+- Integrated a dedicated, single-property pinned map into the property information view (`property_detail.php`):
+  - Positioned prominently on the right side alongside the property details and above the request actions.
+  - Displays exclusively the single pinned location of the selected property, with custom KingQuiry pin styling and auto-opening popup details (title, category badge, location, and price).
+- Built a property sorting feature on the property catalog (`index.php`):
+  - Descending price (`Price: High to Low`), ascending price (`Price: Low to High`),
+    A to Z alphabetical title sorting (`Title: A to Z`), Z to A title sorting (`Title: Z to A`),
+    and default `Newest First`.
+  - Added dedicated catalog toolbar above the listing grid with quick sort selector and
+    showing range display (`Showing X–Y of Z properties`).
+- Added customizable properties-per-page selector with options for 10 properties (default),
+  6 properties, 15 properties, 24 properties, or Show all.
+- Built responsive numbered pagination below the property grid with Previous and Next controls
+  that appears whenever matching properties exceed the chosen per-page limit:
+  - Supports smart windowed ellipses for multi-page listings.
+  - Retains all active search keywords, category filters, location filters, and sort options across page transitions.
+  - Updates hero search bar with hidden inputs to maintain sort and page size preferences on new queries.
+  - Synchronized verified listing stat counters to reflect the full matching database count.
+- Added custom toolbar and pagination styling in `assets/css/style.css`.
+- Removed the 3 highlight stat cards ("Verified listings", "Property portfolio", and "Client process") from `index.php` across all roles to streamline the catalog presentation.
+- Added an account management dropdown to the top-right navbar in `includes/header.php`:
+  once signed in, the user's name is displayed in place of the generic logout button.
+- Scoped the display of the user role in account management (dropdown header, modal,
+  and manage account page) to Admin and Sales Agent accounts only, hiding it on client accounts.
+- Built an interactive "Manage Account" modal in `includes/footer.php` and dedicated
+  page in `manage_account.php` allowing users to edit and update their password with
+  validation (current password verification, 8-character minimum, and confirmation check).
+- Added AJAX backend endpoint `change_password.php` with CSRF protection, secure
+  password hashing, and instant modal feedback.
+- Replaced the direct logout link with a red "Log Out" item in the user dropdown that
+  triggers a confirmation pop-up modal (`#logoutConfirmModal`) prompting "Are you sure you
+  want to log out?" with Cancel and Confirm actions.
+- Added a prominent gold "Contact Us" button to the top-right navbar navigation
+  in `includes/header.php`, visible only on the guest and client sides and
+  hidden on the manager/staff side (`Admin` and `Sales Agent`).
+- Added mobile Contact action beside the hamburger menu toggle, scoped to guest
+  and client roles.
+- Removed floating hero contact chip from `index.php` to keep the edge-to-edge
+  hero clean and unobstructed.
+- Added a responsive Contact Us modal in `includes/footer.php` (client/guest only)
+  featuring:
+  - Direct link and card for the official Facebook page
+    [Kings Land Properties | Nasugbu | Facebook](https://www.facebook.com/p/Kings-Land-Properties-61568411772451/).
+  - Contact number display (`+63 917 123 4567` / `0917 123 4567`) with one-tap
+    calling (`tel:`) and a one-click copy button with clipboard feedback.
+  - Nasugbu, Batangas office information and property service overview.
+- Added clipboard copy helper and modal password AJAX submission in `assets/js/app.js`.
+- Added custom styling in `assets/css/style.css` for user dropdown, avatar badge,
+  contact button, and mobile action.
+
 ## 2026-11-09 — Property map explorer, homepage search redesign, and 5-category portfolio
 
 - Interactive property map explorer at `property_map.php` backed by the

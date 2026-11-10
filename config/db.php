@@ -96,12 +96,32 @@ function ensure_required_database_tables(mysqli $connection, string $databaseNam
             return;
         }
     }
+
+    ensure_property_coordinates_columns($connection);
+}
+
+function ensure_property_coordinates_columns(mysqli $connection): void
+{
+    static $ensured = false;
+    if ($ensured) {
+        return;
+    }
+    try {
+        $check = $connection->query("SHOW COLUMNS FROM `properties` LIKE 'latitude'");
+        if ($check !== false && $check->num_rows === 0) {
+            $connection->query("ALTER TABLE `properties` ADD COLUMN `latitude` DECIMAL(10, 7) DEFAULT NULL AFTER `locationID`, ADD COLUMN `longitude` DECIMAL(10, 7) DEFAULT NULL AFTER `latitude`");
+        }
+        $ensured = true;
+    } catch (Throwable $exception) {
+        // Table may not exist yet or connection is resetting
+    }
 }
 
 try {
     $conn = new mysqli($host, $username, $password, $dbname);
     $conn->set_charset('utf8mb4');
     ensure_required_database_tables($conn, $dbname);
+    ensure_property_coordinates_columns($conn);
 } catch (mysqli_sql_exception $exception) {
     $message = strtolower($exception->getMessage());
     $missingDatabase = str_contains($message, 'unknown database') || (str_contains($message, 'database') && str_contains($message, 'does not exist'));

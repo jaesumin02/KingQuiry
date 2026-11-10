@@ -38,6 +38,23 @@ $categoryLabels = [
     'Commercial'  => 'Commercial Property',
 ];
 
+$propertyMunicipality = (string) ($property['municipalityName'] ?? '');
+if ($propertyMunicipality === '' && !empty($property['location'])) {
+    $batangasMunicipalities = [
+        'Agoncillo', 'Alitagtag', 'Balayan', 'Balete', 'Batangas City', 'Bauan', 'Calaca City',
+        'Calatagan', 'Cuenca', 'Ibaan', 'Laurel', 'Lemery', 'Lian', 'Lipa City', 'Lobo',
+        'Mabini', 'Malvar', 'Mataasnakahoy', 'Nasugbu', 'Padre Garcia', 'Rosario', 'San Jose',
+        'San Juan', 'San Luis', 'San Nicolas', 'San Pascual', 'Santa Teresita', 'Santo Tomas City',
+        'Taal', 'Talisay', 'Tanauan City', 'Taysan', 'Tingloy', 'Tuy'
+    ];
+    foreach ($batangasMunicipalities as $mName) {
+        if (stripos((string) $property['location'], $mName) !== false) {
+            $propertyMunicipality = $mName;
+            break;
+        }
+    }
+}
+
 $successMsg = "";
 $errorMsg = "";
 
@@ -194,16 +211,34 @@ include 'includes/header.php';
 
             <h3 class="h5 fw-bold">Description</h3>
             <p class="text-muted mb-0"><?= nl2br(htmlspecialchars($property['description'], ENT_QUOTES, 'UTF-8')) ?></p>
-
-            <div class="mt-4">
-                <div class="page-eyebrow mb-2">Location overview</div>
-                <div id="property-detail-map" aria-label="Map preview for this property" style="height: 260px; width: 100%; border-radius: .9rem; overflow: hidden;"></div>
-            </div>
         </div>
     </div>
 
-    <!-- Booking & Inquiry Action Forms for Clients -->
+    <!-- Booking & Inquiry Action Forms for Clients and Pinned Property Map -->
     <div class="col-md-5">
+        <!-- Pinned Property Location Map Card (Right side of property information) -->
+        <div class="card p-3 p-lg-4 mb-4 shadow-sm" id="property-pinned-map-card">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+                <div class="page-eyebrow mb-0">Property location</div>
+                <span class="badge rounded-pill text-bg-light border text-muted small">
+                    <?= htmlspecialchars($categoryLabels[$property['propertyType']] ?? $property['propertyType'], ENT_QUOTES, 'UTF-8') ?>
+                </span>
+            </div>
+            <h3 class="h5 fw-bold mb-1">Pinned property map</h3>
+            <div class="text-muted small mb-3">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="me-1 text-primary align-text-bottom"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                <strong><?= htmlspecialchars(property_location_label($property), ENT_QUOTES, 'UTF-8') ?><?php if (!empty($property['barangay'])): ?>, <?= htmlspecialchars($property['barangay'], ENT_QUOTES, 'UTF-8') ?><?php endif; ?></strong>
+            </div>
+
+            <!-- Single pinned property map container -->
+            <div id="property-detail-map" aria-label="Map location for <?= htmlspecialchars($property['title'], ENT_QUOTES, 'UTF-8') ?>" style="height: 300px; width: 100%; border-radius: .85rem; overflow: hidden; border: 1px solid var(--kq-line);"></div>
+
+            <div class="small text-muted mt-2 d-flex align-items-center justify-content-center gap-2">
+                <span class="d-inline-block rounded-circle" style="width: 8px; height: 8px; background-color: var(--kq-primary, #174a70);"></span>
+                <span>Pinned: <strong><?= htmlspecialchars($property['title'], ENT_QUOTES, 'UTF-8') ?></strong></span>
+            </div>
+        </div>
+
         <div class="card p-4 mb-4" id="appointment">
             <div class="page-eyebrow mb-2">Visit the property</div>
             <h3 class="h5 fw-bold mb-3">Request a viewing</h3>
@@ -284,33 +319,74 @@ const propertyCoordinates = {
     'Tingloy': [13.6460, 120.8644],
     'Tuy': [13.9791, 120.7350]
 };
-const propertyLocationName = <?= json_encode((string) ($property['municipalityName'] ?? ''), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
-const propertyLocationCoords = propertyCoordinates[propertyLocationName] || [13.7565, 121.0583];
+const propertyLocationName = <?= json_encode($propertyMunicipality !== '' ? $propertyMunicipality : (string) ($property['municipalityName'] ?? ''), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
+const savedLat = <?= json_encode(isset($property['latitude']) && $property['latitude'] !== null && $property['latitude'] !== '' ? (float) $property['latitude'] : null) ?>;
+const savedLng = <?= json_encode(isset($property['longitude']) && $property['longitude'] !== null && $property['longitude'] !== '' ? (float) $property['longitude'] : null) ?>;
+const hasExactPin = (savedLat !== null && savedLng !== null);
+const propertyLocationCoords = hasExactPin ? [savedLat, savedLng] : (propertyCoordinates[propertyLocationName] || [13.7565, 121.0583]);
 const propertyDetailTitle = <?= json_encode((string) $property['title'], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
 const propertyDetailLocation = <?= json_encode(property_location_label($property), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
-if (document.getElementById('property-detail-map') && typeof L !== 'undefined') {
-    const map = L.map('property-detail-map', { scrollWheelZoom: true }).setView(propertyLocationCoords, 12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors',
-        maxZoom: 18,
-    }).addTo(map);
-    const detailMarker = L.marker(propertyLocationCoords).addTo(map);
-    detailMarker.bindPopup(`<div style="min-width: 180px; max-width: 220px;"><div style="font-weight: 700; margin-bottom: 4px;">${propertyDetailTitle}</div><div style="font-size: 12px; color: #5c6d7a;">${propertyDetailLocation}</div></div>`);
-    detailMarker.openPopup();
+const propertyDetailCategory = <?= json_encode((string) ($categoryLabels[$property['propertyType']] ?? $property['propertyType']), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
+const propertyDetailPrice = <?= json_encode('₱' . number_format((float) $property['price'], 2), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
 
-    let detailHoverTimer = null;
-    detailMarker.on('mouseover', () => {
-        detailHoverTimer = setTimeout(() => {
-            detailMarker.openPopup();
-        }, 500);
-    });
-    detailMarker.on('mouseout', () => {
-        if (detailHoverTimer) {
-            clearTimeout(detailHoverTimer);
-            detailHoverTimer = null;
-        }
-    });
-}
+document.addEventListener('DOMContentLoaded', () => {
+    if (document.getElementById('property-detail-map') && typeof L !== 'undefined') {
+        const map = L.map('property-detail-map', {
+            scrollWheelZoom: false,
+            zoomControl: true
+        }).setView(propertyLocationCoords, hasExactPin ? 15 : 13);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors',
+            maxZoom: 18,
+        }).addTo(map);
+
+        // Custom branded pin marker for the chosen property
+        const singlePropertyPin = L.divIcon({
+            className: 'kq-pinned-single-marker',
+            html: `<div style="
+                width: 34px; height: 34px;
+                background: #174a70;
+                border: 3px solid #d8ad63;
+                border-radius: 50% 50% 50% 0;
+                transform: rotate(-45deg);
+                box-shadow: 0 4px 12px rgba(18, 40, 66, 0.35);
+                display: grid; place-items: center;
+            "><div style="
+                transform: rotate(45deg);
+                color: #ffffff;
+                font-size: 13px;
+                font-weight: 800;
+            ">●</div></div>`,
+            iconSize: [34, 34],
+            iconAnchor: [17, 34],
+            popupAnchor: [0, -34],
+        });
+
+        const detailMarker = L.marker(propertyLocationCoords, { icon: singlePropertyPin }).addTo(map);
+        detailMarker.bindPopup(`
+            <div style="min-width: 190px; max-width: 240px; padding: 2px;">
+                <span style="display:inline-block; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; background:#f1f5f9; color:#174a70; padding:2px 8px; border-radius:12px; margin-bottom:5px;">
+                    ${propertyDetailCategory}
+                </span>
+                <div style="font-weight: 700; font-size: 14px; color: #18304c; margin-bottom: 3px; line-height: 1.3;">
+                    ${propertyDetailTitle}
+                </div>
+                <div style="font-size: 12px; color: #687789; margin-bottom: 5px;">
+                    ${propertyDetailLocation}
+                </div>
+                <div style="font-weight: 800; color: #174a70; font-size: 13px;">
+                    ${propertyDetailPrice}
+                </div>
+            </div>
+        `);
+        detailMarker.openPopup();
+
+        setTimeout(() => {
+            map.invalidateSize();
+        }, 250);
+    }
+});
 </script>
 
 <?php include 'includes/footer.php'; ?>
