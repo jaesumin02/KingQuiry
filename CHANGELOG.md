@@ -3,6 +3,38 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-17 — Multi-agent viewing dispatch, notification modal, auth redirection, and admin layout fixes
+
+- Multi-agent viewing request dispatch and claiming: when a client requests a
+  viewing, all active agents receive notifications. The first agent to confirm
+  the request claims the viewing (`agentID` column on `appointments`). Other
+  agents are informed that the viewing was taken by that agent, and can dismiss
+  the item with an 'X' close button backed by `agent_dismissed_appointments` and
+  smooth AJAX removal.
+- Notification pop-up modal: removed the static "Property updates and
+  notification" card from `client_dashboard.php` and replaced the navbar dropdown
+  link "View in client dashboard" with "View all". Clicking "View all" opens a
+  centralized `#allNotificationsModal` pop-up window in `includes/footer.php` with
+  tabbed filtering, full history, and instant mark-as-read.
+- Authentication redirection and navigation cleanup: renamed the header navigation
+  link from "Client Sign in" to "Sign in" in `includes/header.php`. Updated client
+  authentication flow across `client_login.php`, `login.php`, `admin_login.php`,
+  and `agent_login.php` to direct clients directly to the main property catalog
+  (`index.php`) upon signing in instead of the dashboard.
+- Admin dashboard layout and header de-duplication at `admin_dashboard.php`:
+  removed the redundant second header and hero banner, keeping the unified top
+  control room header from `includes/admin_page_header.php`. Removed the nested
+  inner `.kq-admin-shell` wrapper and local `1280px` constraint, allowing all
+  cards, analytics charts, and tables to expand to the full 1440px control room
+  container. Placed a quick `🏘️ Property list` jump button into the Live business
+  analytics header toolbar.
+- Interactive location view hover preview: updated property map pins to display
+  listing details in a hoverable pop-up card with a smooth 0.5-second hover
+  delay instead of requiring pin clicks.
+- Database schema updates: added `agentID` foreign key to `appointments` and
+  created `agent_dismissed_appointments` table in `database/schema.sql` with
+  idempotent runtime setup in `includes/appointment_management.php`.
+
 ## 2026-11-16 — Fix Undefined `kq_admin_pages()` Fatal Error After Merge
 
 - **Restored Missing Include Dependencies in Header** ([includes/header.php](file:///c:/xampp/htdocs/kingquiry/includes/header.php)):

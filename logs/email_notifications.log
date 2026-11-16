@@ -233,3 +233,11 @@ Verified sale price: ₱2,000,000.00
 Agent update: Payment has now been final
 
 Thank you for choosing 4 Kings Real Estate! You may now review your transaction summary and leave a 1-5 star rating for your sales agent on your client dashboard.
+[2026-11-16T18:14:01+01:00] To: example@gmail.com | Subject: Viewing request received | Message: Thank you for booking a site visit for 'Beach lang to'. Your viewing request has been received and is now being reviewed by our sales team. Please monitor your dashboard for updates.
+[2026-11-16T18:14:01+01:00] To: admin@gmail.com | Subject: New viewing requested | Message: Client Jane Doe requested a site visit for 'Beach lang to' on Nov 20, 2026 at 9:00 AM.
+[2026-11-16T18:14:01+01:00] To: agent1@gmail.com | Subject: New viewing requested | Message: Client Jane Doe requested a site visit for 'Beach lang to' on Nov 20, 2026 at 9:00 AM.
+[2026-11-16T18:14:40+01:00] To: example@gmail.com | Subject: Property viewing request cancelled | Message: Hello Jane Doe,
+
+Your viewing request for 'Beach lang to' on 2026-11-20 at 09:00:00 has been cancelled.
+
+Please check your dashboard for the latest updates.

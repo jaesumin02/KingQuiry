@@ -10,7 +10,7 @@ apply_secure_headers();
 
 if (isset($_SESSION['user'])) {
     $role = normalized_user_role($_SESSION['user']);
-    $destination = $role === 'Admin' ? 'admin_dashboard.php' : ($role === 'Sales Agent' ? 'agent_dashboard.php' : 'client_dashboard.php');
+    $destination = $role === 'Admin' ? 'admin_dashboard.php' : ($role === 'Sales Agent' ? 'agent_dashboard.php' : 'index.php');
     header('Location: ' . $destination);
     exit();
 }
@@ -25,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $password = $_POST['password'] ?? '';
 
     if ($error === '' && $identifier !== '' && is_string($password) && $password !== '') {
-        $stmt = $conn->prepare("SELECT userID, fullname, email, passwordHash, role FROM users WHERE email = ? OR SUBSTRING_INDEX(email, '@', 1) = ? LIMIT 2");
+        $stmt = $conn->prepare("SELECT * FROM users WHERE email = ? OR SUBSTRING_INDEX(email, '@', 1) = ? LIMIT 2");
         $stmt->bind_param('ss', $identifier, $identifier);
         $stmt->execute();
         $result = $stmt->get_result();
@@ -33,11 +33,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         if ($result->num_rows === 1) {
             $user = $result->fetch_assoc();
             $normalizedRole = normalized_user_role($user);
-            if (password_verify($password, $user['passwordHash']) && $normalizedRole === 'Sales Agent') {
-                session_regenerate_id(true);
-                $_SESSION['user'] = $user;
-                header('Location: agent_dashboard.php');
-                exit();
+            if (password_verify($password, $user['passwordHash'])) {
+                if (($user['accountStatus'] ?? 'Active') === 'Inactive') {
+                    $error = 'This account is inactive. Please contact the administrator.';
+                } else {
+                    session_regenerate_id(true);
+                    $_SESSION['user'] = $user;
+                    $destination = $normalizedRole === 'Admin'
+                        ? 'admin_dashboard.php'
+                        : ($normalizedRole === 'Sales Agent' ? 'agent_dashboard.php' : 'index.php');
+                    header('Location: ' . $destination);
+                    exit();
+                }
             }
         }
     }

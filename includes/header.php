@@ -8,13 +8,6 @@ require_once __DIR__ . '/notifications.php';
 
 apply_secure_headers();
 $currentUser = $_SESSION['user'] ?? null;
-$currentRole = normalized_user_role($currentUser);
-$currentPageName = basename($_SERVER['PHP_SELF'] ?? '');
-$adminPage = ($currentRole === 'Admin' && function_exists('kq_admin_pages')) ? (kq_admin_pages()[$currentPageName] ?? null) : null;
-$isAdminControlRoom = $adminPage !== null;
-$displayName = is_array($currentUser) && !empty($currentUser['fullname'])
-    ? (string) $currentUser['fullname']
-    : (is_array($currentUser) && !empty($currentUser['email']) ? explode('@', (string) $currentUser['email'])[0] : 'My Account');
 
 $unreadNotificationCount = 0;
 $userNotifications = [];
@@ -22,12 +15,40 @@ if (!empty($currentUser['userID'])) {
     if (!isset($conn) || !($conn instanceof mysqli)) {
         @include_once __DIR__ . '/../config/db.php';
     }
-    if (isset($conn) && $conn instanceof mysqli) {
+    if (isset($conn) && $conn instanceof mysqli && !$conn->connect_error) {
         $headerUserId = (int) $currentUser['userID'];
-        $unreadNotificationCount = get_user_unread_notification_count($conn, $headerUserId);
-        $userNotifications = get_user_notifications($conn, $headerUserId, 10);
+        $syncStmt = $conn->prepare("SELECT * FROM users WHERE userID = ? LIMIT 1");
+        if ($syncStmt) {
+            $syncStmt->bind_param('i', $headerUserId);
+            $syncStmt->execute();
+            $syncRes = $syncStmt->get_result();
+            if ($syncRes && $syncRes->num_rows === 1) {
+                $freshUser = $syncRes->fetch_assoc();
+                if (($freshUser['accountStatus'] ?? 'Active') === 'Inactive') {
+                    unset($_SESSION['user']);
+                    $currentUser = null;
+                } else {
+                    $_SESSION['user'] = $freshUser;
+                    $currentUser = $freshUser;
+                }
+            }
+            $syncStmt->close();
+        }
+        if ($currentUser) {
+            $unreadNotificationCount = get_user_unread_notification_count($conn, $headerUserId);
+            $allUserNotifications = get_user_notifications($conn, $headerUserId, 60);
+            $userNotifications = array_slice($allUserNotifications, 0, 10);
+        }
     }
 }
+
+$currentRole = normalized_user_role($currentUser);
+$currentPageName = basename($_SERVER['PHP_SELF'] ?? '');
+$adminPage = ($currentRole === 'Admin' && function_exists('kq_admin_pages')) ? (kq_admin_pages()[$currentPageName] ?? null) : null;
+$isAdminControlRoom = $adminPage !== null;
+$displayName = is_array($currentUser) && !empty($currentUser['fullname'])
+    ? (string) $currentUser['fullname']
+    : (is_array($currentUser) && !empty($currentUser['email']) ? explode('@', (string) $currentUser['email'])[0] : 'My Account');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -430,13 +451,7 @@ if (!empty($currentUser['userID'])) {
                                     <?php endif; ?>
                                 </li>
                                 <li class="p-2 border-top bg-light text-center rounded-bottom">
-                                    <?php if ($currentRole === 'Client'): ?>
-                                        <a href="client_dashboard.php#notifications" class="text-decoration-none small fw-bold text-primary">View in Client Dashboard &rarr;</a>
-                                    <?php elseif ($currentRole === 'Sales Agent'): ?>
-                                        <a href="agent_dashboard.php#appointments" class="text-decoration-none small fw-bold text-info">View Viewing Requests &rarr;</a>
-                                    <?php else: ?>
-                                        <a href="admin_dashboard.php" class="text-decoration-none small fw-bold text-warning">Admin Dashboard &rarr;</a>
-                                    <?php endif; ?>
+                                    <button type="button" class="btn btn-link p-0 text-decoration-none small fw-bold text-primary" data-bs-toggle="modal" data-bs-target="#allNotificationsModal">View all &rarr;</button>
                                 </li>
                             </ul>
                         </li>
@@ -475,7 +490,7 @@ if (!empty($currentUser['userID'])) {
                             </ul>
                         </li>
                     <?php else: ?>
-                        <li class="nav-item"><a class="nav-link" href="client_login.php">Client Sign in</a></li>
+                        <li class="nav-item"><a class="nav-link" href="client_login.php">Sign in</a></li>
                         <li class="nav-item"><a class="nav-link btn btn-primary text-white ms-2 px-3" href="register.php">Register</a></li>
                         <li class="nav-item ms-lg-2">
                             <button type="button" class="btn btn-warning fw-bold text-dark px-3 d-inline-flex align-items-center gap-2 kq-contact-btn" data-bs-toggle="modal" data-bs-target="#contactUsModal">

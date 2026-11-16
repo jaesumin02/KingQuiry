@@ -431,41 +431,6 @@ $clientOverview = $conn->query(
         background: radial-gradient(circle at top, rgba(13, 37, 43, 0.85), rgba(6, 15, 19, 1) 52%);
     }
 
-    .kq-admin-shell {
-        max-width: 1280px;
-        margin: 0 auto;
-        padding: 1.2rem 0 2rem;
-        color: #f7f5f0;
-    }
-
-    .kq-dashboard-hero {
-        display: flex;
-        align-items: center;
-        gap: 0.9rem;
-        padding: 1rem 1.2rem;
-        margin-bottom: 1.5rem;
-        border: 1px solid rgba(212, 175, 110, 0.28);
-        border-radius: 1.1rem;
-        background: linear-gradient(135deg, rgba(14, 29, 39, 0.92), rgba(25, 47, 58, 0.82));
-        box-shadow: 0 14px 32px rgba(0, 0, 0, 0.14);
-    }
-
-    .kq-dashboard-brand {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-width: 86px;
-        padding: 0.5rem 0.8rem;
-        border: 1px solid rgba(212, 175, 110, 0.4);
-        border-radius: 999px;
-        background: rgba(212, 175, 110, 0.12);
-        color: #f2d79f;
-        font-size: 0.7rem;
-        font-weight: 800;
-        letter-spacing: 0.2em;
-        text-transform: uppercase;
-    }
-
     .page-eyebrow {
         letter-spacing: .15em;
         color: #d9b87d;
@@ -543,45 +508,18 @@ $clientOverview = $conn->query(
     .table-responsive, .table {
         border-radius: 1rem;
     }
-
-    @media (max-width: 767.98px) {
-        .kq-admin-shell {
-            padding-top: .75rem;
-        }
-    }
 </style>
 
-<div class="kq-admin-shell">
-    <div class="kq-dashboard-hero">
-        <span class="kq-dashboard-brand">4 KINGS</span>
-        <div>
-            <div class="page-eyebrow">KingQuiry management</div>
-            <div class="text-white fw-semibold mb-0">System admin control room</div>
-        </div>
-    </div>
-    <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-end gap-3 mb-4">
-        <div>
-            <div class="page-eyebrow">KingQuiry management</div>
-            <h1 class="page-title h2 mb-1">Admin dashboard</h1>
-            <p class="text-muted mb-0">A clear overview of listings and customer activity.</p>
-        </div>
-        <div class="d-flex flex-wrap gap-2">
-            <a href="#property-list" class="btn btn-success fw-bold text-white shadow-sm">🏘️ Property list (<?= number_format($totalProperties) ?>)</a>
-            <a href="admin_sales.php" class="btn btn-primary">Sales &amp; transactions</a>
-            <a href="admin_clients.php" class="btn btn-outline-primary">Clients</a>
-            <a href="admin_payments.php" class="btn btn-outline-primary">Payments</a>
-            <a href="transaction_tracking.php" class="btn btn-outline-primary">Transaction tracking</a>
-            <a href="admin_chat.php" class="btn btn-outline-primary">Customer inbox</a>
-        </div>
-    </div>
-
 <section class="mb-4" aria-labelledby="business-analytics-title">
-    <div class="kq-panel-header mb-3">
+    <div class="kq-panel-header mb-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
         <div>
             <div class="page-eyebrow">Live business analytics</div>
             <h2 class="h4 fw-bold mb-0" id="business-analytics-title">Sales performance</h2>
         </div>
-        <span class="kq-badge-soft">Updated live</span>
+        <div class="d-flex align-items-center gap-2">
+            <a href="#property-list" class="btn btn-sm btn-success fw-bold text-white shadow-sm">🏘️ Property list (<?= number_format($totalProperties) ?>)</a>
+            <span class="kq-badge-soft">Updated live</span>
+        </div>
     </div>
     <div class="row g-3 mb-3">
         <div class="col-sm-6 col-xl-4">
@@ -1213,8 +1151,6 @@ $clientOverview = $conn->query(
         </div>
     </div>
 <?php endif; ?>
-
-</div>
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
