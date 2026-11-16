@@ -3,12 +3,14 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/admin_layout.php';
+require_once __DIR__ . '/notifications.php';
 
 apply_secure_headers();
 $currentUser = $_SESSION['user'] ?? null;
 $currentRole = normalized_user_role($currentUser);
 $currentPageName = basename($_SERVER['PHP_SELF'] ?? '');
-$adminPage = $currentRole === 'Admin' ? (kq_admin_pages()[$currentPageName] ?? null) : null;
+$adminPage = ($currentRole === 'Admin' && function_exists('kq_admin_pages')) ? (kq_admin_pages()[$currentPageName] ?? null) : null;
 $isAdminControlRoom = $adminPage !== null;
 $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
     ? (string) $currentUser['fullname']

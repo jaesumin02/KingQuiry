@@ -566,6 +566,7 @@ $clientOverview = $conn->query(
             <p class="text-muted mb-0">A clear overview of listings and customer activity.</p>
         </div>
         <div class="d-flex flex-wrap gap-2">
+            <a href="#property-list" class="btn btn-success fw-bold text-white shadow-sm">🏘️ Property list (<?= number_format($totalProperties) ?>)</a>
             <a href="admin_sales.php" class="btn btn-primary">Sales &amp; transactions</a>
             <a href="admin_clients.php" class="btn btn-outline-primary">Clients</a>
             <a href="admin_payments.php" class="btn btn-outline-primary">Payments</a>
@@ -1195,54 +1196,23 @@ $clientOverview = $conn->query(
     </form>
 </section>
 
-<section class="card p-3 p-lg-4 mb-4">
-    <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
-        <div><div class="page-eyebrow">Current inventory</div><h2 class="h4 fw-bold mb-0">Manage properties</h2></div>
-        <span class="small text-muted"><?= number_format($properties->num_rows) ?> total listings</span>
+<?php if (isset($_GET['property_trashed'])): ?>
+    <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1090;">
+        <div class="toast show bg-white border border-danger shadow-lg" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header bg-danger text-white">
+                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" class="me-2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                <strong class="me-auto">Property in Trashbin</strong>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+            <div class="toast-body text-dark">
+                <p class="mb-2"><strong><?= htmlspecialchars($_GET['pname'] ?? 'The property', ENT_QUOTES, 'UTF-8') ?></strong> has been moved to the trashbin.</p>
+                <button type="button" class="btn btn-sm btn-danger fw-semibold" data-bs-toggle="modal" data-bs-target="#trashbinModal">
+                    🗑️ Open Trashbin
+                </button>
+            </div>
+        </div>
     </div>
-    <div class="table-responsive">
-        <table class="table table-bordered align-middle">
-            <thead><tr><th>Title</th><th>Category</th><th>Location</th><th>Asking price</th><th>Listing status</th><th>Action</th></tr></thead>
-            <tbody>
-                <?php while($row = $properties->fetch_assoc()):
-                    $rowPropertyStatus = (string) ($row['status'] ?? 'Available');
-                    $propertyStatusOptions = ['Available', 'Reserved', 'Sold'];
-                ?>
-                    <tr>
-                        <td class="fw-bold"><?= htmlspecialchars($row['title']) ?></td>
-                        <td><span class="badge rounded-pill text-bg-light"><?= htmlspecialchars($row['propertyType']) ?></span></td>
-                        <td><?= htmlspecialchars(property_location_label($row)) ?><?php if (!empty($row['barangay'])): ?><br><small class="text-muted"><?= htmlspecialchars($row['barangay']) ?></small><?php endif; ?></td>
-                        <td>₱<?= number_format((float) $row['price'], 2) ?><br><small class="text-muted"><?= $row['areaSqm'] !== null ? number_format((float) $row['areaSqm'], 2) . ' sq.m. · ₱' . number_format((float) $row['pricePerSqm'], 2) . '/sq.m.' : 'Legacy area not recorded' ?></small></td>
-                        <td>
-                            <form method="POST" class="d-flex align-items-center gap-2" style="min-width: 12rem;">
-                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
-                                <input type="hidden" name="propertyID" value="<?= (int) $row['propertyID'] ?>">
-                                <label class="visually-hidden" for="property-status-<?= (int) $row['propertyID'] ?>">Listing status</label>
-                                <select id="property-status-<?= (int) $row['propertyID'] ?>" name="propertyStatus" class="form-select form-select-sm">
-                                    <?php if (!in_array($rowPropertyStatus, $propertyStatusOptions, true)): ?>
-                                        <option value="<?= htmlspecialchars($rowPropertyStatus, ENT_QUOTES, 'UTF-8') ?>" selected><?= htmlspecialchars($rowPropertyStatus !== '' ? $rowPropertyStatus : 'Unspecified', ENT_QUOTES, 'UTF-8') ?></option>
-                                    <?php endif; ?>
-                                    <?php foreach ($propertyStatusOptions as $propertyStatusOption): ?>
-                                        <option value="<?= htmlspecialchars($propertyStatusOption, ENT_QUOTES, 'UTF-8') ?>" <?= $rowPropertyStatus === $propertyStatusOption ? 'selected' : '' ?>><?= htmlspecialchars($propertyStatusOption, ENT_QUOTES, 'UTF-8') ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                                <button type="submit" name="set_property_status" class="btn btn-sm btn-outline-primary">Save</button>
-                            </form>
-                        </td>
-                        <td>
-                            <form method="POST" onsubmit="return confirm('Remove this listing? Related booking records may prevent deletion.');">
-                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
-                                <input type="hidden" name="propertyID" value="<?= (int) $row['propertyID'] ?>">
-                                <button type="submit" name="delete_property" class="btn btn-sm btn-outline-danger">Remove</button>
-                            </form>
-                        </td>
-                    </tr>
-                <?php endwhile; ?>
-                <?php if ($properties->num_rows === 0): ?><tr><td colspan="6" class="text-center text-muted py-4">No property listings found.</td></tr><?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-</section>
+<?php endif; ?>
 
 </div>
 

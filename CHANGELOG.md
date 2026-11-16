@@ -3,6 +3,16 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-16 — Fix Undefined `kq_admin_pages()` Fatal Error After Merge
+
+- **Restored Missing Include Dependencies in Header** ([includes/header.php](file:///c:/xampp/htdocs/kingquiry/includes/header.php)):
+  - During the git merge of remote `main` (commit `8918427e`), `require_once __DIR__ . '/admin_layout.php';` and `require_once __DIR__ . '/notifications.php';` were accidentally dropped, causing a fatal error `Call to undefined function kq_admin_pages()` when loading [admin_dashboard.php](file:///c:/xampp/htdocs/kingquiry/admin_dashboard.php).
+  - Restored both required files and added defensive `function_exists('kq_admin_pages')` guard to eliminate any possibility of uncaught fatal errors.
+- **Admin Dashboard Cleanup** ([admin_dashboard.php](file:///c:/xampp/htdocs/kingquiry/admin_dashboard.php)):
+  - Removed duplicate legacy "Manage properties" table that was re-introduced at the bottom of the page during the merge.
+  - Restored the quick-jump `🏘️ Property list` button in the header toolbar and the `property_trashed` toast notification.
+
+
 ## 2026-11-16 — Top-of-Card Agent Rating with Instant Feedback & Auto-Fade
 
 - **Top-of-Card Sales Agent Rating Banner** ([client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php)):
