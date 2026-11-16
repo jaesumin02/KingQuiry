@@ -360,118 +360,7 @@ $activeTrackedClients = (int) $conn->query(
 include 'includes/header.php';
 ?>
 
-<style>
-    body {
-        background: radial-gradient(circle at top, rgba(13, 37, 43, 0.85), rgba(6, 15, 19, 1) 52%);
-    }
-
-    .kq-admin-shell {
-        max-width: 1280px;
-        margin: 0 auto;
-        padding: 1.2rem 0 2rem;
-        color: #f7f5f0;
-    }
-
-    .kq-admin-shell .page-title { color: #f7f5f0; }
-    .kq-admin-shell .text-muted { color: rgba(245, 238, 227, 0.74) !important; }
-    .kq-admin-shell .card {
-        border: 1px solid rgba(20, 34, 41, 0.08) !important;
-        border-radius: 1.2rem !important;
-        background: rgba(255, 255, 255, 0.98);
-        color: var(--kq-ink);
-        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.12);
-    }
-    .kq-admin-shell .card .text-muted { color: #536579 !important; }
-    .kq-admin-shell .card .page-eyebrow { color: #805a20; }
-    .kq-admin-shell .kq-stat-card {
-        background: linear-gradient(180deg, rgba(255,255,255,1), rgba(243,247,250,1));
-        border: 1px solid rgba(19, 45, 66, 0.08);
-        border-radius: 1rem;
-        box-shadow: 0 12px 26px rgba(17, 43, 69, 0.07);
-        height: 100%;
-        padding: 1.1rem 1.2rem;
-    }
-    .kq-admin-shell .table { --bs-table-color: var(--kq-ink); --bs-table-border-color: var(--kq-line); }
-    .kq-admin-shell .form-label { color: #33475c; }
-    .kq-admin-shell .kq-panel-header {
-        position: relative;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 1rem;
-        margin-bottom: 1.1rem;
-        padding-bottom: .75rem;
-        border-bottom: 1px solid rgba(19, 45, 66, 0.08);
-    }
-    .kq-admin-shell .kq-panel-header h2 { color: #f7f5f0; }
-    .kq-admin-shell .kq-badge-soft {
-        display: inline-flex;
-        align-items: center;
-        padding: .38rem .7rem;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.12);
-        color: #f7f5f0;
-        font-size: .75rem;
-        font-weight: 700;
-    }
-    .kq-admin-shell .kq-dashboard-hero {
-        display: flex;
-        align-items: center;
-        gap: .9rem;
-        padding: 1rem 1.2rem;
-        margin-bottom: 1.5rem;
-        border: 1px solid rgba(212, 175, 110, 0.28);
-        border-radius: 1.1rem;
-        background: linear-gradient(135deg, rgba(14, 29, 39, 0.92), rgba(25, 47, 58, 0.82));
-        box-shadow: 0 14px 32px rgba(0, 0, 0, 0.14);
-    }
-    .kq-admin-shell .kq-dashboard-brand {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-width: 86px;
-        padding: .5rem .8rem;
-        border: 1px solid rgba(212, 175, 110, 0.4);
-        border-radius: 999px;
-        background: rgba(212, 175, 110, 0.12);
-        color: #f2d79f;
-        font-size: .7rem;
-        font-weight: 800;
-        letter-spacing: .2em;
-        text-transform: uppercase;
-    }
-    .kq-client-avatar {
-        display: inline-grid;
-        place-items: center;
-        width: 2.2rem;
-        height: 2.2rem;
-        margin-right: .6rem;
-        border-radius: 50%;
-        background: rgba(23, 74, 112, 0.1);
-        color: #174a70;
-        font-weight: 800;
-    }
-</style>
-
-<div class="kq-admin-shell">
-    <div class="kq-dashboard-hero">
-        <span class="kq-dashboard-brand">4 KINGS</span>
-        <div>
-            <div class="page-eyebrow">Client relationship management</div>
-            <div class="text-white fw-semibold mb-0">KingQuiry client directory</div>
-        </div>
-    </div>
-
-    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-3 mb-4">
-        <div>
-            <div class="page-eyebrow admin-management-eyebrow">KingQuiry management</div>
-            <h1 class="page-title h2 mb-1">Clients</h1>
-            <p class="text-muted mb-0">Create and maintain client accounts, contact details, and account status.</p>
-        </div>
-        <?php include __DIR__ . '/includes/admin_nav.php'; ?>
-    </div>
-
-    <?php if ($formSuccess !== ''): ?><div class="alert alert-success" role="status"><?= kq_e($formSuccess) ?></div><?php endif; ?>
+<?php if ($formSuccess !== ''): ?><div class="alert alert-success" role="status"><?= kq_e($formSuccess) ?></div><?php endif; ?>
     <?php if ($formError !== ''): ?><div class="alert alert-danger" role="alert"><?= kq_e($formError) ?></div><?php endif; ?>
 
     <div class="row g-3 mb-4">
@@ -670,6 +559,4 @@ include 'includes/header.php';
             </table>
         </div>
     </section>
-</div>
-
 <?php include 'includes/footer.php'; ?>

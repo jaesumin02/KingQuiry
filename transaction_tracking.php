@@ -112,19 +112,17 @@ $stageLabels = property_transaction_stages();
 include 'includes/header.php';
 ?>
 
-<div class="transaction-tracking-page">
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-3 mb-4" id="transactions">
+<div class="transaction-tracking-page" id="transactions">
+<?php if ($role !== 'Admin'): ?>
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-3 mb-4">
     <div>
-        <div class="page-eyebrow<?= $role === 'Admin' ? ' admin-management-eyebrow' : '' ?>"><?= $role === 'Admin' ? 'KingQuiry management' : 'Sales pipeline' ?></div>
+        <div class="page-eyebrow">Sales pipeline</div>
         <h1 class="page-title h2 mb-1">Transaction tracking</h1>
         <p class="text-muted mb-0">Record each verified milestone so clients can follow their request through completion.</p>
     </div>
-    <?php if ($role === 'Admin'): ?>
-        <?php include __DIR__ . '/includes/admin_nav.php'; ?>
-    <?php else: ?>
-        <a href="agent_dashboard.php" class="btn btn-outline-primary">Agent portal</a>
-    <?php endif; ?>
+    <a href="agent_dashboard.php" class="btn btn-outline-primary">Agent portal</a>
 </div>
+<?php endif; ?>
 
 <div class="alert alert-info small" role="note">
     Clients may record payments made through any method. Review each submission against your organization's actual payment records; this page does not collect or transfer money. A payment must be confirmed before the case can move to payment confirmation.

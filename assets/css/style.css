@@ -1,49 +1,269 @@
-/* Reuse the dashboard's Bootstrap pill geometry; only scope navigation colors. */
-.admin-nav .admin-nav-tab.btn-outline-primary {
-    --bs-btn-color: #e2e8f0;
-    --bs-btn-hover-color: #f8fafc;
-    --bs-btn-active-color: #f8fafc;
-    --bs-btn-border-color: rgba(255, 255, 255, 0.2);
+/* Admin control room. The shared header applies this scope only to admin routes. */
+body.admin-control-room {
+    --admin-navbar: #102a43;
+    --admin-canvas: #15252b;
+    --admin-banner: rgba(27, 46, 53, 0.9);
+    --admin-shell-border: rgba(255, 255, 255, 0.08);
+    --admin-gold: #d9a74a;
+    --admin-title: #ffffff;
+    --admin-subtitle: #b8c7ce;
+    --admin-pill: #1e323a;
+    --admin-pill-hover: #2b4652;
+    --admin-pill-text: #e2e8f0;
+    --admin-pill-border: rgba(255, 255, 255, 0.2);
+    --admin-active: #1b4d6e;
+    --admin-active-hover: #24678f;
+    --admin-focus: #38bdf8;
+    --admin-card: #ffffff;
+    --admin-ink: #0f2942;
+    --admin-muted: #536579;
+    --admin-card-border: #dfe7ed;
+    --admin-radius: 1rem;
+    --admin-shadow: 0 12px 28px rgba(0, 0, 0, 0.14);
+    --kq-ink: var(--admin-ink);
+    --kq-muted: var(--admin-muted);
+    --kq-primary: var(--admin-active);
+    --kq-primary-dark: #153d57;
+    --kq-accent: var(--admin-gold);
+    --kq-line: var(--admin-card-border);
+    --kq-surface: var(--admin-card);
+    --kq-canvas: var(--admin-canvas);
+    --kq-radius: var(--admin-radius);
+    --kq-shadow: var(--admin-shadow);
+    color: var(--admin-title);
+    background: var(--admin-canvas);
+}
+
+.admin-control-room .navbar {
+    background: var(--admin-navbar) !important;
+}
+
+.admin-control-room main.container.kq-admin-shell {
+    max-width: 1440px;
+    padding-inline: clamp(1rem, 2.5vw, 2rem);
+    color: var(--admin-title);
+}
+
+.admin-control-room-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    padding: 1rem 1.2rem;
+    margin-bottom: 1.5rem;
+    border: 1px solid var(--admin-shell-border);
+    border-radius: var(--admin-radius);
+    background: var(--admin-banner);
+    box-shadow: var(--admin-shadow);
+}
+
+.admin-control-room-banner .kq-dashboard-brand {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    min-width: 86px;
+    padding: 0.5rem 0.8rem;
+    border: 1px solid rgba(217, 167, 74, 0.4);
+    border-radius: 999px;
+    background: rgba(217, 167, 74, 0.12);
+    color: #f2d79f;
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.2em;
+    white-space: nowrap;
+}
+
+.admin-control-room-banner-copy {
+    min-width: 0;
+    color: var(--admin-title);
+}
+
+.admin-page-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: end;
+    gap: 1rem;
+    margin-bottom: 1.75rem;
+}
+
+.admin-page-heading { min-width: 0; }
+.admin-control-room .admin-page-heading .page-title { color: var(--admin-title); }
+.admin-control-room .admin-page-subtitle { color: var(--admin-subtitle); line-height: 1.6; }
+.admin-control-room .page-eyebrow.admin-management-eyebrow { color: var(--admin-gold); }
+
+.admin-control-room .admin-nav {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    max-width: 100%;
+    padding: 0.25rem;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-padding-inline: 0.25rem;
+    scrollbar-width: thin;
+    scrollbar-color: #708d9b var(--admin-canvas);
+}
+
+.admin-control-room .admin-nav .admin-nav-tab {
+    flex: 0 0 auto;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.65rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.5;
+    white-space: nowrap;
+    box-shadow: none;
+}
+
+.admin-control-room .admin-nav .admin-nav-tab.btn-outline-primary {
+    --bs-btn-color: var(--admin-pill-text);
+    --bs-btn-hover-color: #ffffff;
+    --bs-btn-active-color: #ffffff;
+    --bs-btn-border-color: var(--admin-pill-border);
     --bs-btn-hover-border-color: rgba(255, 255, 255, 0.4);
     --bs-btn-active-border-color: rgba(255, 255, 255, 0.4);
-    --bs-btn-hover-bg: #263840;
-    --bs-btn-active-bg: #263840;
-    color: #e2e8f0;
-    border-color: rgba(255, 255, 255, 0.2);
-    background: #1e2e35;
+    --bs-btn-hover-bg: var(--admin-pill-hover);
+    --bs-btn-active-bg: var(--admin-pill-hover);
+    color: var(--admin-pill-text);
+    border-color: var(--admin-pill-border);
+    background: var(--admin-pill);
 }
 
-.admin-nav .admin-nav-tab.btn-outline-primary:hover,
-.admin-nav .admin-nav-tab.btn-outline-primary:focus,
-.admin-nav .admin-nav-tab.btn-outline-primary:active {
-    color: #f8fafc;
+.admin-control-room .admin-nav .admin-nav-tab.btn-outline-primary:hover,
+.admin-control-room .admin-nav .admin-nav-tab.btn-outline-primary:focus,
+.admin-control-room .admin-nav .admin-nav-tab.btn-outline-primary:active {
+    color: #ffffff;
     border-color: rgba(255, 255, 255, 0.4);
-    background: #263840;
+    background: var(--admin-pill-hover);
 }
 
-.admin-nav .admin-nav-tab.btn-primary {
+.admin-control-room .admin-nav .admin-nav-tab.btn-primary {
     --bs-btn-color: #ffffff;
     --bs-btn-hover-color: #ffffff;
     --bs-btn-active-color: #ffffff;
-    --bs-btn-border-color: #173d56;
-    --bs-btn-hover-border-color: #1d486b;
-    --bs-btn-active-border-color: #173d56;
-    --bs-btn-hover-bg: #1d486b;
-    --bs-btn-active-bg: #173d56;
+    --bs-btn-border-color: var(--admin-active);
+    --bs-btn-hover-border-color: var(--admin-active-hover);
+    --bs-btn-active-border-color: var(--admin-active);
+    --bs-btn-hover-bg: var(--admin-active-hover);
+    --bs-btn-active-bg: var(--admin-active);
     color: #ffffff;
-    border-color: #173d56;
-    background: #173d56;
+    border-color: var(--admin-active);
+    background: var(--admin-active);
+    box-shadow: inset 0 -2px 0 var(--admin-gold);
 }
 
-.admin-nav .admin-nav-tab.btn-primary:hover,
-.admin-nav .admin-nav-tab.btn-primary:focus {
+.admin-control-room .admin-nav .admin-nav-tab.btn-primary:hover,
+.admin-control-room .admin-nav .admin-nav-tab.btn-primary:focus {
     color: #ffffff;
-    border-color: #1d486b;
-    background: #1d486b;
+    border-color: var(--admin-active-hover);
+    background: var(--admin-active-hover);
 }
 
-.page-eyebrow.admin-management-eyebrow {
-    color: #d9b87d;
+.admin-control-room .admin-nav .admin-nav-tab:hover { transform: none; }
+.admin-control-room .admin-nav .admin-nav-tab:focus-visible {
+    outline: 2px solid var(--admin-focus);
+    outline-offset: 2px;
+}
+
+.admin-control-room .card,
+.admin-control-room .kq-stat-card,
+.admin-control-room .modal-content {
+    color: var(--admin-ink);
+    background: var(--admin-card);
+    border: 1px solid var(--admin-card-border);
+    border-radius: var(--admin-radius);
+    box-shadow: var(--admin-shadow);
+}
+
+.admin-control-room .kq-admin-shell .text-muted { color: var(--admin-subtitle) !important; }
+.admin-control-room .card .text-muted,
+.admin-control-room .kq-stat-card .text-muted,
+.admin-control-room .modal-content .text-muted { color: var(--admin-muted) !important; }
+.admin-control-room .alert .text-muted { color: inherit !important; }
+
+.admin-control-room .card .page-eyebrow,
+.admin-control-room .kq-stat-card .page-eyebrow { color: #805a20; }
+.admin-control-room .kq-stat-value { color: var(--admin-ink); }
+.admin-control-room .form-label { color: var(--admin-ink); }
+.admin-control-room .kq-panel-header { flex-wrap: wrap; border-bottom-color: var(--admin-shell-border); }
+.admin-control-room .card .kq-panel-header { border-bottom-color: var(--admin-card-border); }
+.admin-control-room .card .kq-panel-header h2 { color: var(--admin-ink); }
+.admin-control-room .kq-badge-soft { color: var(--admin-pill-text); background: rgba(255, 255, 255, 0.1); }
+.admin-control-room .card .kq-badge-soft { color: var(--admin-active); background: #edf4f8; }
+
+.admin-control-room .table {
+    --bs-table-color: var(--admin-ink);
+    --bs-table-bg: transparent;
+    --bs-table-border-color: var(--admin-card-border);
+    --bs-table-striped-color: var(--admin-ink);
+    --bs-table-striped-bg: #f3f6f9;
+    --bs-table-hover-color: var(--admin-ink);
+    --bs-table-hover-bg: #edf4f8;
+}
+
+.admin-control-room .table thead th { color: #4b5e72; background: #f3f6f9; }
+.admin-control-room .alert { border: 1px solid var(--bs-alert-border-color); }
+.admin-control-room .alert-info {
+    --bs-alert-color: #e0f2fe;
+    --bs-alert-bg: #183b4d;
+    --bs-alert-border-color: #4b7e97;
+}
+.admin-control-room .alert-success {
+    --bs-alert-color: #0f5132;
+    --bs-alert-bg: #e9f7ef;
+    --bs-alert-border-color: #9cceaf;
+}
+.admin-control-room .alert-warning {
+    --bs-alert-color: #684b00;
+    --bs-alert-bg: #fff5d6;
+    --bs-alert-border-color: #ddbf69;
+}
+.admin-control-room .alert-danger {
+    --bs-alert-color: #842029;
+    --bs-alert-bg: #fdecef;
+    --bs-alert-border-color: #e9adb8;
+}
+
+.admin-control-room .admin-inbox-activity .list-group-item { min-width: 0; overflow-wrap: anywhere; }
+.admin-control-room .admin-inbox-metrics .kq-stat-card { box-shadow: none; }
+.admin-control-room .app-footer { background: var(--admin-navbar); }
+
+.admin-control-room .kq-client-avatar {
+    display: inline-grid;
+    place-items: center;
+    width: 2.2rem;
+    height: 2.2rem;
+    margin-right: 0.6rem;
+    border-radius: 50%;
+    background: rgba(23, 74, 112, 0.1);
+    color: #174a70;
+    font-weight: 800;
+}
+
+.admin-control-room .kq-payment-note { max-width: 30rem; white-space: pre-line; }
+
+@media (min-width: 1280px) {
+    .admin-page-header { grid-template-columns: minmax(15rem, 1fr) minmax(0, max-content); gap: 1.5rem; }
+    .admin-control-room .admin-nav { justify-self: end; }
+}
+
+@media (max-width: 575.98px) {
+    .admin-control-room-banner { gap: 0.65rem; padding: 0.85rem; }
+    .admin-control-room-banner .page-eyebrow { font-size: 0.65rem; letter-spacing: 0.08em; }
+}
+
+@media (forced-colors: active) {
+    .admin-control-room .admin-nav .admin-nav-tab.btn-outline-primary,
+    .admin-control-room .admin-nav .admin-nav-tab.btn-primary {
+        border-color: LinkText;
+        color: LinkText;
+        background: Canvas;
+        box-shadow: none;
+    }
+    .admin-control-room .admin-nav .admin-nav-tab.active { text-decoration: underline; }
+    .admin-control-room .admin-nav .admin-nav-tab:focus-visible { outline-color: Highlight; }
 }
 
 .auth-shell {

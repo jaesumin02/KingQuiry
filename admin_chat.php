@@ -96,13 +96,48 @@ include 'includes/header.php';
     }
 </style>
 
-<div class="mb-4">
-    <div class="page-eyebrow admin-management-eyebrow">KingQuiry management</div>
-    <h1 class="page-title h2 mb-1">Customer Chat</h1>
-    <p class="text-muted mb-0">Open the floating chat bubble to reply to client questions and land-estimate requests.</p>
-</div>
-
-<?php include __DIR__ . '/includes/admin_nav.php'; ?>
+<section class="card admin-inbox-summary p-3 p-lg-4" aria-labelledby="admin-inbox-overview-title">
+    <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-start gap-3 mb-4">
+        <div>
+            <div class="page-eyebrow">Customer support</div>
+            <h2 class="h4 fw-bold mb-1" id="admin-inbox-overview-title">Inbox overview</h2>
+            <p class="text-muted mb-0">Review open conversations, follow up on customer questions, and continue the conversation in chat.</p>
+        </div>
+        <button type="button" id="admin-inbox-open-chat" class="btn btn-primary flex-shrink-0" aria-controls="admin-chat-panel" aria-expanded="false">Open customer chat</button>
+    </div>
+    <div class="row g-3 admin-inbox-metrics mb-4">
+        <div class="col-md-4">
+            <div class="kq-stat-card">
+                <div class="kq-stat-label">Open conversations</div>
+                <div class="kq-stat-value" id="admin-inbox-open-count">&mdash;</div>
+                <div class="kq-stat-sub">All currently open customer threads.</div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="kq-stat-card">
+                <div class="kq-stat-label">Awaiting staff reply</div>
+                <div class="kq-stat-value" id="admin-inbox-awaiting-count">&mdash;</div>
+                <div class="kq-stat-sub">A client message since the latest staff reply. Automated replies do not clear this count.</div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="kq-stat-card">
+                <div class="kq-stat-label">Client messages</div>
+                <div class="kq-stat-value" id="admin-inbox-message-count">&mdash;</div>
+                <div class="kq-stat-sub">Client messages across all open conversations.</div>
+            </div>
+        </div>
+    </div>
+    <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 mb-2">
+        <h3 class="h6 fw-bold mb-0">Recent conversations</h3>
+        <p class="small text-muted mb-0" id="admin-inbox-status" role="status">Loading live inbox activity&hellip;</p>
+    </div>
+    <p class="small text-muted mb-3">The five most recently active open conversations. Select a conversation to reply.</p>
+    <div class="list-group admin-inbox-activity" id="admin-inbox-activity">
+        <div class="list-group-item text-muted">Loading conversations&hellip;</div>
+    </div>
+    <noscript><p class="text-muted mt-3 mb-0">Enable JavaScript to load live inbox activity and open customer chat.</p></noscript>
+</section>
 
 <button id="admin-chat-launcher" type="button" class="btn btn-primary" aria-label="Open customer chat" title="Open customer chat" aria-expanded="false" aria-controls="admin-chat-panel">
     <svg width="27" height="27" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -114,7 +149,7 @@ include 'includes/header.php';
 <section id="admin-chat-panel" class="card border-0 flex-column" aria-label="Admin customer chat inbox" aria-hidden="true" inert>
     <header class="card-header bg-primary text-white d-flex justify-content-between align-items-center gap-2 py-3 px-3">
         <div>
-            <strong>Customer Chat</strong>
+            <strong>Customer inbox</strong>
             <div id="admin-chat-presence" class="small">Connecting...</div>
         </div>
         <button id="admin-chat-close" type="button" class="btn-close btn-close-white" aria-label="Minimize customer chat"></button>
@@ -142,6 +177,7 @@ include 'includes/header.php';
 (() => {
     const apiUrl = 'chat_api.php';
     const launcher = document.getElementById('admin-chat-launcher');
+    const openChatButton = document.getElementById('admin-inbox-open-chat');
     const panel = document.getElementById('admin-chat-panel');
     const closeButton = document.getElementById('admin-chat-close');
     const presence = document.getElementById('admin-chat-presence');
@@ -152,6 +188,13 @@ include 'includes/header.php';
     const input = document.getElementById('admin-chat-input');
     const sendButton = document.getElementById('admin-chat-send');
     const error = document.getElementById('admin-chat-error');
+    const overviewStatus = document.getElementById('admin-inbox-status');
+    const activity = document.getElementById('admin-inbox-activity');
+    const summaryValues = {
+        open_conversations: document.getElementById('admin-inbox-open-count'),
+        awaiting_staff_reply: document.getElementById('admin-inbox-awaiting-count'),
+        client_messages: document.getElementById('admin-inbox-message-count')
+    };
     let csrf = '';
     let selectedConversation = 0;
     let lastMessageId = 0;
@@ -159,15 +202,87 @@ include 'includes/header.php';
     let messageRequestInProgress = false;
     let renderedMessageIds = new Set();
     let conversationSignature = '';
+    let returnFocusTarget = launcher;
+    let returnFocusConversationId = '';
 
-    function setPanelOpen(open) {
+    function setPanelOpen(open, trigger = launcher) {
+        if (open) {
+            returnFocusTarget = trigger;
+            returnFocusConversationId = trigger.dataset.conversationId || '';
+        }
         panel.classList.toggle('is-open', open);
         panel.setAttribute('aria-hidden', String(!open));
         panel.inert = !open;
         launcher.setAttribute('aria-expanded', String(open));
+        openChatButton.setAttribute('aria-expanded', String(open));
         launcher.setAttribute('aria-label', `${open ? 'Close' : 'Open'} customer chat`);
         launcher.title = `${open ? 'Close' : 'Open'} customer chat`;
-        if (open && !input.disabled) input.focus();
+        if (open) {
+            if (!input.disabled) input.focus();
+            else closeButton.focus();
+        }
+    }
+
+    function restoreOpenerFocus() {
+        // Refreshes replace recent-conversation buttons; resolve the current row by ID.
+        const currentConversationButton = returnFocusConversationId
+            ? [...activity.querySelectorAll('[data-conversation-id]')].find((button) => button.dataset.conversationId === returnFocusConversationId)
+            : null;
+        const target = currentConversationButton || (returnFocusTarget.isConnected ? returnFocusTarget : launcher);
+        target.focus();
+    }
+
+    function updateSummary(summary) {
+        for (const [key, element] of Object.entries(summaryValues)) {
+            const count = summary?.[key];
+            element.textContent = Number.isSafeInteger(count) && count >= 0 ? count.toLocaleString() : '\u2014';
+        }
+        overviewStatus.classList.remove('text-danger');
+        overviewStatus.classList.add('text-muted');
+        overviewStatus.textContent = 'Live activity \u00b7 refreshes every 5 seconds';
+    }
+
+    function showOverviewError(message) {
+        Object.values(summaryValues).forEach((element) => { element.textContent = '\u2014'; });
+        overviewStatus.classList.remove('text-muted');
+        overviewStatus.classList.add('text-danger');
+        overviewStatus.textContent = message;
+        activity.replaceChildren();
+        const notice = document.createElement('div');
+        notice.className = 'list-group-item text-muted';
+        notice.textContent = 'Inbox activity is temporarily unavailable. The next refresh will try again.';
+        activity.appendChild(notice);
+        // A successful retry must restore the lists even when their data has not changed.
+        conversationSignature = '';
+    }
+
+    function renderActivity(conversations) {
+        activity.replaceChildren();
+        if (!conversations.length) {
+            const empty = document.createElement('div');
+            empty.className = 'list-group-item text-muted py-4';
+            empty.textContent = 'No open conversations yet. New customer messages will appear here.';
+            activity.appendChild(empty);
+            return;
+        }
+        conversations.slice(0, 5).forEach((conversation) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'list-group-item list-group-item-action text-start py-3';
+            button.dataset.conversationId = String(conversation.conversation_id);
+            const customer = document.createElement('strong');
+            customer.className = 'd-block';
+            customer.textContent = conversation.customer_name;
+            const preview = document.createElement('span');
+            preview.className = 'small text-muted text-truncate d-block';
+            preview.textContent = conversation.last_message || 'New conversation';
+            button.append(customer, preview);
+            button.addEventListener('click', () => {
+                setPanelOpen(true, button);
+                selectConversation(Number(conversation.conversation_id), conversation.customer_name);
+            });
+            activity.appendChild(button);
+        });
     }
 
     async function request(url, options = {}) {
@@ -215,15 +330,19 @@ include 'includes/header.php';
         try {
             const data = await request(`${apiUrl}?action=admin_list`);
             updatePresence(data.admin_online);
-            const signature = JSON.stringify(data.conversations.map((conversation) => [
+            updateSummary(data.summary);
+            const signature = JSON.stringify([selectedConversation, data.conversations.map((conversation) => [
                 conversation.conversation_id,
                 conversation.customer_name,
-                conversation.last_message
-            ]));
+                conversation.last_message,
+                conversation.last_activity_at
+            ])]);
             if (signature === conversationSignature) return;
             conversationSignature = signature;
             const focusedConversationId = document.activeElement?.dataset?.conversationId || '';
+            const focusedInOverview = activity.contains(document.activeElement);
             conversationList.replaceChildren();
+            renderActivity(data.conversations);
 
             if (!data.conversations.length) {
                 const empty = document.createElement('div');
@@ -249,10 +368,12 @@ include 'includes/header.php';
                 conversationList.appendChild(button);
             });
             if (focusedConversationId) {
-                conversationList.querySelector(`[data-conversation-id="${focusedConversationId}"]`)?.focus();
+                const list = focusedInOverview ? activity : conversationList;
+                list.querySelector(`[data-conversation-id="${focusedConversationId}"]`)?.focus();
             }
         } catch (requestError) {
             error.textContent = requestError.message;
+            showOverviewError(requestError.message);
         } finally {
             listRequestInProgress = false;
         }
@@ -268,15 +389,17 @@ include 'includes/header.php';
         sendButton.disabled = false;
         await loadMessages();
         await loadConversations();
-        input.focus();
+        if (panel.classList.contains('is-open')) input.focus();
     }
 
     async function loadMessages() {
         if (!selectedConversation || messageRequestInProgress) return;
         messageRequestInProgress = true;
+        const conversationId = selectedConversation;
+        const afterId = lastMessageId;
         try {
-            const data = await request(`${apiUrl}?action=admin_messages&conversation_id=${selectedConversation}&after=${lastMessageId}`);
-            data.messages.forEach(renderMessage);
+            const data = await request(`${apiUrl}?action=admin_messages&conversation_id=${conversationId}&after=${afterId}`);
+            if (conversationId === selectedConversation) data.messages.forEach(renderMessage);
         } catch (requestError) {
             error.textContent = requestError.message;
         } finally {
@@ -288,11 +411,12 @@ include 'includes/header.php';
         event.preventDefault();
         const message = input.value.trim();
         if (!selectedConversation || !message) return;
+        const conversationId = selectedConversation;
         error.textContent = '';
         input.value = '';
         try {
-            const data = await post('admin_reply', { conversation_id: selectedConversation, message });
-            data.messages.forEach(renderMessage);
+            const data = await post('admin_reply', { conversation_id: conversationId, message });
+            if (conversationId === selectedConversation) data.messages.forEach(renderMessage);
             await loadConversations();
         } catch (requestError) {
             error.textContent = requestError.message;
@@ -321,20 +445,23 @@ include 'includes/header.php';
         } catch (requestError) {
             error.textContent = requestError.message;
             updatePresence(false);
+            showOverviewError(requestError.message);
+            window.setTimeout(initialize, 5000);
         }
     }
 
     launcher.addEventListener('click', () => {
         setPanelOpen(launcher.getAttribute('aria-expanded') !== 'true');
     });
+    openChatButton.addEventListener('click', () => setPanelOpen(true, openChatButton));
     closeButton.addEventListener('click', () => {
         setPanelOpen(false);
-        launcher.focus();
+        restoreOpenerFocus();
     });
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape' && launcher.getAttribute('aria-expanded') === 'true') {
             setPanelOpen(false);
-            launcher.focus();
+            restoreOpenerFocus();
         }
     });
 

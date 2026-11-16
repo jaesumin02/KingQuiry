@@ -3,10 +3,10 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+require_once __DIR__ . '/includes/auth.php';
 apply_secure_headers('application/json; charset=utf-8');
 
 require_once __DIR__ . '/config/db.php';
-require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/location_directory.php';
 require_once __DIR__ . '/includes/property_estimator.php';
 
@@ -81,6 +81,33 @@ function chat_admin_is_online(mysqli $conn): bool
     return $result->num_rows > 0;
 }
 
+function chat_admin_summary(mysqli $conn): array
+{
+    // Count every open conversation, independently of the limited conversation list.
+    // Bot replies do not count as a staff response to a client's message.
+    $summary = $conn->query(
+        "SELECT COUNT(*) AS open_conversations,
+                COALESCE(SUM(last_client_message > last_admin_message), 0) AS awaiting_staff_reply,
+                COALESCE(SUM(client_messages), 0) AS client_messages
+         FROM (
+             SELECT c.conversation_id,
+                    COALESCE(MAX(CASE WHEN m.sender = 'client' THEN m.message_id ELSE 0 END), 0) AS last_client_message,
+                    COALESCE(MAX(CASE WHEN m.sender = 'admin' THEN m.message_id ELSE 0 END), 0) AS last_admin_message,
+                    SUM(CASE WHEN m.sender = 'client' THEN 1 ELSE 0 END) AS client_messages
+             FROM chat_conversations c
+             LEFT JOIN chat_messages m ON m.conversation_id = c.conversation_id
+             WHERE c.status = 'open'
+             GROUP BY c.conversation_id
+         ) AS open_threads"
+    )->fetch_assoc();
+
+    return [
+        'open_conversations' => (int) $summary['open_conversations'],
+        'awaiting_staff_reply' => (int) $summary['awaiting_staff_reply'],
+        'client_messages' => (int) $summary['client_messages'],
+    ];
+}
+
 function chat_csrf_token(): string
 {
     if (!isset($_SESSION['chat_csrf'])) {
@@ -145,14 +172,19 @@ try {
         $result = $conn->query(
             "SELECT c.conversation_id, c.user_id, c.updated_at,
                     COALESCE(u.fullname, 'Guest visitor') AS customer_name,
+                    COALESCE((SELECT MAX(m.created_at) FROM chat_messages m WHERE m.conversation_id = c.conversation_id), c.updated_at) AS last_activity_at,
                     (SELECT m.body FROM chat_messages m WHERE m.conversation_id = c.conversation_id ORDER BY m.message_id DESC LIMIT 1) AS last_message
              FROM chat_conversations c
              LEFT JOIN users u ON u.userID = c.user_id
              WHERE c.status = 'open'
-             ORDER BY c.updated_at DESC
+             ORDER BY last_activity_at DESC, c.conversation_id DESC
              LIMIT 100"
         );
-        chat_respond(['conversations' => $result->fetch_all(MYSQLI_ASSOC), 'admin_online' => chat_admin_is_online($conn)]);
+        chat_respond([
+            'conversations' => $result->fetch_all(MYSQLI_ASSOC),
+            'summary' => chat_admin_summary($conn),
+            'admin_online' => chat_admin_is_online($conn),
+        ]);
     }
 
     if ($action === 'admin_messages') {
