@@ -115,11 +115,15 @@ include 'includes/header.php';
 <div class="transaction-tracking-page">
 <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-3 mb-4" id="transactions">
     <div>
-        <div class="page-eyebrow">Sales pipeline</div>
+        <div class="page-eyebrow<?= $role === 'Admin' ? ' admin-management-eyebrow' : '' ?>"><?= $role === 'Admin' ? 'KingQuiry management' : 'Sales pipeline' ?></div>
         <h1 class="page-title h2 mb-1">Transaction tracking</h1>
         <p class="text-muted mb-0">Record each verified milestone so clients can follow their request through completion.</p>
     </div>
-    <?php if ($role === 'Admin'): ?><a href="admin_dashboard.php" class="btn btn-outline-primary">Admin dashboard</a><?php else: ?><a href="agent_dashboard.php" class="btn btn-outline-primary">Agent portal</a><?php endif; ?>
+    <?php if ($role === 'Admin'): ?>
+        <?php include __DIR__ . '/includes/admin_nav.php'; ?>
+    <?php else: ?>
+        <a href="agent_dashboard.php" class="btn btn-outline-primary">Agent portal</a>
+    <?php endif; ?>
 </div>
 
 <div class="alert alert-info small" role="note">

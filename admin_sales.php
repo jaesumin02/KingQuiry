@@ -282,16 +282,11 @@ include 'includes/header.php';
 
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-3 mb-4">
         <div>
-            <div class="page-eyebrow">KingQuiry management</div>
+            <div class="page-eyebrow admin-management-eyebrow">KingQuiry management</div>
             <h1 class="page-title h2 mb-1">Sales &amp; transactions</h1>
             <p class="text-muted mb-0">Monitor the pipeline, verified revenue, collections, and every tracked client case.</p>
         </div>
-        <div class="d-flex flex-wrap gap-2">
-            <a href="admin_dashboard.php" class="btn btn-outline-primary">Admin dashboard</a>
-            <a href="admin_clients.php" class="btn btn-outline-primary">Clients</a>
-            <a href="admin_payments.php" class="btn btn-outline-primary">Payments</a>
-            <a href="transaction_tracking.php" class="btn btn-primary">Open tracker</a>
-        </div>
+        <?php include __DIR__ . '/includes/admin_nav.php'; ?>
     </div>
 
     <div class="row g-3 mb-4">

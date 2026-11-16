@@ -496,23 +496,6 @@ $clientOverview = $conn->query(
         color: #123b5a;
     }
 
-    .kq-dashboard-tabs .btn-outline-primary {
-        --bs-btn-color: #e2e8f0;
-        --bs-btn-hover-color: #e2e8f0;
-        --bs-btn-active-color: #e2e8f0;
-        --bs-btn-border-color: rgba(226, 232, 240, 0.35);
-        --bs-btn-hover-border-color: rgba(226, 232, 240, 0.35);
-        --bs-btn-active-border-color: rgba(226, 232, 240, 0.35);
-    }
-
-    .kq-dashboard-tabs .btn-outline-primary,
-    .kq-dashboard-tabs .btn-outline-primary:hover,
-    .kq-dashboard-tabs .btn-outline-primary:focus,
-    .kq-dashboard-tabs .btn-outline-primary:active {
-        color: #e2e8f0;
-        border-color: rgba(226, 232, 240, 0.35);
-    }
-
     .table-responsive, .table {
         border-radius: 1rem;
     }
@@ -528,23 +511,17 @@ $clientOverview = $conn->query(
     <div class="kq-dashboard-hero">
         <span class="kq-dashboard-brand">4 KINGS</span>
         <div>
-            <div class="page-eyebrow">KingQuiry management</div>
+            <div class="page-eyebrow admin-management-eyebrow">KingQuiry management</div>
             <div class="text-white fw-semibold mb-0">System admin control room</div>
         </div>
     </div>
     <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-end gap-3 mb-4">
         <div>
-            <div class="page-eyebrow">KingQuiry management</div>
+            <div class="page-eyebrow admin-management-eyebrow">KingQuiry management</div>
             <h1 class="page-title h2 mb-1">Admin dashboard</h1>
             <p class="text-muted mb-0">A clear overview of listings and customer activity.</p>
         </div>
-        <div class="d-flex flex-wrap gap-2 kq-dashboard-tabs">
-            <a href="admin_sales.php" class="btn btn-primary">Sales &amp; transactions</a>
-            <a href="admin_clients.php" class="btn btn-outline-primary">Clients</a>
-            <a href="admin_payments.php" class="btn btn-outline-primary">Payments</a>
-            <a href="transaction_tracking.php" class="btn btn-outline-primary">Transaction tracking</a>
-            <a href="admin_chat.php" class="btn btn-outline-primary">Customer inbox</a>
-        </div>
+        <?php include __DIR__ . '/includes/admin_nav.php'; ?>
     </div>
 
 <section class="mb-4" aria-labelledby="business-analytics-title">

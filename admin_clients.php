@@ -464,15 +464,11 @@ include 'includes/header.php';
 
     <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-3 mb-4">
         <div>
-            <div class="page-eyebrow">KingQuiry management</div>
+            <div class="page-eyebrow admin-management-eyebrow">KingQuiry management</div>
             <h1 class="page-title h2 mb-1">Clients</h1>
             <p class="text-muted mb-0">Create and maintain client accounts, contact details, and account status.</p>
         </div>
-        <div class="d-flex flex-wrap gap-2">
-            <a href="admin_dashboard.php" class="btn btn-outline-primary">Admin dashboard</a>
-            <a href="admin_payments.php" class="btn btn-outline-primary">Payments</a>
-            <a href="admin_sales.php" class="btn btn-primary">Sales &amp; transactions</a>
-        </div>
+        <?php include __DIR__ . '/includes/admin_nav.php'; ?>
     </div>
 
     <?php if ($formSuccess !== ''): ?><div class="alert alert-success" role="status"><?= kq_e($formSuccess) ?></div><?php endif; ?>

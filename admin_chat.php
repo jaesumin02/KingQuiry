@@ -97,10 +97,12 @@ include 'includes/header.php';
 </style>
 
 <div class="mb-4">
-    <div class="page-eyebrow">Admin workspace</div>
+    <div class="page-eyebrow admin-management-eyebrow">KingQuiry management</div>
     <h1 class="page-title h2 mb-1">Customer Chat</h1>
     <p class="text-muted mb-0">Open the floating chat bubble to reply to client questions and land-estimate requests.</p>
 </div>
+
+<?php include __DIR__ . '/includes/admin_nav.php'; ?>
 
 <button id="admin-chat-launcher" type="button" class="btn btn-primary" aria-label="Open customer chat" title="Open customer chat" aria-expanded="false" aria-controls="admin-chat-panel">
     <svg width="27" height="27" viewBox="0 0 24 24" fill="none" aria-hidden="true">

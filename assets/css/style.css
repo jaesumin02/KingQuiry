@@ -1,3 +1,51 @@
+/* Reuse the dashboard's Bootstrap pill geometry; only scope navigation colors. */
+.admin-nav .admin-nav-tab.btn-outline-primary {
+    --bs-btn-color: #e2e8f0;
+    --bs-btn-hover-color: #f8fafc;
+    --bs-btn-active-color: #f8fafc;
+    --bs-btn-border-color: rgba(255, 255, 255, 0.2);
+    --bs-btn-hover-border-color: rgba(255, 255, 255, 0.4);
+    --bs-btn-active-border-color: rgba(255, 255, 255, 0.4);
+    --bs-btn-hover-bg: #263840;
+    --bs-btn-active-bg: #263840;
+    color: #e2e8f0;
+    border-color: rgba(255, 255, 255, 0.2);
+    background: #1e2e35;
+}
+
+.admin-nav .admin-nav-tab.btn-outline-primary:hover,
+.admin-nav .admin-nav-tab.btn-outline-primary:focus,
+.admin-nav .admin-nav-tab.btn-outline-primary:active {
+    color: #f8fafc;
+    border-color: rgba(255, 255, 255, 0.4);
+    background: #263840;
+}
+
+.admin-nav .admin-nav-tab.btn-primary {
+    --bs-btn-color: #ffffff;
+    --bs-btn-hover-color: #ffffff;
+    --bs-btn-active-color: #ffffff;
+    --bs-btn-border-color: #173d56;
+    --bs-btn-hover-border-color: #1d486b;
+    --bs-btn-active-border-color: #173d56;
+    --bs-btn-hover-bg: #1d486b;
+    --bs-btn-active-bg: #173d56;
+    color: #ffffff;
+    border-color: #173d56;
+    background: #173d56;
+}
+
+.admin-nav .admin-nav-tab.btn-primary:hover,
+.admin-nav .admin-nav-tab.btn-primary:focus {
+    color: #ffffff;
+    border-color: #1d486b;
+    background: #1d486b;
+}
+
+.page-eyebrow.admin-management-eyebrow {
+    color: #d9b87d;
+}
+
 .auth-shell {
     padding: 3rem 0;
 }
