@@ -474,7 +474,16 @@ include 'includes/header.php';
                                 <div class="small text-muted"><?= kq_e($location) ?></div>
                             </td>
                             <td>
-                                <span class="badge rounded-pill <?= $currentStage === 'completed' ? 'text-bg-success' : ($currentStage === 'cancelled' ? 'text-bg-secondary' : 'text-bg-primary') ?>"><?= kq_e($stageLabels[$currentStage] ?? 'Status unavailable') ?></span>
+                                <?php
+                                $stageBadgeClass = match ($currentStage) {
+                                    'completed' => 'text-bg-success',
+                                    'cancelled' => 'text-bg-secondary',
+                                    'payment_in_process' => 'text-bg-warning text-dark',
+                                    'payment_confirmation' => 'text-bg-info text-dark',
+                                    default => 'text-bg-primary',
+                                };
+                                ?>
+                                <span class="badge rounded-pill <?= $stageBadgeClass ?>"><?= kq_e($stageLabels[$currentStage] ?? 'Status unavailable') ?></span>
                             </td>
                             <td class="small text-nowrap">
                                 <?php if ($salePrice !== null): ?>

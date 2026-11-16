@@ -18,11 +18,7 @@ if (normalized_user_role($_SESSION['user'] ?? null) !== 'Admin') {
 ensure_agent_reviews_table($conn);
 ensure_admin_management_schema($conn);
 
-$locationList = get_property_locations($conn, true);
-$locations = array_values(array_filter(
-    $locationList,
-    static fn(array $location): bool => (int) $location['isActive'] === 1
-));
+$locations = get_property_locations($conn);
 $formError = '';
 $formSuccess = isset($_GET['property_added']) ? 'The property listing has been published.' : '';
 $estimate = null;
@@ -34,60 +30,6 @@ $estimateLocationId = 0;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!has_valid_csrf_token()) {
         $formError = 'Your session expired. Refresh the page and try again.';
-    } elseif (isset($_POST['add_location'])) {
-        $regionCode = strtoupper(trim(is_string($_POST['regionCode'] ?? null) ? $_POST['regionCode'] : ''));
-        $regionName = trim(is_string($_POST['regionName'] ?? null) ? $_POST['regionName'] : '');
-        $provinceName = trim(is_string($_POST['provinceName'] ?? null) ? $_POST['provinceName'] : '');
-        $municipalityName = trim(is_string($_POST['municipalityName'] ?? null) ? $_POST['municipalityName'] : '');
-
-        if (!preg_match('/^[A-Z0-9-]{2,10}$/', $regionCode)
-            || strlen($regionName) < 2 || strlen($regionName) > 120
-            || strlen($provinceName) < 2 || strlen($provinceName) > 120
-            || strlen($municipalityName) < 2 || strlen($municipalityName) > 120) {
-            $formError = 'Enter a valid region code and names (2-120 characters each).';
-        } else {
-            $locationStmt = $conn->prepare(
-                'INSERT INTO property_locations (regionCode, regionName, provinceName, municipalityName, isActive)
-                 VALUES (?, ?, ?, ?, 1)'
-            );
-            $locationStmt->bind_param('ssss', $regionCode, $regionName, $provinceName, $municipalityName);
-            try {
-                $locationStmt->execute();
-                header('Location: admin_dashboard.php?location_added=1#locations');
-                exit();
-            } catch (mysqli_sql_exception $exception) {
-                if ($exception->getCode() === 1062) {
-                    $formError = 'That location is already in the directory. Existing locations are reactivated from the list below.';
-                } else {
-                    error_log('KingQuiry location insert failed: ' . $exception->getMessage());
-                    $formError = 'The location could not be saved. Check the database connection and try again.';
-                }
-            }
-        }
-    } elseif (isset($_POST['set_location_status'])) {
-        $locationId = filter_var($_POST['locationID'] ?? null, FILTER_VALIDATE_INT);
-        $active = filter_var($_POST['isActive'] ?? null, FILTER_VALIDATE_INT);
-        if ($locationId === false || $locationId <= 0 || !in_array($active, [0, 1], true)) {
-            $formError = 'Choose a valid location and status.';
-        } else {
-            $statusStmt = $conn->prepare('UPDATE property_locations SET isActive = ? WHERE locationID = ?');
-            $statusStmt->bind_param('ii', $active, $locationId);
-            $statusStmt->execute();
-            if ($statusStmt->affected_rows > 0) {
-                header('Location: admin_dashboard.php?location_status_updated=1#locations');
-                exit();
-            }
-
-            $checkStmt = $conn->prepare('SELECT locationID FROM property_locations WHERE locationID = ?');
-            $checkStmt->bind_param('i', $locationId);
-            $checkStmt->execute();
-            if (!$checkStmt->get_result()->fetch_assoc()) {
-                $formError = 'The selected location was not found.';
-            } else {
-                header('Location: admin_dashboard.php?location_status_updated=1#locations');
-                exit();
-            }
-        }
     } elseif (isset($_POST['add_property'])) {
         $title = is_string($_POST['title'] ?? null) ? trim($_POST['title']) : '';
         $description = is_string($_POST['description'] ?? null) ? trim($_POST['description']) : '';
@@ -158,20 +100,98 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             }
         }
-    } elseif (isset($_POST['delete_property'])) {
+    } elseif (isset($_POST['delete_property']) || isset($_POST['trash_property'])) {
         $propertyId = filter_var($_POST['propertyID'] ?? null, FILTER_VALIDATE_INT);
         if ($propertyId === false || $propertyId <= 0) {
             $formError = 'Choose a valid property to remove.';
         } else {
-            $deleteStmt = $conn->prepare('DELETE FROM properties WHERE propertyID = ?');
-            $deleteStmt->bind_param('i', $propertyId);
+            $titleStmt = $conn->prepare('SELECT title FROM properties WHERE propertyID = ?');
+            $titleStmt->bind_param('i', $propertyId);
+            $titleStmt->execute();
+            $pRow = $titleStmt->get_result()->fetch_assoc();
+            $pTitle = $pRow ? (string) $pRow['title'] : 'Property';
+
+            $trashStmt = $conn->prepare('UPDATE properties SET isDeleted = 1, deletedAt = CURRENT_TIMESTAMP WHERE propertyID = ?');
+            $trashStmt->bind_param('i', $propertyId);
+            $trashStmt->execute();
+            header('Location: admin_dashboard.php?property_trashed=1&pname=' . urlencode($pTitle) . '#property-list');
+            exit();
+        }
+    } elseif (isset($_POST['restore_property'])) {
+        $propertyId = filter_var($_POST['propertyID'] ?? null, FILTER_VALIDATE_INT);
+        if ($propertyId && $propertyId > 0) {
+            $restStmt = $conn->prepare('UPDATE properties SET isDeleted = 0, deletedAt = NULL WHERE propertyID = ?');
+            $restStmt->bind_param('i', $propertyId);
+            $restStmt->execute();
+            header('Location: admin_dashboard.php?property_restored=1#property-list');
+            exit();
+        }
+    } elseif (isset($_POST['bulk_restore'])) {
+        $selectedIds = $_POST['selectedPropertyIDs'] ?? [];
+        if (is_array($selectedIds) && !empty($selectedIds)) {
+            $validIds = array_filter(array_map('intval', $selectedIds), fn($id) => $id > 0);
+            if (!empty($validIds)) {
+                $inClause = implode(',', $validIds);
+                $conn->query("UPDATE properties SET isDeleted = 0, deletedAt = NULL WHERE propertyID IN ($inClause)");
+                header('Location: admin_dashboard.php?properties_restored=1&count=' . count($validIds) . '#property-list');
+                exit();
+            }
+        }
+        $formError = 'Select at least one property to restore.';
+    } elseif (isset($_POST['permanent_delete_property'])) {
+        $propertyId = filter_var($_POST['propertyID'] ?? null, FILTER_VALIDATE_INT);
+        if ($propertyId === false || $propertyId <= 0) {
+            $formError = 'Choose a valid property to delete permanently.';
+        } else {
+            $imgStmt = $conn->prepare('SELECT image FROM properties WHERE propertyID = ?');
+            $imgStmt->bind_param('i', $propertyId);
+            $imgStmt->execute();
+            $imgRow = $imgStmt->get_result()->fetch_assoc();
+            if ($imgRow && !empty($imgRow['image']) && $imgRow['image'] !== 'default.jpg') {
+                $imgPath = __DIR__ . '/assets/images/' . $imgRow['image'];
+                if (file_exists($imgPath)) {
+                    @unlink($imgPath);
+                }
+            }
+
+            $delStmt = $conn->prepare('DELETE FROM properties WHERE propertyID = ?');
+            $delStmt->bind_param('i', $propertyId);
             try {
-                $deleteStmt->execute();
-                header('Location: admin_dashboard.php?property_deleted=1#properties');
+                $delStmt->execute();
+                header('Location: admin_dashboard.php?property_permanently_deleted=1#property-list');
                 exit();
             } catch (mysqli_sql_exception $exception) {
                 error_log('KingQuiry property delete failed: ' . $exception->getMessage());
-                $formError = 'The property could not be removed. Check for related appointments and try again.';
+                $formError = 'The property could not be permanently removed. Related transaction records may prevent deletion.';
+            }
+        }
+    } elseif (isset($_POST['bulk_permanent_delete'])) {
+        $selectedIds = $_POST['selectedPropertyIDs'] ?? [];
+        if (!is_array($selectedIds) || empty($selectedIds)) {
+            $formError = 'Select at least one property to delete permanently.';
+        } else {
+            $validIds = array_filter(array_map('intval', $selectedIds), fn($id) => $id > 0);
+            if (!empty($validIds)) {
+                $inClause = implode(',', $validIds);
+                $imgRes = $conn->query("SELECT image FROM properties WHERE propertyID IN ($inClause)");
+                if ($imgRes) {
+                    while ($imgRow = $imgRes->fetch_assoc()) {
+                        if (!empty($imgRow['image']) && $imgRow['image'] !== 'default.jpg') {
+                            $imgPath = __DIR__ . '/assets/images/' . $imgRow['image'];
+                            if (file_exists($imgPath)) {
+                                @unlink($imgPath);
+                            }
+                        }
+                    }
+                }
+                try {
+                    $conn->query("DELETE FROM properties WHERE propertyID IN ($inClause)");
+                    header('Location: admin_dashboard.php?properties_permanently_deleted=1&count=' . count($validIds) . '#property-list');
+                    exit();
+                } catch (mysqli_sql_exception $e) {
+                    error_log('KingQuiry bulk property delete failed: ' . $e->getMessage());
+                    $formError = 'Some properties could not be deleted permanently due to existing transaction records.';
+                }
             }
         }
     } elseif (isset($_POST['set_property_status'])) {
@@ -218,17 +238,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 if (isset($_GET['property_deleted'])) {
     $formSuccess = 'The property listing has been removed.';
 }
+if (isset($_GET['property_trashed'])) {
+    $pname = is_string($_GET['pname'] ?? null) ? htmlspecialchars($_GET['pname'], ENT_QUOTES, 'UTF-8') : 'The property';
+    $formSuccess = "Property '$pname' was moved to the trashbin.";
+}
+if (isset($_GET['property_restored'])) {
+    $formSuccess = 'Property was restored successfully from the trashbin.';
+}
+if (isset($_GET['properties_restored'])) {
+    $count = (int) ($_GET['count'] ?? 1);
+    $formSuccess = "$count properties were restored successfully from the trashbin.";
+}
+if (isset($_GET['property_permanently_deleted'])) {
+    $formSuccess = 'Property was permanently deleted from the trashbin.';
+}
+if (isset($_GET['properties_permanently_deleted'])) {
+    $count = (int) ($_GET['count'] ?? 1);
+    $formSuccess = "$count properties were permanently deleted from the trashbin.";
+}
 if (isset($_GET['property_status_updated'])) {
     $formSuccess = 'The property listing status has been updated.';
 }
-if (isset($_GET['location_added'])) {
-    $formSuccess = 'The location has been added and is available in listing filters.';
-} elseif (isset($_GET['location_status_updated'])) {
-    $formSuccess = 'The location availability has been updated.';
-}
 
 include 'includes/header.php';
-$totalProperties = $conn->query("SELECT COUNT(*) as count FROM properties")->fetch_assoc()['count'];
+$totalProperties = $conn->query("SELECT COUNT(*) as count FROM properties WHERE isDeleted = 0")->fetch_assoc()['count'];
+$totalTrashedProperties = $conn->query("SELECT COUNT(*) as count FROM properties WHERE isDeleted = 1")->fetch_assoc()['count'];
 $totalUsers = $conn->query("SELECT COUNT(*) as count FROM users")->fetch_assoc()['count'];
 $totalAppointments = $conn->query("SELECT COUNT(*) as count FROM appointments")->fetch_assoc()['count'];
 $totalInquiries = $conn->query("SELECT COUNT(*) as count FROM feedbackinquiries")->fetch_assoc()['count'];
@@ -241,7 +275,7 @@ $propertyCategoryCounts = [
     'Beachlot' => 0,
     'Condo' => 0,
 ];
-foreach ($conn->query('SELECT propertyType, COUNT(*) AS total FROM properties GROUP BY propertyType') as $row) {
+foreach ($conn->query('SELECT propertyType, COUNT(*) AS total FROM properties WHERE isDeleted = 0 GROUP BY propertyType') as $row) {
     $category = trim((string) $row['propertyType']);
     if ($category === '') {
         $category = 'Uncategorized';
@@ -367,8 +401,18 @@ $properties = $conn->query(
     "SELECT p.*, l.municipalityName, l.provinceName
      FROM properties p
      LEFT JOIN property_locations l ON l.locationID = p.locationID
+     WHERE p.isDeleted = 0
      ORDER BY p.createdAt DESC, p.propertyID DESC"
 );
+$trashedProperties = $conn->query(
+    "SELECT p.*, l.municipalityName, l.provinceName
+     FROM properties p
+     LEFT JOIN property_locations l ON l.locationID = p.locationID
+     WHERE p.isDeleted = 1
+     ORDER BY p.deletedAt DESC, p.propertyID DESC"
+);
+$trashedList = $trashedProperties ? $trashedProperties->fetch_all(MYSQLI_ASSOC) : [];
+$totalTrashed = count($trashedList);
 $collectionOverview = $conn->query(
     "SELECT COALESCE(SUM(CASE WHEN status = 'Verified' THEN amount ELSE 0 END), 0) AS verifiedTotal,
             COALESCE(SUM(CASE WHEN status = 'Pending' THEN amount ELSE 0 END), 0) AS pendingTotal,
@@ -432,25 +476,39 @@ $clientOverview = $conn->query(
         letter-spacing: -.05em;
     }
 
-    .text-muted {
-        color: rgba(245, 238, 227, 0.74) !important;
+    /* Subtitle on the dark shell header outside cards */
+    .kq-admin-shell > div.mb-4 > .text-muted {
+        color: rgba(245, 238, 227, 0.85) !important;
     }
 
+    /* All cards: ensure clean dark text and readable muted labels */
     .card {
         border: 1px solid rgba(20, 34, 41, 0.08) !important;
         border-radius: 1.2rem !important;
-        background: rgba(255, 255, 255, 0.98);
-        color: var(--kq-ink);
+        background: #ffffff;
+        color: #1a252f;
         box-shadow: 0 18px 40px rgba(0, 0, 0, 0.12);
     }
 
+    .card h1, .card h2, .card h3, .card h4, .card h5, .card h6,
+    .card p, .card span, .card div, .card label, .card td, .card th,
+    .card strong, .card b {
+        color: #1a252f;
+    }
+
+    .card .text-muted,
+    .card small.text-muted,
+    .card .small.text-muted,
+    .card p.text-muted,
+    .card span.text-muted,
+    .card div.text-muted,
     .kq-admin-shell .card .text-muted,
     .kq-admin-shell .kq-stat-card .text-muted {
         color: #536579 !important;
     }
 
     .kq-admin-shell .card .page-eyebrow {
-        color: #805a20;
+        color: #805a20 !important;
     }
 
     .kq-panel-header {
@@ -458,8 +516,55 @@ $clientOverview = $conn->query(
         padding-bottom: .75rem;
     }
 
-    .kq-admin-shell > section .kq-panel-header h2 {
-        color: #f7f5f0;
+    .card .kq-panel-header h2 {
+        color: #1a252f !important;
+    }
+
+    /* Modals: strictly enforce dark readable text across all modal bodies, tables, and footers */
+    .modal-content {
+        background: #ffffff;
+        color: #1a252f;
+    }
+
+    .modal-content h1, .modal-content h2, .modal-content h3,
+    .modal-content h4, .modal-content h5, .modal-content h6,
+    .modal-content p, .modal-content span, .modal-content div,
+    .modal-content label, .modal-content td, .modal-content th,
+    .modal-content strong, .modal-content b {
+        color: #1a252f;
+    }
+
+    .modal-content .text-muted,
+    .modal-content small.text-muted,
+    .modal-content .small.text-muted,
+    .modal-content p.text-muted,
+    .modal-content span.text-muted,
+    .modal-content div.text-muted {
+        color: #536579 !important;
+    }
+
+    /* Explicit dark headers/buttons retain pure white text */
+    .modal-header.bg-danger,
+    .modal-header.bg-danger *,
+    .modal-header.bg-primary,
+    .modal-header.bg-primary *,
+    .btn-danger,
+    .btn-danger *,
+    .btn-primary,
+    .btn-primary * {
+        color: #ffffff !important;
+    }
+
+    /* Modal nav pills for tab navigation */
+    .modal-content .nav-pills .nav-link {
+        color: #334155;
+        border: 1px solid #cbd5e1;
+        background: #f8fafc;
+    }
+    .modal-content .nav-pills .nav-link.active {
+        color: #ffffff !important;
+        background: #dc3545 !important;
+        border-color: #dc3545 !important;
     }
 
     .kq-badge-soft {
@@ -522,6 +627,7 @@ $clientOverview = $conn->query(
             <p class="text-muted mb-0">A clear overview of listings and customer activity.</p>
         </div>
         <div class="d-flex flex-wrap gap-2">
+            <a href="#property-list" class="btn btn-success fw-bold text-white shadow-sm">🏘️ Property list (<?= number_format($totalProperties) ?>)</a>
             <a href="admin_sales.php" class="btn btn-primary">Sales &amp; transactions</a>
             <a href="admin_clients.php" class="btn btn-outline-primary">Clients</a>
             <a href="admin_payments.php" class="btn btn-outline-primary">Payments</a>
@@ -677,7 +783,16 @@ $clientOverview = $conn->query(
 <?php if ($formError !== ''): ?><div class="alert alert-danger" role="alert"><?= htmlspecialchars($formError, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
 
 <div class="row g-3 mb-4">
-    <div class="col-6 col-xl-3"><div class="card h-100 p-3 p-lg-4"><div class="small text-muted fw-semibold">Property listings</div><div class="display-6 fw-bold mt-2"><?= number_format((int) $totalProperties) ?></div></div></div>
+    <div class="col-6 col-xl-3">
+        <div class="card h-100 p-3 p-lg-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="small text-muted fw-semibold">Property listings</div>
+                <a href="#property-list" class="badge text-bg-primary text-decoration-none">View list &darr;</a>
+            </div>
+            <div class="display-6 fw-bold mt-2"><?= number_format((int) $totalProperties) ?></div>
+            <a href="#property-list" class="small text-decoration-none mt-2 d-inline-block">Manage <?= number_format((int) $totalProperties) ?> active properties &rarr;</a>
+        </div>
+    </div>
     <div class="col-6 col-xl-3"><div class="card h-100 p-3 p-lg-4"><div class="small text-muted fw-semibold">Registered users</div><div class="display-6 fw-bold mt-2"><?= number_format((int) $totalUsers) ?></div></div></div>
     <div class="col-6 col-xl-3"><div class="card h-100 p-3 p-lg-4"><div class="small text-muted fw-semibold">Viewing requests</div><div class="display-6 fw-bold mt-2"><?= number_format((int) $totalAppointments) ?></div></div></div>
     <div class="col-6 col-xl-3"><div class="card h-100 p-3 p-lg-4"><div class="small text-muted fw-semibold">Property inquiries</div><div class="display-6 fw-bold mt-2"><?= number_format((int) $totalInquiries) ?></div></div></div>
@@ -786,57 +901,266 @@ $clientOverview = $conn->query(
     </div>
 </div>
 
-<section class="card p-4 p-lg-5 mb-4" id="locations">
-    <div class="page-eyebrow mb-2">Location directory</div>
-    <h2 class="h4 fw-bold mb-2">Manage locations</h2>
-    <p class="text-muted small mb-4">Add verified regions, provinces, cities, or municipalities here. Active locations appear in property forms, public filters, and the estimator. Deactivating a location hides it from new selections but preserves existing property records.</p>
-    <form method="POST" class="row g-3 align-items-end mb-4">
-        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
-        <div class="col-sm-6 col-lg-2">
-            <label class="form-label fw-semibold" for="location-region-code">Region code</label>
-            <input id="location-region-code" type="text" name="regionCode" class="form-control" maxlength="10" pattern="(?:[A-Za-z0-9]|-){2,10}" placeholder="e.g. PH-40" required>
+<section class="card p-3 p-lg-4 mb-4 shadow-sm" id="property-list">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3 pb-3 border-bottom">
+        <div>
+            <div class="page-eyebrow mb-1">Current inventory</div>
+            <h2 class="h4 fw-bold mb-0">🏘️ Property list</h2>
+            <p class="text-muted small mb-0">Active property listings visible across the KingQuiry catalog and customer portals.</p>
         </div>
-        <div class="col-sm-6 col-lg-3">
-            <label class="form-label fw-semibold" for="location-region-name">Region</label>
-            <input id="location-region-name" type="text" name="regionName" class="form-control" minlength="2" maxlength="120" placeholder="e.g. CALABARZON" required>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <span class="badge bg-primary px-3 py-2 fs-6 fw-bold" id="activePropsCountBadge"><?= number_format($properties->num_rows) ?> active listings</span>
+            <a href="#properties" class="btn btn-sm btn-primary fw-semibold">+ Publish listing</a>
+            <button type="button" class="btn btn-outline-danger fw-semibold d-inline-flex align-items-center gap-1" data-bs-toggle="modal" data-bs-target="#trashbinModal" id="btnOpenTrashbin">
+                <span>🗑️</span> Trashbin (<span id="trashHeaderBadge"><?= $totalTrashed ?></span>)
+            </button>
         </div>
-        <div class="col-sm-6 col-lg-3">
-            <label class="form-label fw-semibold" for="location-province-name">Province</label>
-            <input id="location-province-name" type="text" name="provinceName" class="form-control" minlength="2" maxlength="120" placeholder="e.g. Batangas" required>
+    </div>
+
+    <!-- Quick Search Input for Property Table -->
+    <div class="row g-2 mb-3">
+        <div class="col-md-6 col-lg-4">
+            <input type="text" id="propTableSearch" class="form-control form-control-sm" placeholder="🔍 Quick search property list by title, category, or location...">
         </div>
-        <div class="col-sm-6 col-lg-3">
-            <label class="form-label fw-semibold" for="location-municipality-name">City / municipality</label>
-            <input id="location-municipality-name" type="text" name="municipalityName" class="form-control" minlength="2" maxlength="120" placeholder="e.g. Lipa City" required>
-        </div>
-        <div class="col-lg-1">
-            <button type="submit" name="add_location" class="btn btn-primary w-100">Add</button>
-        </div>
-    </form>
+    </div>
+
     <div class="table-responsive">
-        <table class="table table-sm align-middle mb-0">
-            <thead><tr><th>Region</th><th>Province</th><th>City / municipality</th><th>Status</th><th>Action</th></tr></thead>
+        <table class="table table-bordered table-hover align-middle mb-0" id="adminPropertiesTable">
+            <thead class="table-light">
+                <tr>
+                    <th>Title</th>
+                    <th>Category</th>
+                    <th>Location</th>
+                    <th>Asking price</th>
+                    <th>Listing status</th>
+                    <th class="text-end">Action</th>
+                </tr>
+            </thead>
             <tbody>
-                <?php foreach ($locationList as $location): ?>
-                    <tr>
-                        <td><?= htmlspecialchars($location['regionName'] . ' (' . $location['regionCode'] . ')', ENT_QUOTES, 'UTF-8') ?></td>
-                        <td><?= htmlspecialchars($location['provinceName'], ENT_QUOTES, 'UTF-8') ?></td>
-                        <td><?= htmlspecialchars($location['municipalityName'], ENT_QUOTES, 'UTF-8') ?></td>
-                        <td><span class="badge <?= (int) $location['isActive'] === 1 ? 'text-bg-success' : 'text-bg-secondary' ?>"><?= (int) $location['isActive'] === 1 ? 'Active' : 'Inactive' ?></span></td>
+                <?php while($row = $properties->fetch_assoc()):
+                    $rowPropertyStatus = (string) ($row['status'] ?? 'Available');
+                    $propertyStatusOptions = ['Available', 'Reserved', 'Sold'];
+                    $propLocLabel = property_location_label($row);
+                ?>
+                    <tr class="prop-table-row" data-search="<?= htmlspecialchars(mb_strtolower($row['title'] . ' ' . $row['propertyType'] . ' ' . $propLocLabel . ' ' . ($row['barangay'] ?? '')), ENT_QUOTES, 'UTF-8') ?>">
+                        <td class="fw-bold text-dark"><?= htmlspecialchars($row['title']) ?></td>
+                        <td><span class="badge rounded-pill text-bg-light border"><?= htmlspecialchars($row['propertyType']) ?></span></td>
+                        <td><?= htmlspecialchars($propLocLabel) ?><?php if (!empty($row['barangay'])): ?><br><small class="text-muted"><?= htmlspecialchars($row['barangay']) ?></small><?php endif; ?></td>
+                        <td>₱<?= number_format((float) $row['price'], 2) ?><br><small class="text-muted"><?= $row['areaSqm'] !== null ? number_format((float) $row['areaSqm'], 2) . ' sq.m. · ₱' . number_format((float) $row['pricePerSqm'], 2) . '/sq.m.' : 'Legacy area not recorded' ?></small></td>
                         <td>
-                            <form method="POST">
+                            <form method="POST" class="d-flex align-items-center gap-2" style="min-width: 12rem;">
                                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
-                                <input type="hidden" name="locationID" value="<?= (int) $location['locationID'] ?>">
-                                <input type="hidden" name="isActive" value="<?= (int) $location['isActive'] === 1 ? 0 : 1 ?>">
-                                <button type="submit" name="set_location_status" class="btn btn-sm btn-outline-secondary"><?= (int) $location['isActive'] === 1 ? 'Deactivate' : 'Reactivate' ?></button>
+                                <input type="hidden" name="propertyID" value="<?= (int) $row['propertyID'] ?>">
+                                <label class="visually-hidden" for="property-status-<?= (int) $row['propertyID'] ?>">Listing status</label>
+                                <select id="property-status-<?= (int) $row['propertyID'] ?>" name="propertyStatus" class="form-select form-select-sm">
+                                    <?php if (!in_array($rowPropertyStatus, $propertyStatusOptions, true)): ?>
+                                        <option value="<?= htmlspecialchars($rowPropertyStatus, ENT_QUOTES, 'UTF-8') ?>" selected><?= htmlspecialchars($rowPropertyStatus !== '' ? $rowPropertyStatus : 'Unspecified', ENT_QUOTES, 'UTF-8') ?></option>
+                                    <?php endif; ?>
+                                    <?php foreach ($propertyStatusOptions as $propertyStatusOption): ?>
+                                        <option value="<?= htmlspecialchars($propertyStatusOption, ENT_QUOTES, 'UTF-8') ?>" <?= $rowPropertyStatus === $propertyStatusOption ? 'selected' : '' ?>><?= htmlspecialchars($propertyStatusOption, ENT_QUOTES, 'UTF-8') ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <button type="submit" name="set_property_status" class="btn btn-sm btn-outline-primary">Save</button>
                             </form>
                         </td>
+                        <td class="text-end">
+                            <div class="d-flex justify-content-end align-items-center gap-1">
+                                <a href="property_detail.php?id=<?= (int) $row['propertyID'] ?>" target="_blank" class="btn btn-sm btn-outline-secondary py-1 px-2" title="View live property page">👁️ View</a>
+                                <form method="POST" class="m-0 d-inline">
+                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                                    <input type="hidden" name="propertyID" value="<?= (int) $row['propertyID'] ?>">
+                                    <button type="submit" name="trash_property" class="btn btn-sm btn-outline-danger py-1 px-2" title="Move to trash bin">🗑️ Trash</button>
+                                </form>
+                            </div>
+                        </td>
                     </tr>
-                <?php endforeach; ?>
-                <?php if ($locationList === []): ?><tr><td colspan="5" class="text-center text-muted py-3">No locations in the directory yet.</td></tr><?php endif; ?>
+                <?php endwhile; ?>
+                <?php if ($properties->num_rows === 0): ?><tr><td colspan="6" class="text-center text-muted py-4">No property listings found.</td></tr><?php endif; ?>
             </tbody>
         </table>
     </div>
 </section>
+
+<!-- Property Trashbin (Archived Inventory) Modal -->
+<div class="modal fade" id="trashbinModal" tabindex="-1" aria-labelledby="trashbinModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-danger text-white">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="fs-5">🗑️</span>
+                    <div>
+                        <h5 class="modal-title h6 mb-0 text-white fw-bold" id="trashbinModalLabel">Archived Inventory — Trashbin</h5>
+                        <div class="small opacity-75">Restore listings or permanently delete property records</div>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-white text-danger rounded-pill px-2 py-1 fw-bold small" id="trashCountBadge">
+                        <?= $totalTrashed ?> in trash
+                    </span>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+            </div>
+            <div class="modal-body p-3 p-lg-4">
+                <p class="text-muted small mb-3">Properties moved to the trashbin are hidden from public view and catalog searches. Select properties to restore or permanently remove.</p>
+
+                <!-- Search and Sort Controls -->
+                <div class="row g-2 mb-3">
+                    <div class="col-sm-7">
+                        <input type="text" id="trashSearchInput" class="form-control form-control-sm" placeholder="🔍 Search trashed properties by title or location...">
+                    </div>
+                    <div class="col-sm-5">
+                        <select id="trashSortSelect" class="form-select form-select-sm">
+                            <option value="newest">Trashed: Newest</option>
+                            <option value="oldest">Trashed: Oldest</option>
+                            <option value="name_asc">Title: A to Z</option>
+                            <option value="name_desc">Title: Z to A</option>
+                            <option value="price_asc">Price: Low to High</option>
+                            <option value="price_desc">Price: High to Low</option>
+                        </select>
+                    </div>
+                </div>
+
+                <form method="POST" id="trashBulkForm">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+
+                    <!-- Selection & Bulk Actions Bar -->
+                    <div class="d-flex justify-content-between align-items-center p-2 mb-2 bg-light border rounded small">
+                        <div class="form-check mb-0">
+                            <input type="checkbox" id="selectAllTrash" class="form-check-input">
+                            <label class="form-check-label fw-semibold" for="selectAllTrash">Select all</label>
+                        </div>
+                        <div class="d-flex gap-1">
+                            <button type="submit" name="bulk_restore" id="btnBulkRestore" class="btn btn-sm btn-outline-success py-1 px-3 fw-semibold" disabled title="Restore selected properties">
+                                ↺ Restore Selected
+                            </button>
+                            <button type="button" id="btnBulkDelete" class="btn btn-sm btn-danger py-1 px-3 fw-semibold" data-bs-toggle="modal" data-bs-target="#bulkDeleteModal" disabled title="Permanently delete selected properties">
+                                🗑️ Delete Selected
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- List of Trashed Properties -->
+                    <div id="trashItemsContainer" class="d-grid gap-2" style="max-height: 440px; overflow-y: auto;">
+                        <?php if (!empty($trashedList)): ?>
+                            <?php foreach ($trashedList as $tProp):
+                                $tId = (int) $tProp['propertyID'];
+                                $tTitle = (string) $tProp['title'];
+                                $tPrice = (float) $tProp['price'];
+                                $tDeletedAt = !empty($tProp['deletedAt']) ? strtotime($tProp['deletedAt']) : strtotime($tProp['createdAt']);
+                            ?>
+                                <div class="card p-2 border trash-item shadow-none"
+                                     data-id="<?= $tId ?>"
+                                     data-title="<?= htmlspecialchars(mb_strtolower($tTitle), ENT_QUOTES, 'UTF-8') ?>"
+                                     data-price="<?= $tPrice ?>"
+                                     data-date="<?= $tDeletedAt ?>">
+                                    <div class="d-flex align-items-center justify-content-between gap-3">
+                                        <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
+                                            <!-- Explicit Select Button -->
+                                            <div>
+                                                <label class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 py-1 px-2 mb-0 trash-select-btn" for="chkProp<?= $tId ?>" style="cursor: pointer;">
+                                                    <input type="checkbox" id="chkProp<?= $tId ?>" name="selectedPropertyIDs[]" value="<?= $tId ?>" class="form-check-input trash-item-checkbox me-1 mt-0">
+                                                    <span class="trash-select-text fw-semibold small">Select</span>
+                                                </label>
+                                            </div>
+                                            <div class="flex-grow-1 min-w-0">
+                                                <div class="fw-bold text-dark text-truncate small" title="<?= htmlspecialchars($tTitle, ENT_QUOTES, 'UTF-8') ?>">
+                                                    <?= htmlspecialchars($tTitle, ENT_QUOTES, 'UTF-8') ?>
+                                                </div>
+                                                <div class="small text-muted text-truncate" style="font-size: 0.75rem;">
+                                                    <span class="badge text-bg-light border"><?= htmlspecialchars($tProp['propertyType'], ENT_QUOTES, 'UTF-8') ?></span>
+                                                    ₱<?= number_format($tPrice, 2) ?> · <?= htmlspecialchars(!empty($tProp['municipalityName']) ? $tProp['municipalityName'] . ', ' . $tProp['provinceName'] : $tProp['location'], ENT_QUOTES, 'UTF-8') ?>
+                                                </div>
+                                                <div class="text-secondary" style="font-size: 0.7rem;">
+                                                    Trashed: <?= htmlspecialchars(date('M j, Y g:i A', $tDeletedAt), ENT_QUOTES, 'UTF-8') ?>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="d-flex gap-1 flex-shrink-0">
+                                            <!-- Individual Restore Button -->
+                                            <button type="submit" name="restore_property" value="<?= $tId ?>" formaction="admin_dashboard.php" class="btn btn-sm btn-outline-success py-1 px-2 fw-semibold" title="Restore to active inventory">
+                                                ↺ Restore
+                                            </button>
+                                            <!-- Individual Permanent Delete Button -->
+                                            <button type="button" class="btn btn-sm btn-outline-danger py-1 px-2 fw-semibold" data-bs-toggle="modal" data-bs-target="#deleteSingleModal<?= $tId ?>" title="Delete permanently">
+                                                🗑️ Delete
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <div class="p-4 text-center text-muted small bg-light rounded" id="trashEmptyMsg">
+                                <span class="fs-4 d-block mb-1">🏠</span>
+                                No properties in the trashbin. Properties moved to trash will appear here.
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer bg-light p-2 justify-content-between">
+                <span class="small text-muted">Archived properties can be restored at any time.</span>
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Single Property Permanent Delete Modals -->
+<?php if (!empty($trashedList)): ?>
+    <?php foreach ($trashedList as $tProp):
+        $tId = (int) $tProp['propertyID'];
+        $tTitle = (string) $tProp['title'];
+    ?>
+        <div class="modal fade confirm-delete-modal" id="deleteSingleModal<?= $tId ?>" tabindex="-1" aria-labelledby="deleteSingleLabel<?= $tId ?>" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content border-0 shadow-lg">
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title h6 mb-0 text-white" id="deleteSingleLabel<?= $tId ?>">Confirm Permanent Deletion</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body p-4 text-center">
+                        <div class="text-danger mb-3">
+                            <svg width="48" height="48" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        </div>
+                        <h6 class="fw-bold text-dark mb-2">Are you sure you want to delete <?= htmlspecialchars($tTitle, ENT_QUOTES, 'UTF-8') ?>?</h6>
+                        <p class="small text-muted mb-0">This will permanently delete this property from the database. This action cannot be undone.</p>
+                    </div>
+                    <div class="modal-footer bg-light justify-content-center gap-2 p-2">
+                        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <form method="POST" class="m-0">
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                            <input type="hidden" name="propertyID" value="<?= $tId ?>">
+                            <button type="submit" name="permanent_delete_property" class="btn btn-sm btn-danger fw-bold px-4">Yes, delete</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    <?php endforeach; ?>
+<?php endif; ?>
+
+<!-- Bulk Property Permanent Delete Modal -->
+<div class="modal fade confirm-delete-modal" id="bulkDeleteModal" tabindex="-1" aria-labelledby="bulkDeleteLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title h6 mb-0 text-white" id="bulkDeleteLabel">Confirm Bulk Property Deletion</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4 text-center">
+                <div class="text-danger mb-3">
+                    <svg width="48" height="48" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                </div>
+                <h6 class="fw-bold text-dark mb-2" id="bulkDeleteText">Are you sure you want to permanently delete the selected properties?</h6>
+                <p class="small text-muted mb-0">This will remove all selected properties from the system forever. This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer bg-light justify-content-center gap-2 p-2">
+                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-sm btn-danger fw-bold px-4" id="btnExecuteBulkDelete">Yes, delete</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <section class="card p-4 p-lg-5 mb-4">
     <div class="page-eyebrow mb-2">Comparable listing analysis</div>
@@ -882,7 +1206,7 @@ $clientOverview = $conn->query(
 <section class="card p-4 p-lg-5 mb-4" id="properties">
     <div class="page-eyebrow mb-2">Inventory management</div>
     <h2 class="h4 fw-bold mb-4">Publish a property</h2>
-    <p class="text-muted small">Choose a location from the admin-managed directory. If the verified location is missing, add it above first.</p>
+    <p class="text-muted small">Choose a verified municipality/city from the directory.</p>
     <form method="POST" enctype="multipart/form-data">
         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
         <div class="row g-3">
@@ -933,59 +1257,178 @@ $clientOverview = $conn->query(
     </form>
 </section>
 
-<section class="card p-3 p-lg-4 mb-4">
-    <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
-        <div><div class="page-eyebrow">Current inventory</div><h2 class="h4 fw-bold mb-0">Manage properties</h2></div>
-        <span class="small text-muted"><?= number_format($properties->num_rows) ?> total listings</span>
+<?php if (isset($_GET['property_trashed'])): ?>
+    <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1090;">
+        <div class="toast show bg-white border border-danger shadow-lg" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header bg-danger text-white">
+                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24" class="me-2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                <strong class="me-auto">Property in Trashbin</strong>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+            <div class="toast-body text-dark">
+                <p class="mb-2"><strong><?= htmlspecialchars($_GET['pname'] ?? 'The property', ENT_QUOTES, 'UTF-8') ?></strong> has been moved to the trashbin.</p>
+                <button type="button" class="btn btn-sm btn-danger fw-semibold" data-bs-toggle="modal" data-bs-target="#trashbinModal">
+                    🗑️ Open Trashbin
+                </button>
+            </div>
+        </div>
     </div>
-    <div class="table-responsive">
-        <table class="table table-bordered align-middle">
-            <thead><tr><th>Title</th><th>Category</th><th>Location</th><th>Asking price</th><th>Listing status</th><th>Action</th></tr></thead>
-            <tbody>
-                <?php while($row = $properties->fetch_assoc()):
-                    $rowPropertyStatus = (string) ($row['status'] ?? 'Available');
-                    $propertyStatusOptions = ['Available', 'Reserved', 'Sold'];
-                ?>
-                    <tr>
-                        <td class="fw-bold"><?= htmlspecialchars($row['title']) ?></td>
-                        <td><span class="badge rounded-pill text-bg-light"><?= htmlspecialchars($row['propertyType']) ?></span></td>
-                        <td><?= htmlspecialchars(property_location_label($row)) ?><?php if (!empty($row['barangay'])): ?><br><small class="text-muted"><?= htmlspecialchars($row['barangay']) ?></small><?php endif; ?></td>
-                        <td>₱<?= number_format((float) $row['price'], 2) ?><br><small class="text-muted"><?= $row['areaSqm'] !== null ? number_format((float) $row['areaSqm'], 2) . ' sq.m. · ₱' . number_format((float) $row['pricePerSqm'], 2) . '/sq.m.' : 'Legacy area not recorded' ?></small></td>
-                        <td>
-                            <form method="POST" class="d-flex align-items-center gap-2" style="min-width: 12rem;">
-                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
-                                <input type="hidden" name="propertyID" value="<?= (int) $row['propertyID'] ?>">
-                                <label class="visually-hidden" for="property-status-<?= (int) $row['propertyID'] ?>">Listing status</label>
-                                <select id="property-status-<?= (int) $row['propertyID'] ?>" name="propertyStatus" class="form-select form-select-sm">
-                                    <?php if (!in_array($rowPropertyStatus, $propertyStatusOptions, true)): ?>
-                                        <option value="<?= htmlspecialchars($rowPropertyStatus, ENT_QUOTES, 'UTF-8') ?>" selected><?= htmlspecialchars($rowPropertyStatus !== '' ? $rowPropertyStatus : 'Unspecified', ENT_QUOTES, 'UTF-8') ?></option>
-                                    <?php endif; ?>
-                                    <?php foreach ($propertyStatusOptions as $propertyStatusOption): ?>
-                                        <option value="<?= htmlspecialchars($propertyStatusOption, ENT_QUOTES, 'UTF-8') ?>" <?= $rowPropertyStatus === $propertyStatusOption ? 'selected' : '' ?>><?= htmlspecialchars($propertyStatusOption, ENT_QUOTES, 'UTF-8') ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                                <button type="submit" name="set_property_status" class="btn btn-sm btn-outline-primary">Save</button>
-                            </form>
-                        </td>
-                        <td>
-                            <form method="POST" onsubmit="return confirm('Remove this listing? Related booking records may prevent deletion.');">
-                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
-                                <input type="hidden" name="propertyID" value="<?= (int) $row['propertyID'] ?>">
-                                <button type="submit" name="delete_property" class="btn btn-sm btn-outline-danger">Remove</button>
-                            </form>
-                        </td>
-                    </tr>
-                <?php endwhile; ?>
-                <?php if ($properties->num_rows === 0): ?><tr><td colspan="6" class="text-center text-muted py-4">No property listings found.</td></tr><?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-</section>
+<?php endif; ?>
 
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+    // Nested modal support for delete confirmations over Trashbin modal
+    document.addEventListener('show.bs.modal', function(e) {
+        if (e.target && e.target.classList.contains('confirm-delete-modal')) {
+            e.target.style.zIndex = '1070';
+            setTimeout(() => {
+                const backdrops = document.querySelectorAll('.modal-backdrop');
+                if (backdrops.length > 1) {
+                    backdrops[backdrops.length - 1].style.zIndex = '1065';
+                }
+            }, 10);
+        }
+    });
+    document.addEventListener('hidden.bs.modal', function(e) {
+        if (e.target && e.target.classList.contains('confirm-delete-modal')) {
+            const trashModal = document.getElementById('trashbinModal');
+            if (trashModal && trashModal.classList.contains('show')) {
+                document.body.classList.add('modal-open');
+            }
+        }
+    });
+
+    // Helper to toggle visual style of explicit "Select" button on cards
+    function updateTrashSelectBtn(checkbox) {
+        const label = checkbox.closest('.trash-select-btn');
+        if (!label) return;
+        const textSpan = label.querySelector('.trash-select-text');
+        if (checkbox.checked) {
+            label.classList.remove('btn-outline-primary');
+            label.classList.add('btn-primary', 'text-white');
+            if (textSpan) textSpan.textContent = '✓ Selected';
+        } else {
+            label.classList.remove('btn-primary', 'text-white');
+            label.classList.add('btn-outline-primary');
+            if (textSpan) textSpan.textContent = 'Select';
+        }
+    }
+
+    // Trashbin Properties: Search, Sort & Select-all
+    const trashSearchInput = document.getElementById('trashSearchInput');
+    const trashSortSelect = document.getElementById('trashSortSelect');
+    const selectAllTrash = document.getElementById('selectAllTrash');
+    const btnBulkRestore = document.getElementById('btnBulkRestore');
+    const btnBulkDelete = document.getElementById('btnBulkDelete');
+    const trashItemsContainer = document.getElementById('trashItemsContainer');
+    const trashBulkForm = document.getElementById('trashBulkForm');
+    const btnExecuteBulkDelete = document.getElementById('btnExecuteBulkDelete');
+
+    if (trashItemsContainer) {
+        function updateTrashControls() {
+            const checkboxes = trashItemsContainer.querySelectorAll('.trash-item-checkbox:checked');
+            const anyChecked = checkboxes.length > 0;
+            if (btnBulkRestore) btnBulkRestore.disabled = !anyChecked;
+            if (btnBulkDelete) btnBulkDelete.disabled = !anyChecked;
+            const bulkDeleteText = document.getElementById('bulkDeleteText');
+            if (bulkDeleteText) {
+                bulkDeleteText.textContent = `Are you sure you want to permanently delete the ${checkboxes.length} selected properties?`;
+            }
+        }
+
+        if (selectAllTrash) {
+            selectAllTrash.addEventListener('change', function() {
+                const visibleCheckboxes = trashItemsContainer.querySelectorAll('.trash-item:not([style*="display: none"]) .trash-item-checkbox');
+                visibleCheckboxes.forEach(cb => {
+                    cb.checked = selectAllTrash.checked;
+                    updateTrashSelectBtn(cb);
+                });
+                updateTrashControls();
+            });
+        }
+
+        trashItemsContainer.addEventListener('change', function(e) {
+            if (e.target.classList.contains('trash-item-checkbox')) {
+                updateTrashSelectBtn(e.target);
+                updateTrashControls();
+            }
+        });
+
+        if (btnExecuteBulkDelete && trashBulkForm) {
+            btnExecuteBulkDelete.addEventListener('click', function() {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'bulk_permanent_delete';
+                input.value = '1';
+                trashBulkForm.appendChild(input);
+                trashBulkForm.submit();
+            });
+        }
+
+        if (trashSearchInput) {
+            trashSearchInput.addEventListener('input', function() {
+                const query = this.value.toLowerCase().trim();
+                const items = trashItemsContainer.querySelectorAll('.trash-item');
+                let matchCount = 0;
+                items.forEach(item => {
+                    const title = item.dataset.title || '';
+                    const text = item.textContent.toLowerCase();
+                    if (title.includes(query) || text.includes(query)) {
+                        item.style.display = '';
+                        matchCount++;
+                    } else {
+                        item.style.display = 'none';
+                    }
+                });
+                const countBadge = document.getElementById('trashCountBadge');
+                if (countBadge) {
+                    countBadge.textContent = query !== '' ? `${matchCount} found` : `${items.length} in trash`;
+                }
+            });
+        }
+
+        if (trashSortSelect) {
+            trashSortSelect.addEventListener('change', function() {
+                const val = this.value;
+                const items = Array.from(trashItemsContainer.querySelectorAll('.trash-item'));
+                items.sort((a, b) => {
+                    if (val === 'newest') return Number(b.dataset.date) - Number(a.dataset.date);
+                    if (val === 'oldest') return Number(a.dataset.date) - Number(b.dataset.date);
+                    if (val === 'price_asc') return Number(a.dataset.price) - Number(b.dataset.price);
+                    if (val === 'price_desc') return Number(b.dataset.price) - Number(a.dataset.price);
+                    if (val === 'name_asc') return (a.dataset.title || '').localeCompare(b.dataset.title || '');
+                    if (val === 'name_desc') return (b.dataset.title || '').localeCompare(a.dataset.title || '');
+                    return 0;
+                });
+                items.forEach(item => trashItemsContainer.appendChild(item));
+            });
+        }
+    }
+
+    // Admin Properties Table quick search
+    const propTableSearch = document.getElementById('propTableSearch');
+    if (propTableSearch) {
+        propTableSearch.addEventListener('input', function() {
+            const query = this.value.toLowerCase().trim();
+            const rows = document.querySelectorAll('.prop-table-row');
+            let matchCount = 0;
+            rows.forEach(row => {
+                const searchStr = row.getAttribute('data-search') || row.textContent.toLowerCase();
+                if (query === '' || searchStr.includes(query)) {
+                    row.style.display = '';
+                    matchCount++;
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+            const activeBadge = document.getElementById('activePropsCountBadge');
+            if (activeBadge) {
+                activeBadge.textContent = query !== '' ? `${matchCount} found` : `${rows.length} active listings`;
+            }
+        });
+    }
     const locSelect = document.getElementById('property-location');
     const latInput = document.getElementById('property-latitude');
     const lngInput = document.getElementById('property-longitude');

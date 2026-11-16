@@ -279,7 +279,62 @@ include 'includes/header.php';
     </div>
 </div>
 
-<section class="card p-3 p-lg-4 mb-4">
+<?php
+$agentId = (int) $_SESSION['user']['userID'];
+$agentNotifs = get_user_notifications($conn, $agentId, 6);
+$agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
+?>
+<?php if (!empty($agentNotifs)): ?>
+    <section class="card p-3 p-lg-4 mb-4 border-0 shadow-sm" id="viewing-alerts">
+        <div class="kq-panel-header mb-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+                <div class="page-eyebrow">Real-time alerts</div>
+                <h2 class="h4 fw-bold mb-0 text-dark">Viewing alerts &amp; notifications</h2>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <?php if ($agentUnreadCount > 0): ?>
+                    <span class="badge bg-danger rounded-pill px-2 py-1 small"><?= $agentUnreadCount ?> unread</span>
+                    <form method="POST" action="notifications_action.php" class="m-0">
+                        <input type="hidden" name="action" value="mark_all_read">
+                        <input type="hidden" name="redirect" value="agent_dashboard.php#viewing-alerts">
+                        <button type="submit" class="btn btn-sm btn-outline-primary fw-semibold">Mark all as read</button>
+                    </form>
+                <?php else: ?>
+                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-1 small">Up to date</span>
+                <?php endif; ?>
+            </div>
+        </div>
+        <div class="list-group list-group-flush border rounded-3 overflow-hidden">
+            <?php foreach ($agentNotifs as $aNotif):
+                $isUnread = !(bool) $aNotif['isRead'];
+                $link = !empty($aNotif['link']) ? $aNotif['link'] : '#appointments';
+            ?>
+                <a href="notifications_action.php?action=read_and_go&id=<?= (int)$aNotif['notificationID'] ?>&to=<?= urlencode($link) ?>" class="list-group-item list-group-item-action p-3 d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 <?= $isUnread ? 'bg-primary-subtle border-start border-4 border-primary' : 'bg-white' ?>" style="text-decoration: none;">
+                    <div class="d-flex align-items-start gap-3">
+                        <div class="rounded-circle p-2 d-flex align-items-center justify-content-center <?= $isUnread ? 'bg-primary text-white' : 'bg-light text-secondary border' ?>" style="width: 38px; height: 38px; flex-shrink: 0;">
+                            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                        </div>
+                        <div>
+                            <div class="d-flex align-items-center gap-2 mb-1">
+                                <span class="fw-bold <?= $isUnread ? 'text-primary' : 'text-dark' ?>" style="font-size: 0.95rem;"><?= htmlspecialchars($aNotif['title'], ENT_QUOTES, 'UTF-8') ?></span>
+                                <?php if ($isUnread): ?>
+                                    <span class="badge bg-danger small" style="font-size: 0.65rem;">New viewing request</span>
+                                <?php endif; ?>
+                            </div>
+                            <div class="small text-dark fw-medium mb-1"><?= htmlspecialchars($aNotif['message'], ENT_QUOTES, 'UTF-8') ?></div>
+                            <time class="small text-muted" datetime="<?= htmlspecialchars(date('c', strtotime($aNotif['createdAt'])), ENT_QUOTES, 'UTF-8') ?>" style="font-size: 0.75rem;">
+                                <?= htmlspecialchars(date('M j, Y g:i A', strtotime($aNotif['createdAt'])), ENT_QUOTES, 'UTF-8') ?>
+                            </time>
+                        </div>
+                    </div>
+                    <span class="btn btn-sm btn-outline-primary align-self-start align-self-sm-center text-nowrap mt-2 mt-sm-0">View request &rarr;</span>
+                </a>
+            <?php endforeach; ?>
+        </div>
+    </section>
+<?php endif; ?>
+
+<section class="card p-3 p-lg-4 mb-4" id="appointments">
     <div class="kq-panel-header mb-3">
         <div>
             <div class="page-eyebrow">Scheduling</div>

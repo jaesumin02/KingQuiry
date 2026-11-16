@@ -3,6 +3,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/notifications.php';
 
 apply_secure_headers();
 $currentUser = $_SESSION['user'] ?? null;
@@ -10,6 +11,19 @@ $currentRole = normalized_user_role($currentUser);
 $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
     ? (string) $currentUser['fullname']
     : (is_array($currentUser) && !empty($currentUser['email']) ? explode('@', (string) $currentUser['email'])[0] : 'My Account');
+
+$unreadNotificationCount = 0;
+$userNotifications = [];
+if (!empty($currentUser['userID'])) {
+    if (!isset($conn) || !($conn instanceof mysqli)) {
+        @include_once __DIR__ . '/../config/db.php';
+    }
+    if (isset($conn) && $conn instanceof mysqli) {
+        $headerUserId = (int) $currentUser['userID'];
+        $unreadNotificationCount = get_user_unread_notification_count($conn, $headerUserId);
+        $userNotifications = get_user_notifications($conn, $headerUserId, 10);
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -268,6 +282,37 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
             background: var(--kq-ink);
         }
         .app-footer a { color: #fff; }
+        .kq-notif-bell-btn {
+            border-radius: 50%;
+            width: 38px;
+            height: 38px;
+            transition: background 0.15s ease;
+            color: #ffffff;
+        }
+        .kq-notif-bell-btn:hover,
+        .kq-notif-bell-btn:focus {
+            background: rgba(255, 255, 255, 0.16);
+            color: #ffffff;
+        }
+        .kq-notif-dropdown-menu {
+            border-radius: 0.85rem !important;
+            box-shadow: 0 16px 38px rgba(10, 25, 45, 0.22) !important;
+            width: 350px;
+            max-width: 92vw;
+        }
+        .kq-notif-item {
+            transition: background 0.15s ease;
+            text-decoration: none;
+            color: #1a202c !important;
+            display: block;
+        }
+        .kq-notif-item:hover {
+            background-color: #f1f5f9 !important;
+        }
+        .kq-notif-item.is-unread {
+            background-color: #f0f7ff !important;
+            border-left: 3px solid #174a70;
+        }
         @media (max-width: 767.98px) {
             .navbar-nav { align-items: stretch; padding: .5rem 0 1rem; }
             .navbar .nav-link { padding: .7rem .8rem !important; }
@@ -315,6 +360,9 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                             <li class="nav-item dropdown">
                                 <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Manage</a>
                                 <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><a class="dropdown-item fw-semibold" href="admin_dashboard.php#property-list">🏘️ Property list</a></li>
+                                    <li><a class="dropdown-item" href="admin_dashboard.php#properties">+ Publish property</a></li>
+                                    <li><hr class="dropdown-divider"></li>
                                     <li><a class="dropdown-item" href="admin_clients.php">Clients</a></li>
                                     <li><a class="dropdown-item" href="admin_payments.php">Payments</a></li>
                                     <li><a class="dropdown-item" href="admin_sales.php">Sales &amp; transactions</a></li>
@@ -323,6 +371,72 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                                 </ul>
                             </li>
                         <?php endif; ?>
+                        <!-- Notifications Bell Dropdown -->
+                        <li class="nav-item dropdown ms-lg-2">
+                            <a class="nav-link position-relative d-inline-flex align-items-center justify-content-center kq-notif-bell-btn text-white" href="#" id="notifDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false" title="Notifications">
+                                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                                    <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                                </svg>
+                                <?php if ($unreadNotificationCount > 0): ?>
+                                    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger" style="font-size: 0.65rem; padding: 0.25em 0.5em;">
+                                        <?= $unreadNotificationCount > 99 ? '99+' : $unreadNotificationCount ?>
+                                        <span class="visually-hidden">unread notifications</span>
+                                    </span>
+                                <?php endif; ?>
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3 mt-2 py-0 kq-notif-dropdown-menu" aria-labelledby="notifDropdown">
+                                <li class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom bg-light rounded-top">
+                                    <div class="fw-bold text-dark small d-flex align-items-center gap-2">
+                                        <span>Notifications</span>
+                                        <?php if ($unreadNotificationCount > 0): ?>
+                                            <span class="badge bg-primary rounded-pill" style="font-size: 0.7rem;"><?= $unreadNotificationCount ?> new</span>
+                                        <?php endif; ?>
+                                    </div>
+                                    <?php if ($unreadNotificationCount > 0): ?>
+                                        <form method="POST" action="notifications_action.php" class="m-0">
+                                            <input type="hidden" name="action" value="mark_all_read">
+                                            <input type="hidden" name="redirect" value="<?= htmlspecialchars($_SERVER['REQUEST_URI'] ?? 'index.php', ENT_QUOTES, 'UTF-8') ?>">
+                                            <button type="submit" class="btn btn-link p-0 text-decoration-none text-primary fw-semibold" style="font-size: 0.75rem;">Mark all as read</button>
+                                        </form>
+                                    <?php endif; ?>
+                                </li>
+                                <li class="kq-notif-list" style="max-height: 350px; overflow-y: auto;">
+                                    <?php if (!empty($userNotifications)): ?>
+                                        <?php foreach ($userNotifications as $notif):
+                                            $isUnread = !(bool) $notif['isRead'];
+                                            $targetLink = !empty($notif['link']) ? $notif['link'] : '#';
+                                        ?>
+                                            <a href="notifications_action.php?action=read_and_go&id=<?= (int)$notif['notificationID'] ?>&to=<?= urlencode($targetLink) ?>" class="dropdown-item px-3 py-2 border-bottom text-wrap kq-notif-item <?= $isUnread ? 'is-unread' : '' ?>" style="font-size: 0.82rem;">
+                                                <div class="d-flex justify-content-between align-items-start gap-1 mb-1">
+                                                    <span class="fw-bold <?= $isUnread ? 'text-primary' : 'text-dark' ?>" style="font-size: 0.84rem;"><?= htmlspecialchars($notif['title'], ENT_QUOTES, 'UTF-8') ?></span>
+                                                    <?php if ($isUnread): ?>
+                                                        <span class="badge rounded-pill bg-primary" style="width: 7px; height: 7px; padding: 0; display: inline-block;"></span>
+                                                    <?php endif; ?>
+                                                </div>
+                                                <p class="mb-1 text-dark text-break fw-normal" style="font-size: 0.77rem; line-height: 1.35;"><?= htmlspecialchars($notif['message'], ENT_QUOTES, 'UTF-8') ?></p>
+                                                <time class="text-secondary small" style="font-size: 0.7rem;"><?= htmlspecialchars(date('M j, g:i A', strtotime($notif['createdAt'])), ENT_QUOTES, 'UTF-8') ?></time>
+                                            </a>
+                                        <?php endforeach; ?>
+                                    <?php else: ?>
+                                        <div class="px-3 py-4 text-center text-muted small">
+                                            <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" class="mb-2 text-secondary"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                                            <div>No notifications yet.</div>
+                                        </div>
+                                    <?php endif; ?>
+                                </li>
+                                <li class="p-2 border-top bg-light text-center rounded-bottom">
+                                    <?php if ($currentRole === 'Client'): ?>
+                                        <a href="client_dashboard.php#notifications" class="text-decoration-none small fw-bold text-primary">View in Client Dashboard &rarr;</a>
+                                    <?php elseif ($currentRole === 'Sales Agent'): ?>
+                                        <a href="agent_dashboard.php#appointments" class="text-decoration-none small fw-bold text-info">View Viewing Requests &rarr;</a>
+                                    <?php else: ?>
+                                        <a href="admin_dashboard.php" class="text-decoration-none small fw-bold text-warning">Admin Dashboard &rarr;</a>
+                                    <?php endif; ?>
+                                </li>
+                            </ul>
+                        </li>
+
                         <!-- Account Management Dropdown (Logged In) -->
                         <li class="nav-item dropdown ms-lg-2">
                             <a class="nav-link dropdown-toggle text-white fw-bold d-inline-flex align-items-center gap-2 kq-user-nav-btn" href="#" id="userAccountDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">

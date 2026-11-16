@@ -52,6 +52,18 @@
     color: #536579 !important;
 }
 
+.kq-client-shell .card .text-muted,
+.kq-client-shell .kq-tracking-timeline .text-muted,
+.kq-client-shell .kq-tracking-timeline time,
+.kq-client-shell .kq-tracking-event-content,
+.kq-client-shell .kq-tracking-event-content p,
+.kq-client-shell .kq-tracking-event-content span,
+.kq-client-shell .kq-tracking-event-content div,
+.kq-client-shell .kq-tracking-event-content time {
+    color: #000000 !important;
+    --bs-text-opacity: 1 !important;
+}
+
 .transaction-tracking-page .table thead th {
     color: #4b5e72;
     background: #f3f6f9;
@@ -201,3 +213,48 @@
     background: transparent !important;
     border: none !important;
 }
+
+/* ══════════ CLIENT DASHBOARD TRACKING BUTTON CARDS ══════════ */
+.kq-tracking-card-btn {
+    border: 1px solid #e2e8f0;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.kq-tracking-card-btn:hover,
+.kq-tracking-card-btn:focus-visible {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(23, 74, 112, 0.12) !important;
+    border-color: #174a70 !important;
+}
+
+.kq-tracking-card-btn:hover .tracking-card-title {
+    color: #174a70 !important;
+}
+
+/* ══════════ CLIENT DASHBOARD TOP AGENT RATING ══════════ */
+.kq-top-rating-banner {
+    position: relative;
+    z-index: 2;
+    transition: all 0.4s ease;
+    border-color: #f59e0b !important;
+    background: #fffbeb !important;
+}
+
+.kq-top-star-btn {
+    font-size: 1.55rem;
+    line-height: 1;
+    color: #cbd5e1;
+    cursor: pointer;
+    transition: color 0.15s ease, transform 0.12s ease;
+    outline: none;
+}
+
+.kq-top-star-btn:hover,
+.kq-top-star-btn:focus-visible {
+    transform: scale(1.22);
+}
+
+.kq-top-star-btn.is-active {
+    color: #f59e0b !important;
+}
+

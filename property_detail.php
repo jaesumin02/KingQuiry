@@ -29,6 +29,12 @@ if ($result->num_rows === 0) {
 }
 
 $property = $result->fetch_assoc();
+if ((int) ($property['isDeleted'] ?? 0) === 1) {
+    include 'includes/header.php';
+    echo "<div class='alert alert-warning'>This property listing is currently archived or in the trash bin.</div>";
+    include 'includes/footer.php';
+    exit();
+}
 
 $categoryLabels = [
     'Residential' => 'Residential Lot',
@@ -102,15 +108,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $conn->begin_transaction();
                     $transactionStarted = true;
                     $bookStmt->execute();
-                    create_property_transaction($conn, $propertyID, $clientID, 'appointment', (int) $conn->insert_id, $clientID);
+                    $appointmentId = (int) $conn->insert_id;
+                    create_property_transaction($conn, $propertyID, $clientID, 'appointment', $appointmentId, $clientID);
                     $conn->commit();
                     $transactionStarted = false;
                     send_property_notification(
                         $conn,
                         $clientID,
                         'Viewing request received',
-                        "Thank you for booking a site visit for '{$property['title']}'. Your viewing request has been received and is now being reviewed by our sales team. Please monitor your dashboard for updates."
+                        "Thank you for booking a site visit for '{$property['title']}'. Your viewing request has been received and is now being reviewed by our sales team. Please monitor your dashboard for updates.",
+                        'client_dashboard.php#transaction-tracking',
+                        'viewing_request'
                     );
+                    notify_agents_new_viewing($conn, $appointmentId, $propertyID, $clientID, $date, $time);
                     $_SESSION['flash_success'] = 'Your viewing request has been sent. Track its progress and updates from your dashboard.';
                     header('Location: property_detail.php?id=' . $propertyID . '#appointment');
                     exit();
@@ -142,15 +152,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $conn->begin_transaction();
                 $transactionStarted = true;
                 $inqStmt->execute();
-                create_property_transaction($conn, $propertyID, $clientID, 'inquiry', (int) $conn->insert_id, $clientID);
+                $inquiryId = (int) $conn->insert_id;
+                create_property_transaction($conn, $propertyID, $clientID, 'inquiry', $inquiryId, $clientID);
                 $conn->commit();
                 $transactionStarted = false;
                 send_property_notification(
                     $conn,
                     $clientID,
                     'Property inquiry received',
-                    "Thank you for reaching out about '{$property['title']}'. Your inquiry has been received and our team will review it shortly. Please check your dashboard for updates."
+                    "Thank you for reaching out about '{$property['title']}'. Your inquiry has been received and our team will review it shortly. Please check your dashboard for updates.",
+                    'client_dashboard.php#transaction-tracking',
+                    'inquiry_received'
                 );
+                notify_agents_new_inquiry($conn, $inquiryId, $propertyID, $clientID, $message);
                 $_SESSION['flash_success'] = 'Your inquiry has been sent. Track the progress from your dashboard.';
                 header('Location: property_detail.php?id=' . $propertyID . '#inquiry');
                 exit();
@@ -186,6 +200,15 @@ include 'includes/header.php';
     <!-- Property Detailed Information -->
     <div class="col-md-7 mb-4">
         <div class="card shadow-sm border-0 p-4">
+            <?php if ($property['status'] === 'Sold'): ?>
+                <div class="alert alert-dark border-0 p-3 rounded-3 d-flex align-items-center gap-3 mb-3">
+                    <span class="badge bg-danger fs-6 px-3 py-2 text-uppercase">Sold</span>
+                    <div>
+                        <div class="fw-bold text-white">This property is officially sold and turned over.</div>
+                        <div class="small text-white-50">It has been acquired by its new owner and is no longer available on public listings.</div>
+                    </div>
+                </div>
+            <?php endif; ?>
             <span class="badge rounded-pill text-bg-light align-self-start mb-2"><?= htmlspecialchars($categoryLabels[$property['propertyType']] ?? $property['propertyType'], ENT_QUOTES, 'UTF-8') ?></span>
             <h2 class="fw-bold mb-2"><?= htmlspecialchars($property['title']) ?></h2>
             <p class="text-muted mb-3">Location: <strong><?= htmlspecialchars(property_location_label($property), ENT_QUOTES, 'UTF-8') ?><?php if (!empty($property['barangay'])): ?>, <?= htmlspecialchars($property['barangay'], ENT_QUOTES, 'UTF-8') ?><?php endif; ?></strong></p>
@@ -239,46 +262,59 @@ include 'includes/header.php';
             </div>
         </div>
 
-        <div class="card p-4 mb-4" id="appointment">
-            <div class="page-eyebrow mb-2">Visit the property</div>
-            <h3 class="h5 fw-bold mb-3">Request a viewing</h3>
-            <?php if(normalized_user_role($_SESSION['user'] ?? null) === 'Client'): ?>
-                <form method="POST">
-                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold" for="appointment-date">Preferred date</label>
-                        <input type="date" id="appointment-date" name="appointmentDate" class="form-control" required min="<?= date('Y-m-d') ?>">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold" for="appointment-time">Preferred time</label>
-                        <input type="time" id="appointment-time" name="appointmentTime" class="form-control" required>
-                    </div>
-                    <button type="submit" name="book_appointment" class="btn btn-primary w-100">Request a viewing</button>
-                </form>
-                <a href="property_summary_pdf.php?property_id=<?= (int) $property['propertyID'] ?>" target="_blank" class="btn btn-outline-secondary w-100 mt-3">Download summary PDF</a>
-            <?php else: ?>
-                <p class="text-muted small">Sign in with a client account to request a viewing.</p>
-                <a href="client_login.php" class="btn btn-primary w-100">Sign in to continue</a>
-            <?php endif; ?>
-        </div>
+        <?php if ($property['status'] === 'Sold'): ?>
+            <div class="card p-4 text-center border-0 shadow-sm bg-light mb-4">
+                <div class="rounded-circle bg-danger-subtle text-danger mx-auto d-flex align-items-center justify-content-center mb-3" style="width: 54px; height: 54px;">
+                    <span class="fs-4">🏷️</span>
+                </div>
+                <span class="badge bg-danger fs-6 px-3 py-1 mb-2 align-self-center">Off the Market</span>
+                <h4 class="h5 fw-bold mb-2">Property Officially Sold</h4>
+                <p class="text-muted small mb-3">This property is officially owned and is no longer available for site viewings or inquiries.</p>
+                <a href="index.php" class="btn btn-primary w-100">Browse Available Properties</a>
+                <a href="property_summary_pdf.php?property_id=<?= (int) $property['propertyID'] ?>" target="_blank" class="btn btn-outline-secondary w-100 mt-2">Download archived summary PDF</a>
+            </div>
+        <?php else: ?>
+            <div class="card p-4 mb-4" id="appointment">
+                <div class="page-eyebrow mb-2">Visit the property</div>
+                <h3 class="h5 fw-bold mb-3">Request a viewing</h3>
+                <?php if(normalized_user_role($_SESSION['user'] ?? null) === 'Client'): ?>
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold" for="appointment-date">Preferred date</label>
+                            <input type="date" id="appointment-date" name="appointmentDate" class="form-control" required min="<?= date('Y-m-d') ?>">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold" for="appointment-time">Preferred time</label>
+                            <input type="time" id="appointment-time" name="appointmentTime" class="form-control" required>
+                        </div>
+                        <button type="submit" name="book_appointment" class="btn btn-primary w-100">Request a viewing</button>
+                    </form>
+                    <a href="property_summary_pdf.php?property_id=<?= (int) $property['propertyID'] ?>" target="_blank" class="btn btn-outline-secondary w-100 mt-3">Download summary PDF</a>
+                <?php else: ?>
+                    <p class="text-muted small">Sign in with a client account to request a viewing.</p>
+                    <a href="client_login.php" class="btn btn-primary w-100">Sign in to continue</a>
+                <?php endif; ?>
+            </div>
 
-        <div class="card p-4" id="inquiry">
-            <div class="page-eyebrow mb-2">Have a question?</div>
-            <h3 class="h5 fw-bold mb-3">Contact the property team</h3>
-            <?php if(normalized_user_role($_SESSION['user'] ?? null) === 'Client'): ?>
-                <form method="POST">
-                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
-                    <div class="mb-3">
-                        <label class="form-label fw-semibold" for="property-inquiry">Your message</label>
-                        <textarea id="property-inquiry" name="message" class="form-control" rows="4" minlength="5" maxlength="3000" required placeholder="Ask about documents, terms, access, or other property details."></textarea>
-                    </div>
-                    <button type="submit" name="send_inquiry" class="btn btn-outline-primary w-100">Send inquiry</button>
-                </form>
-            <?php else: ?>
-                <p class="text-muted small">Sign in with a client account to send a question about this listing.</p>
-                <a href="client_login.php" class="btn btn-outline-primary w-100">Sign in to continue</a>
-            <?php endif; ?>
-        </div>
+            <div class="card p-4" id="inquiry">
+                <div class="page-eyebrow mb-2">Have a question?</div>
+                <h3 class="h5 fw-bold mb-3">Contact the property team</h3>
+                <?php if(normalized_user_role($_SESSION['user'] ?? null) === 'Client'): ?>
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold" for="property-inquiry">Your message</label>
+                            <textarea id="property-inquiry" name="message" class="form-control" rows="4" minlength="5" maxlength="3000" required placeholder="Ask about documents, terms, access, or other property details."></textarea>
+                        </div>
+                        <button type="submit" name="send_inquiry" class="btn btn-outline-primary w-100">Send inquiry</button>
+                    </form>
+                <?php else: ?>
+                    <p class="text-muted small">Sign in with a client account to send a question about this listing.</p>
+                    <a href="client_login.php" class="btn btn-outline-primary w-100">Sign in to continue</a>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
     </div>
 </div>
 

@@ -3,6 +3,253 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-16 — Top-of-Card Agent Rating with Instant Feedback & Auto-Fade
+
+- **Top-of-Card Sales Agent Rating Banner** ([client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php)):
+  - Placed a dedicated rating prompt at the **very top** inside each completed property tracking card (`.kq-top-rating-banner`) for transactions that have not yet been reviewed.
+  - Displays the closing sales agent's name (`Rate your sales agent (Agent Name):`) alongside 1–5 clickable gold stars with interactive hover preview.
+  - Isolated click events via `event.stopPropagation()` to ensure rating clicks do not inadvertently trigger the property card's modal pop-up window.
+  - Submits ratings asynchronously (AJAX) to `client_dashboard.php` (`submit_agent_review`), recording the rating and agent association in `agent_reviews`.
+- **Instant "Thanks for the feedback" Confirmation & Auto-Fadeout**:
+  - Upon selecting a rating, the top banner instantly replaces the stars with a green confirmation badge: `Thanks for the feedback`.
+  - After 3 seconds, the confirmation banner smoothly transitions opacity to 0, collapses height, and cleanly removes itself from the card layout without page reload.
+  - Dynamically synchronizes rating status with the transaction modal and the client review history on the dashboard.
+- **Dedicated Styling** ([assets/css/style.css](file:///c:/xampp/htdocs/kingquiry/assets/css/style.css)):
+  - Added `.kq-top-rating-banner` and `.kq-top-star-btn` styles with scale transformations, active gold highlight `#f59e0b`, and smooth transitions.
+
+
+## 2026-11-16 — Fixed Squeezed Modal & Nested DOM Overflow on Transaction Tracking
+
+- **Fixed Modal DOM Structure & Sizing** ([transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/transaction_tracking.php)):
+  - Removed duplicate trailing HTML input and premature closing `</div>` tags inside `#recordNextModal<ID>` that were previously closing `modal-body`, `modal-content`, and `modal-dialog` early.
+  - This premature closure had caused the form fields (sale price, note, advance button, payment history) to spill outside the modal onto the bottom of the page and squished the modal dialog into a narrow left column.
+  - Added `modal-dialog-scrollable`, `rounded-4`, and gradient header styling (`linear-gradient(135deg, #142d4e 0%, #174a70 100%)`) to ensure the modal stays centered, properly proportioned (`modal-lg`, 800px max width on desktop), and vertically scrollable without layout distortion.
+  - Added automated DOM tree validation test to prevent future nesting errors.
+
+
+## 2026-11-16 — Client Transaction Tracking Modal Window Upgrade
+
+- **Clickable Property Tracker Card & Popup Window** ([client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php)):
+  - Converted the cluttered inline tracking sections into an organized, responsive list of **Clickable Property Cards**.
+  - Each card compactly displays the tracking reference (`#KQT-<ID>`), property title, location, viewing schedule, stage status badge, Spot Cash indicator, overall progress bar (percentage & step count), and a **"View tracking →"** action button.
+  - Clicking any property card triggers an interactive Bootstrap pop-up modal (`#trackingModal<ID>`) displaying:
+    1. **Transaction Pipeline**: Sequential milestone stepper with real-time indicators for passed, active, and upcoming stages (with Spot Cash skipping `document_verification`).
+    2. **Overall Progress**: Percentage bar, current milestone description, and last updated timestamp.
+    3. **Payments & Paperwork / Documents**: Detailed records of verified face-to-face payments, amounts (₱), payment methods, reference numbers, ORs, agent notes, and confirmation status.
+    4. **Transaction Updates**: Chronological event history timeline with timestamps, agent name, and client-visible update notes.
+    5. **Finalization & Review**: If completed, displays verified sale price and a direct action button to rate the sales agent.
+- **Enhanced Card Styles & Accessibility** ([assets/css/style.css](file:///c:/xampp/htdocs/kingquiry/assets/css/style.css)):
+  - Added `.kq-tracking-card-btn` with smooth hover elevation, border highlight, and title color transitions for intuitive clickability.
+
+
+## 2026-11-16 — Spot Cash Conditional Document Verification, Auto-Exclusion of Sold Properties, and 1-5 Star Agent Rating
+
+- **Conditional Document Verification Stage (Spot Cash vs. Bank Transfer / Check)**:
+  - **Stage Transition Logic** ([includes/transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/includes/transaction_tracking.php)):
+    - Updated `property_transaction_next_stages($stage, $paymentMethod)`: When `paymentMethod === 'Spot Cash'`, the pipeline from `payment_in_process` automatically skips `document_verification` and advances straight to `payment_confirmation` (or `completed`).
+    - For `Bank Transfer`, `Check`, and paperwork, `document_verification` remains an explicit, required milestone.
+    - Updated `advance_property_transaction()` to persist `paymentMethod` in `property_transactions.paymentMethod`.
+  - **Dynamic Modal UI for Agents** ([transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/transaction_tracking.php)):
+    - Inside `#recordNextModal<ID>`, added real-time JavaScript: selecting **"Spot Cash"** dynamically hides the `document_verification` option from the "Choose next step" dropdown, auto-selects `payment_confirmation`, and displays a `⚡ Spot Cash: Document verification stage is automatically skipped` alert.
+    - Selecting **"Bank Transfer"** or **"Check"** restores the `document_verification` milestone.
+    - In the modal pipeline stepper, if Spot Cash is active, `document_verification` is omitted from the step count and visual indicators.
+  - **Client Tracking & Notifications** ([client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php)):
+    - In the client progress stepper, if the transaction was processed with `Spot Cash`, `document_verification` is dynamically filtered out, showing seamless progression from `Payment in process` directly to `Payment confirmation`.
+    - Stage notifications inform the client that Spot Cash payment was received and document verification was bypassed.
+- **Immediate Removal of Sold Properties from Public Listings**:
+  - **Auto-Sold Status Transition** ([includes/transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/includes/transaction_tracking.php)):
+    - In `advance_property_transaction()`, when the transaction stage is finalized as `completed`, the property's status in `properties` table is immediately updated to `Sold`.
+    - Because [index.php](file:///c:/xampp/htdocs/kingquiry/index.php) and interactive maps query `status = 'Available'`, the sold property automatically disappears from all public search and catalog listings.
+  - **Off-the-Market Notice on Property Detail** ([property_detail.php](file:///c:/xampp/htdocs/kingquiry/property_detail.php)):
+    - If accessed directly, sold properties display a prominent `🏷️ SOLD & CLOSED` banner.
+    - Replaced the viewing booking and inquiry forms with a clean `Off the Market — Property Officially Sold` card and direct link to browse available properties.
+- **Interactive 1–5 Star Sales Agent Rating System** ([client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php)):
+  - Updated `$completedReviewRows` query to identify and display the sales agent's full name (`agentName`) who handled the transaction.
+  - Built an interactive 1–5 star rating widget (`★ ★ ★ ★ ★`) with real-time hover/click preview and dynamic rating labels (`1 Star - Poor` up to `5 Stars - Excellent!`).
+  - Added a direct **"⭐ Rate sales agent"** action button inside the completed transaction card in the Client Dashboard tracking section to jump straight to `#client-reviews`.
+  - Displays submitted ratings with gold stars, submission date, and client feedback.
+- **Database Schema**:
+  - Added `paymentMethod VARCHAR(50) DEFAULT NULL` column to `property_transactions` in MySQL and updated [database/schema.sql](file:///c:/xampp/htdocs/kingquiry/database/schema.sql).
+
+## 2026-11-16 — Post-Viewing Pipeline Redesign & Stage-Completed Client Notifications
+
+- **Redesigned Post-Viewing Agent Flow** ([transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/transaction_tracking.php)):
+  - Redesigned the **"Record next step"** modal into a unified, sequential post-viewing pipeline:
+    `1. Viewing requested` ➔ `2. Viewing confirmed` ➔ `3. Viewing completed` ➔ `4. Payment in process` ➔ `5. Document verification` ➔ `6. Payment confirmation` ➔ `7. Successful / completed`.
+  - Added an interactive visual pipeline stepper inside the modal showing current stage progress, passed steps, and upcoming steps.
+  - Added context-aware agent action guidance explaining exactly what to do at each stage.
+  - Removed duplicate disjointed forms; unified into a single streamlined submission that supports optional payment/paperwork details (amount, payment method, reference) and verified sale price.
+- **Stage-Completed Notifications to Clients** ([includes/transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/includes/transaction_tracking.php)):
+  - Implemented `get_transaction_stage_notification()` to generate specific, informative client notifications upon advancing each stage:
+    - **Viewing completed**: Alerts client that the site visit was conducted and completed; next stage is Payment Processing.
+    - **Payment in process**: Alerts client that payment coordination and reservation/down payment processing is underway.
+    - **Document verification**: Alerts client that payment processing is done and verified by the sales agent, and the transaction has advanced to Document Verification.
+    - **Payment confirmation**: Alerts client that document verification has been completed, and the agent is finalizing official receipts and clearance.
+    - **Successful / completed**: Alerts client that payment confirmation is complete, transaction is finalized with verified sale price, and invites them to download their summary and review their agent.
+  - Removed the previous auto-advance bug that force-skipped `viewing_completed` straight into `payment_in_process`, restoring `viewing_completed` as a real, distinct milestone.
+
+
+## 2026-11-16 — Swapped Property List to Prime Location & Removed Location Management
+
+- **Swapped Property List Position** ([admin_dashboard.php](file:///c:/xampp/htdocs/kingquiry/admin_dashboard.php)):
+  - Moved the **🏘️ Property list** (`#property-list`) directly beneath the analytics charts (viewing requests and property distribution), placing active catalog inventory in the most prominent position on the dashboard.
+  - Placed the **🗑️ Trashbin** button directly on the Property List header for instant access.
+  - Removed the duplicate property list section from the bottom of the dashboard.
+- **Completely Removed Location Directory Management**:
+  - Removed the **Manage locations** section (`#locations`), table listing, and the "+ Add Location" form from [admin_dashboard.php](file:///c:/xampp/htdocs/kingquiry/admin_dashboard.php).
+  - Cleaned up all location management backend handlers (`add_location`, `set_location_status`, `edit_location`, `delete_location`, `restore_location`, `permanent_delete_location`, `bulk_restore_locations`, `bulk_permanent_delete_locations`).
+  - Simplified the **Trashbin modal** (`#trashbinModal`) into a dedicated Property Trashbin by removing the location tabs, location listing pane, and location-specific delete/restore action controls and modals.
+  - Removed the **📍 Locations** link from the Admin Manage dropdown in [includes/header.php](file:///c:/xampp/htdocs/kingquiry/includes/header.php).
+  - Maintained read-only location population via `get_property_locations()` for publishing properties and the land price estimator.
+
+
+## 2026-11-16 — Property Inventory Reduction to 10 Properties & Admin Navigation Upgrade
+
+- **Minimized Active Inventory to 10 Curated Properties**:
+  - Reduced the active property inventory from 32 down to exactly **10 diverse properties** across all 5 core property categories (2 Residential, 2 Commercial, 2 Farmlot, 2 Beachlot, 2 Condo) in major Batangas municipalities (Nasugbu, Lipa City, Calatagan, Batangas City).
+  - Preserved Property `#17` (*Port Access Industrial & Commercial Lot*) with its active appointments and transaction tracking records (`#KQT-1`).
+  - Created a complete backup of all 32 original property listings in [database/backup_all_32_properties.sql](file:///c:/xampp/htdocs/kingquiry/database/backup_all_32_properties.sql).
+- **Property List Visibility & Fast Navigation in Admin Dashboard** ([admin_dashboard.php](file:///c:/xampp/htdocs/kingquiry/admin_dashboard.php)):
+  - Added direct jump button **"🏘️ Property list (10)"** in the top dashboard hero action bar.
+  - Added a direct link in the top **Property Listings** KPI summary card to jump straight to `#property-list`.
+  - Added `id="property-list"` to the section, complete with an instant real-time search filter (`#propTableSearch`), direct link to live listings (`👁️ View`), and status update controls.
+  - Added **"🏘️ Property list"** to the global Admin **Manage** navigation dropdown in [includes/header.php](file:///c:/xampp/htdocs/kingquiry/includes/header.php).
+
+## 2026-11-16 — Transaction Tracking Modal Window Upgrade ("Record Next Step")
+
+- **Modal Window for Recording Transaction Steps** ([transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/transaction_tracking.php)):
+  - Replaced the large inline forms embedded directly within each table row's "Record next step" column with a clean, compact action button: **"📝 Record next step"**.
+  - Clicking the button opens a dedicated **"Record Next Step" modal window** (`#recordNextModal<ID>`) specific to that transaction.
+  - The modal dialog contains:
+    - **Transaction Overview Header**: Displays tracking reference, property title, client info, viewing schedule, and current stage badge.
+    - **Advance Milestone Form**: Dropdown to select the next verified stage, optional client-visible update note, and verified sale price.
+    - **Face-to-Face Payment & Paperwork Form**: Allows agents to quickly mark in-person paperwork status as "Confirmed" or "In process" with optional notes.
+    - **Payment Records**: Displays client-submitted payment history and review actions if applicable.
+  - Closed/completed transactions display a status badge and a compact **"👁️ View"** button to inspect historical milestone records.
+
+## 2026-11-16 — Registration Success Screen & Direct Login Redirection
+
+- **Post-Registration Confirmation View** ([register.php](file:///c:/xampp/htdocs/kingquiry/register.php)):
+  - Removed the previous behavior where the registration form was re-rendered with emptied text inputs.
+  - When an account is created, the form and input fields are completely replaced with a dedicated success screen and a prominent button **"Back to Login Screen"** that redirects directly to the login page ([client_login.php](file:///c:/xampp/htdocs/kingquiry/client_login.php)).
+- **Clean Login Screen** ([client_login.php](file:///c:/xampp/htdocs/kingquiry/client_login.php)):
+  - Kept the login page clean and free of redundant banners upon redirecting from registration.
+
+## 2026-11-16 — Trashbin Modal UX Upgrade: Direct Soft-Delete, modal-xl Size & Select Buttons
+
+- **Instant One-Click Move to Trashbin (Zero Intermediate Confirmation)**:
+  - Removed confirmation prompts when moving a location or property into the trashbin. Clicking "🗑️ Delete" on any location in Manage Locations or "🗑️ Move to Trash" on a property now immediately soft-deletes the item to the trashbin (`isDeleted = 1`) without interruption.
+  - Displays an instant toast notification with property/location name and an immediate **"Open Trashbin"** button.
+  - Retained strict permanent deletion confirmation prompts with red buttons (`btn-danger`) exclusively for irreversible deletions inside the trashbin modal.
+- **Enlarged Trashbin Modal (`modal-xl`)**:
+  - Expanded the `#trashbinModal` size to extra-large (`modal-xl`, up to 1140px width on desktop) to provide ample room for viewing wide item details, category badges, dates, and action controls without cramping.
+- **Dedicated "Select" Buttons on All Items**:
+  - Added explicit interactive "Select" buttons (`.trash-select-btn`) to every individual property and location card in the trashbin.
+  - Clicking "Select" dynamically toggles button appearance between outlined (`btn-outline-primary`, "Select") and solid active blue (`btn-primary text-white`, "✓ Selected").
+  - Synchronized with "Select all" master checkboxes for both **🏠 Properties** and **📍 Locations** tabs.
+  - Wired up bulk actions for locations: "↺ Restore Selected" and "🗑️ Delete Selected" with custom bulk confirmation modal.
+
+## 2026-11-16 — Admin Manage Locations Edit/Delete Actions & In-Frame Trashbin Modal Button
+
+- **Location Directory Trashbin Integration** ([admin_dashboard.php](file:///c:/xampp/htdocs/kingquiry/admin_dashboard.php)):
+  - Added `isDeleted TINYINT(1) NOT NULL DEFAULT 0` and `deletedAt TIMESTAMP NULL DEFAULT NULL` support to `property_locations` table and schema ([database/schema.sql](file:///c:/xampp/htdocs/kingquiry/database/schema.sql)).
+  - Updated location delete action in Manage Locations table to soft-delete locations to the Trashbin (`isDeleted = 1`, `deletedAt = CURRENT_TIMESTAMP`), hiding them from active directories and public listing filters while keeping properties intact.
+  - Upgraded the **Trashbin Modal** with dedicated tabs: **🏠 Properties** and **📍 Locations**.
+  - Trashed locations tab allows single-click location restoration (`↺ Restore`) and permanent removal (`🗑️ Delete`) with confirmation modal and red confirmation button.
+  - Total trash counter badge on the Manage Locations button aggregates both trashed properties and locations.
+  - Added toast notification on location deletion with a direct one-click **"Open Trashbin"** button.
+- **Fixed Bulk Deletion Display Glitch**:
+  - Removed duplicate un-nested modal dialog markup that was causing the bulk deletion confirmation dialog to display statically at the bottom of the Manage Locations frame.
+- **Fixed Typography & Text Contrast**:
+  - Scoped the hero `.text-muted` override strictly to the dark hero subtitle (`.kq-admin-shell > div.mb-4 > .text-muted`), preventing muted text across white cards, tables, and modals from turning white or unreadable.
+  - Explicitly enforced high-contrast dark text (`#1a252f`) and clear muted grey (`#536579 !important`) for all card and modal headings, paragraphs, labels, spans, and tables.
+  - Restored visible white text label `Trashbin / Archived Inventory` to the red header button.
+- **Location Management Actions in Admin Dashboard** ([admin_dashboard.php](file:///c:/xampp/htdocs/kingquiry/admin_dashboard.php)):
+  - Added **Edit** and **Delete** actions for each location in the Manage Locations table.
+  - Implemented an **Edit Location Modal** allowing administrators to update Region Code, Region Name, Province, Municipality, and Active status. Updating a location synchronizes its canonical string across existing properties.
+  - Implemented a **Delete Location Confirmation Modal** to safely remove unused locations with database safety handling.
+- **In-Frame Trashbin Button in Manage Locations**:
+  - Replaced the side-by-side persistent column with a dedicated, instantly visible **"Trashbin / Archived Inventory"** button located directly inside the Manage Locations card header.
+  - Features an eye-catching red button (`btn-danger`) with a trash icon and live counter pill badge indicating the number of trashed listings.
+  - Opens the complete **Property Trashbin (Archived Inventory)** management modal without cluttering the page or squeezing the location directory table.
+- **Property Trashbin with Soft Delete & Toast Notification**:
+  - Soft delete support: Moving a property to the trashbin flags `isDeleted = 1` and records `deletedAt = CURRENT_TIMESTAMP`, keeping listings hidden from public search, catalog, and bookings while preserving historical data.
+  - Added an interactive **toast notification** that alerts the admin upon moving a property: *"The property has been moved to the trashbin"* with a direct one-click **"Open Trashbin"** button.
+  - **Search & Sort**: Real-time instant search by title/location and sorting by Recently Trashed, Oldest Trashed, Price (Low to High, High to Low), and Name (A-Z, Z-A).
+  - **Select All & Bulk Actions**: Dedicated "Select All" checkbox with multi-select bulk Restore and bulk Permanent Delete capabilities.
+  - **Strict Confirmation Safety Prompts**:
+    - Single property permanent deletion prompts with: *"Are you sure you want to delete (property name)?"* featuring a prominent red button (`btn-danger`).
+    - Bulk permanent deletion prompts with a dedicated confirmation modal specifying the exact count of items being permanently deleted.
+    - Added nested modal handling so delete confirmations stack smoothly above the trashbin modal.
+- **Schema & Catalog Synchronization**:
+  - Added `isDeleted TINYINT(1) NOT NULL DEFAULT 0` and `deletedAt TIMESTAMP NULL DEFAULT NULL` to the `properties` schema in [database/schema.sql](file:///c:/xampp/htdocs/kingquiry/database/schema.sql).
+  - Updated catalog queries in [index.php](file:///c:/xampp/htdocs/kingquiry/index.php) and detail views in [property_detail.php](file:///c:/xampp/htdocs/kingquiry/property_detail.php) to filter out trashed properties.
+
+## 2026-11-16 — Real-Time Property Update Notifications & Agent Viewing Request Alerts
+
+- Implemented comprehensive in-app notification infrastructure in [includes/notifications.php](file:///c:/xampp/htdocs/kingquiry/includes/notifications.php):
+  - Created `user_notifications` database table with auto-migration (`ensure_notifications_table`) and added schema definition to [database/schema.sql](file:///c:/xampp/htdocs/kingquiry/database/schema.sql).
+  - Added notification lifecycle helper functions: `create_user_notification()`, `get_user_notifications()`, `get_user_unread_notification_count()`, `mark_notification_as_read()`, and `mark_all_notifications_as_read()`.
+  - Upgraded `send_property_notification()` to simultaneously log in-app user notifications and dispatch fast non-blocking email logs to `logs/email_notifications.log`.
+- **Client Property Update Notifications**:
+  - Whenever a client's requested property receives an update (viewing confirmed, viewing completed, payment in process, document verification, payment confirmation, paperwork logged, or successful completion), an in-app notification is automatically generated for the client with direct links to [client_dashboard.php#transaction-tracking](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php#transaction-tracking).
+  - Added a dedicated **"Property Updates & Notifications"** panel on [client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php) with unread counter, "Mark all as read" button, and direct navigation pills.
+- **Sales Agent Viewing Request Alerts**:
+  - Implemented `notify_agents_new_viewing()` and `notify_agents_new_inquiry()` in [includes/notifications.php](file:///c:/xampp/htdocs/kingquiry/includes/notifications.php).
+  - When a client books a new property viewing on [property_detail.php](file:///c:/xampp/htdocs/kingquiry/property_detail.php), every active Sales Agent and Admin immediately receives an in-app notification specifying the client's name, property title, and appointment date/time.
+  - Added a dedicated **"Viewing Alerts & Notifications"** section on [agent_dashboard.php](file:///c:/xampp/htdocs/kingquiry/agent_dashboard.php) with an unread badge and quick links directly to the appointment in the scheduling queue.
+- **Global Navigation Notification Center**:
+  - Added a Notification Bell icon in [includes/header.php](file:///c:/xampp/htdocs/kingquiry/includes/header.php) for logged-in users with a live unread badge counter.
+  - Interactive dropdown menu displaying recent notifications, unread status indicators, direct links, and a one-click "Mark all as read" trigger.
+  - Created [notifications_action.php](file:///c:/xampp/htdocs/kingquiry/notifications_action.php) to handle secure notification read status transitions, AJAX updates, and safe local redirects.
+
+## 2026-11-16 — Streamlined 9-Stage Transaction Pipeline & Client Visual Progress Stepper
+
+- Streamlined property transaction stages in [includes/transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/includes/transaction_tracking.php):
+  - Removed deprecated `offer_negotiation` (Offer / negotiation) and `reservation_processing` (Reservation processing) stages, per real-world real estate operations where negotiation is conducted face-to-face and reservation is equivalent to the viewing request.
+  - Finalized the streamlined 9-stage pipeline:
+    1. `inquiry_received`: Inquiry received (0%)
+    2. `contacting_client`: Contacting client (13%)
+    3. `viewing_requested`: Viewing requested (25%)
+    4. `viewing_confirmed`: Viewing confirmed (38%)
+    5. `viewing_completed`: Viewing completed (50%)
+    6. `payment_in_process`: Payment in process (63%)
+    7. `document_verification`: Document verification (75%)
+    8. `payment_confirmation`: Payment confirmation (88%)
+    9. `completed`: Successful / completed (100%)
+  - Configured frictionless post-viewing state transitions: `viewing_completed` ➔ `payment_in_process` ➔ `document_verification` ➔ `payment_confirmation` ➔ `completed`.
+  - In `advance_property_transaction()`: smoothly auto-creates confirmed paperwork payment records when moving to `payment_confirmation` if not already present, preventing workflow lockouts.
+- Built a visual 9-stage interactive pipeline stepper on [client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php):
+  - Added a dedicated "Transaction Pipeline" stepper box above overall progress, visibly displaying all 9 stages in sequence with stage number, status icon (completed checkmark, current active pulse, or pending), and "Stage X of 9" badge.
+  - Added informative reassuring client notice: *"Viewing is complete. You can relax and wait while your sales agent completes the remaining stages."*
+  - Updated overall progress percentage calculation based on the 9 stages (viewing completed at 50%, payment in process at 63%).
+- Enforced 100% solid black font color (`#000000 !important`) across all timeline events, card descriptions, timestamps, and agent update tags in [client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php) and [assets/css/style.css](file:///c:/xampp/htdocs/kingquiry/assets/css/style.css), completely eliminating low-contrast / washed-out white text.
+
+## 2026-11-16 — Added 'Payment in process' transaction stage and agent face-to-face payment entry
+
+- Added `payment_in_process` ("Payment in process") transaction stage to the transaction pipeline in `includes/transaction_tracking.php`:
+  - Positioned directly after property viewing completion (`viewing_completed`), reflecting the real-world Philippine real estate workflow where payment discussions take place face-to-face during or right after property site visits.
+  - **Automatic stage progression**: When an agent selects "Viewing completed" and clicks "Save update", the system records the viewing completed milestone and automatically advances the transaction stage directly to **"Payment in process"**, immediately revealing the face-to-face payment inspection form and advancing the client's progress bar.
+  - Configured state machine transitions allowing transactions to advance smoothly from `viewing_completed` to `payment_in_process`, and onward to `reservation_processing`, `document_verification`, `payment_confirmation`, `completed`, or `cancelled`.
+  - Also permitted transitions to `payment_in_process` from `offer_negotiation` and `reservation_processing`.
+- Implemented `record_staff_transaction_payment()` helper function:
+  - Enables agents and administrators to record verified face-to-face payments (cash, bank transfer, check, GCash, reservation fee, down payment, or spot cash) directly during on-site meetings.
+  - Automatically records payment records in `property_transaction_payments`, logs tracking events in `property_transaction_events`, and dispatches real-time email notifications to the client.
+  - Automatically advances active transactions from viewing stages directly to `payment_in_process` whenever a payment is logged.
+- Streamlined face-to-face form & paperwork workflow:
+  - Removed granular online payment details (amount, payment method, reference number) from the face-to-face form in `transaction_tracking.php`, recognizing that Philippine land & property deals are completed through physical paperwork and in-person agreements.
+  - Form now automatically selects **"Confirmed"** by default, with an option to select **"In process"**, along with an optional paperwork note.
+  - Implemented `record_staff_face_to_face_payment()`: Confirmed status advances transaction to `payment_confirmation` (displaying "Payment complete" on client timeline), while In process sets/keeps `payment_in_process`.
+  - Removed client-side "Record a payment / Submit payment details" form from `client_dashboard.php`, updating client messaging to explain that agreements and payments are handled face-to-face through verified paperwork.
+- Updated `client_dashboard.php`:
+  - Fixed white/low-contrast text across the client dashboard: corrected `.text-muted` override that caused timestamps, notes, and agent update details to render in off-white on light cards, turning font colors to crisp, high-contrast black (`#000000`) across all timeline cards, tracking panels, and tables.
+  - Timeline events for confirmed face-to-face payments (such as Spot cash) now clearly display **"Payment complete"** as the event title instead of echoing the prior viewing status.
+  - Added `payment_in_process` to the client progress bar (`$progressStages`) for accurate percentage tracking.
+  - Added informative warning alert banner explaining that the agent is actively inspecting/recording payment details following their viewing discussion.
+  - Enabled client payment recording during `payment_in_process`.
+  - Styled `payment_in_process` badges with warning pill badges across client and administrative views.
+- Updated `admin_sales.php` and `admin_payments.php` to display and track `Payment in process` transactions.
+
 ## 2026-11-10 — Interactive property pin map picker, single-property detail map, catalog sorting, and account management
 
 - Added an interactive Leaflet map picker feature when adding/publishing properties in both `admin_dashboard.php` and `agent_dashboard.php`:

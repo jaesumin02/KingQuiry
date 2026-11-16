@@ -11,7 +11,7 @@ if (isset($_SESSION['user'])) {
 }
 
 $error = '';
-$success = isset($_GET['registered']) ? 'Your account has been created. You can now sign in.' : '';
+$isRegistered = isset($_GET['registered']);
 $fullname = '';
 $email = '';
 
@@ -270,23 +270,30 @@ include 'includes/header.php';
     }
 
     .kq-auth-submit {
-        display: block;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         width: 100%;
         min-height: 52px;
         margin-top: .3rem;
         border: 0;
         border-radius: .85rem;
         background: linear-gradient(180deg, #173d56, #102334);
-        color: #fff;
+        color: #fff !important;
         font-size: 1.08rem;
         font-weight: 800;
         letter-spacing: -.02em;
         cursor: pointer;
         box-shadow: 0 12px 24px rgba(18, 39, 58, 0.18);
+        text-decoration: none !important;
+        text-align: center;
     }
 
-    .kq-auth-submit:hover {
-        filter: brightness(1.03);
+    .kq-auth-submit:hover,
+    .kq-auth-submit:focus {
+        filter: brightness(1.08);
+        color: #fff !important;
+        text-decoration: none !important;
     }
 
     .kq-auth-register {
@@ -344,47 +351,65 @@ include 'includes/header.php';
     <aside class="kq-auth-panel card" aria-label="Registration panel">
         <div class="kq-brand" aria-label="KingQuiry logo">
             <div class="kq-brand-logo">
-                <span class="kq-brand-crown">?</span>
+                <span class="kq-brand-crown">♛</span>
                 <span class="kq-brand-number">4</span>
                 <span class="kq-brand-word"><span class="accent">K</span>INGS</span>
             </div>
             <div class="kq-brand-sub">Realty services</div>
         </div>
 
-        <h2>Sign Up</h2>
-        <p class="subcopy">Create your account to continue.</p>
-
-        <?php if ($error): ?><div class="alert alert-danger" role="alert"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
-        <?php if ($success): ?><div class="alert alert-success" role="status"><?= htmlspecialchars($success, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
-
-        <form method="POST" autocomplete="off" class="kq-auth-form">
-            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
-
-            <div class="kq-form-group">
-                <label for="register-fullname">Full name</label>
-                <input type="text" id="register-fullname" name="fullname" required maxlength="100" value="<?= htmlspecialchars($fullname, ENT_QUOTES, 'UTF-8') ?>" placeholder="Your full name" autocomplete="name">
-            </div>
-
-            <div class="kq-form-group">
-                <label for="register-email">Email address</label>
-                <input type="email" id="register-email" name="email" required maxlength="100" value="<?= htmlspecialchars($email, ENT_QUOTES, 'UTF-8') ?>" placeholder="name@example.com" autocomplete="email">
-            </div>
-
-            <div class="kq-form-group">
-                <label for="register-password">Password</label>
-                <div class="kq-password-wrap">
-                    <input type="password" id="register-pass" name="password" required minlength="8" maxlength="72" placeholder="At least 8 characters" autocomplete="new-password">
-                    <button type="button" class="kq-toggle-password" data-toggle-password="register-pass" aria-label="Show password" aria-pressed="false">Show</button>
+        <?php if ($isRegistered): ?>
+            <div class="text-center py-2" aria-live="polite">
+                <div class="mb-3">
+                    <span class="d-inline-flex align-items-center justify-content-center rounded-circle" style="width: 72px; height: 72px; background: rgba(22, 101, 52, 0.12); color: #166534;">
+                        <svg width="38" height="38" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path>
+                        </svg>
+                    </span>
                 </div>
-                <div class="form-text mt-2">Use at least 8 characters.</div>
+
+                <h2>Account created successfully</h2>
+                <p class="subcopy mb-4">Your account is ready. Please proceed to the login screen to sign in with your credentials.</p>
+
+                <a href="client_login.php" class="kq-auth-submit" role="button">
+                    Back to Login Screen
+                </a>
             </div>
+        <?php else: ?>
+            <h2>Sign Up</h2>
+            <p class="subcopy">Create your account to continue.</p>
 
-            <button type="submit" class="kq-auth-submit">Create account</button>
-        </form>
+            <?php if ($error): ?><div class="alert alert-danger" role="alert"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
 
-        <div class="kq-auth-register">
-            Already have an account? <a href="client_login.php">Sign in here</a>
-        </div>
+            <form method="POST" autocomplete="off" class="kq-auth-form">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+
+                <div class="kq-form-group">
+                    <label for="register-fullname">Full name</label>
+                    <input type="text" id="register-fullname" name="fullname" required maxlength="100" value="<?= htmlspecialchars($fullname, ENT_QUOTES, 'UTF-8') ?>" placeholder="Your full name" autocomplete="name">
+                </div>
+
+                <div class="kq-form-group">
+                    <label for="register-email">Email address</label>
+                    <input type="email" id="register-email" name="email" required maxlength="100" value="<?= htmlspecialchars($email, ENT_QUOTES, 'UTF-8') ?>" placeholder="name@example.com" autocomplete="email">
+                </div>
+
+                <div class="kq-form-group">
+                    <label for="register-password">Password</label>
+                    <div class="kq-password-wrap">
+                        <input type="password" id="register-pass" name="password" required minlength="8" maxlength="72" placeholder="At least 8 characters" autocomplete="new-password">
+                        <button type="button" class="kq-toggle-password" data-toggle-password="register-pass" aria-label="Show password" aria-pressed="false">Show</button>
+                    </div>
+                    <div class="form-text mt-2">Use at least 8 characters.</div>
+                </div>
+
+                <button type="submit" class="kq-auth-submit">Create account</button>
+            </form>
+
+            <div class="kq-auth-register">
+                Already have an account? <a href="client_login.php">Sign in here</a>
+            </div>
+        <?php endif; ?>
     </aside>
 </div>
 

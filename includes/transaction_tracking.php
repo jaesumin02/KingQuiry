@@ -9,8 +9,7 @@ function property_transaction_stages(): array
         'viewing_requested' => 'Viewing requested',
         'viewing_confirmed' => 'Viewing confirmed',
         'viewing_completed' => 'Viewing completed',
-        'offer_negotiation' => 'Offer / negotiation',
-        'reservation_processing' => 'Reservation processing',
+        'payment_in_process' => 'Payment in process',
         'document_verification' => 'Document verification',
         'payment_confirmation' => 'Payment confirmation',
         'completed' => 'Successful / completed',
@@ -18,23 +17,159 @@ function property_transaction_stages(): array
     ];
 }
 
-function property_transaction_next_stages(string $stage): array
+function property_transaction_next_stages(string $stage, ?string $paymentMethod = null): array
 {
+    $isSpotCash = $paymentMethod !== null && (strcasecmp($paymentMethod, 'Spot Cash') === 0 || strcasecmp($paymentMethod, 'Spot cash') === 0);
+
     $transitions = [
         'inquiry_received' => ['contacting_client', 'viewing_requested', 'cancelled'],
         'contacting_client' => ['viewing_requested', 'cancelled'],
         'viewing_requested' => ['viewing_confirmed', 'cancelled'],
-        'viewing_confirmed' => ['viewing_completed', 'cancelled'],
-        'viewing_completed' => ['offer_negotiation', 'cancelled'],
-        'offer_negotiation' => ['reservation_processing', 'cancelled'],
-        'reservation_processing' => ['document_verification', 'cancelled'],
-        'document_verification' => ['payment_confirmation', 'cancelled'],
+        'viewing_confirmed' => ['viewing_completed', 'payment_in_process', 'cancelled'],
+        'viewing_completed' => ['payment_in_process', 'document_verification', 'cancelled'],
+        'payment_in_process' => $isSpotCash
+            ? ['payment_confirmation', 'completed', 'cancelled']
+            : ['document_verification', 'payment_confirmation', 'completed', 'cancelled'],
+        'document_verification' => ['payment_confirmation', 'completed', 'cancelled'],
         'payment_confirmation' => ['completed', 'cancelled'],
         'completed' => [],
         'cancelled' => [],
     ];
 
     return $transitions[$stage] ?? [];
+}
+
+function get_transaction_stage_notification(
+    string $prevStage,
+    string $newStage,
+    string $clientName,
+    string $propertyTitle,
+    string $note,
+    ?float $salePrice = null,
+    ?string $paymentMethod = null
+): array {
+    $cleanNote = trim($note);
+    $noteSection = $cleanNote !== '' ? "\n\nAgent update: " . $cleanNote : '';
+
+    if ($newStage === 'cancelled') {
+        return [
+            'title' => 'Property transaction cancelled',
+            'message' => sprintf(
+                "Hello %s,\n\nYour property transaction for '%s' has been marked as cancelled.%s\n\nIf you have any questions or would like to view another property, please reach out to our team.",
+                $clientName,
+                $propertyTitle,
+                $cleanNote !== '' ? "\n\nReason: " . $cleanNote : ''
+            ),
+        ];
+    }
+
+    if ($newStage === 'viewing_confirmed') {
+        return [
+            'title' => 'Viewing schedule confirmed',
+            'message' => sprintf(
+                "Hello %s,\n\nYour property viewing for '%s' has been confirmed by your sales agent.%s\n\nPlease arrive on time for your scheduled site visit. Check your dashboard for details.",
+                $clientName,
+                $propertyTitle,
+                $noteSection
+            ),
+        ];
+    }
+
+    if ($newStage === 'viewing_completed') {
+        return [
+            'title' => 'Viewing completed — Next: Payment processing',
+            'message' => sprintf(
+                "Hello %s,\n\nYour property viewing for '%s' has been successfully completed! Your sales agent has finished conducting the site visit.%s\n\nNext stage: Payment in process. Your agent will now coordinate payment terms and agreement paperwork.",
+                $clientName,
+                $propertyTitle,
+                $noteSection
+            ),
+        ];
+    }
+
+    if ($newStage === 'payment_in_process') {
+        return [
+            'title' => 'Payment processing in progress',
+            'message' => sprintf(
+                "Hello %s,\n\nPayment processing is now underway for '%s'. Your sales agent is actively coordinating the payment terms, down payment / reservation, and paperwork.%s\n\nNext stage: Document verification.",
+                $clientName,
+                $propertyTitle,
+                $noteSection
+            ),
+        ];
+    }
+
+    if ($newStage === 'document_verification') {
+        $prevWasPayment = in_array($prevStage, ['payment_in_process', 'viewing_completed'], true);
+        $title = $prevWasPayment
+            ? 'Payment processing done — Document verification underway'
+            : 'Document verification in progress';
+        $intro = $prevWasPayment
+            ? sprintf("Payment is done processing by your sales agent for '%s'! The transaction has now advanced to Document Verification.", $propertyTitle)
+            : sprintf("Your transaction for '%s' has advanced to Document Verification.", $propertyTitle);
+
+        return [
+            'title' => $title,
+            'message' => sprintf(
+                "Hello %s,\n\n%s%s\n\nNext stage: Document verification. Your sales agent is reviewing property title deeds, tax declarations, and clearance documents.",
+                $clientName,
+                $intro,
+                $noteSection
+            ),
+        ];
+    }
+
+    if ($newStage === 'payment_confirmation') {
+        $isSpotCash = $paymentMethod !== null && (strcasecmp($paymentMethod, 'Spot Cash') === 0 || strcasecmp($paymentMethod, 'Spot cash') === 0);
+        $prevWasDoc = ($prevStage === 'document_verification');
+        
+        if ($isSpotCash) {
+            $title = 'Spot Cash payment processed — Payment confirmation underway';
+            $intro = sprintf("Your Spot Cash payment has been processed by your sales agent for '%s'! Since Spot Cash was selected, document verification was skipped, and your purchase has moved directly to Payment Confirmation and turnover preparation.", $propertyTitle);
+        } elseif ($prevWasDoc) {
+            $title = 'Document verification done — Payment confirmation underway';
+            $intro = sprintf("Document verification has been completed by your sales agent for '%s'! All required property legal documents, titles, and clearances have been verified.", $propertyTitle);
+        } else {
+            $title = 'Payment confirmation in progress';
+            $intro = sprintf("Your transaction for '%s' has advanced to Payment Confirmation.", $propertyTitle);
+        }
+
+        return [
+            'title' => $title,
+            'message' => sprintf(
+                "Hello %s,\n\n%s%s\n\nNext stage: Payment confirmation. Your sales agent is finalizing official receipts, billing clearance, and turnover documents.",
+                $clientName,
+                $intro,
+                $noteSection
+            ),
+        ];
+    }
+
+    if ($newStage === 'completed') {
+        $formattedPrice = $salePrice !== null ? '₱' . number_format($salePrice, 2) : 'Agreed price';
+        return [
+            'title' => 'Transaction completed — Property is officially yours!',
+            'message' => sprintf(
+                "Hello %s,\n\nCongratulations! Your property transaction for '%s' is officially completed and finalized, and the property is officially yours!\n\nVerified sale price: %s%s\n\nThank you for choosing 4 Kings Real Estate! You may now review your transaction summary and leave a 1-5 star rating for your sales agent on your client dashboard.",
+                $clientName,
+                $propertyTitle,
+                $formattedPrice,
+                $noteSection
+            ),
+        ];
+    }
+
+    $stageName = ucfirst(str_replace('_', ' ', $newStage));
+    return [
+        'title' => 'Transaction update: ' . $stageName,
+        'message' => sprintf(
+            "Hello %s,\n\nYour property transaction for '%s' has been updated to '%s'.%s\n\nPlease check your dashboard to review your progress.",
+            $clientName,
+            $propertyTitle,
+            $stageName,
+            $noteSection
+        ),
+    ];
 }
 
 function create_property_transaction(
@@ -126,21 +261,18 @@ function advance_property_transaction(
     string $newStage,
     string $note,
     int $actorId,
-    ?float $salePrice = null
+    ?float $salePrice = null,
+    ?float $paymentAmount = null,
+    ?string $paymentMethod = null,
+    ?string $paymentRef = null
 ): void {
     $stages = property_transaction_stages();
     if (!isset($stages[$newStage]) || $transactionId <= 0 || $actorId <= 0) {
         throw new InvalidArgumentException('Choose a valid transaction and status.');
     }
 
-    if ($newStage === 'completed' && $note === '') {
-        throw new InvalidArgumentException('Add a note confirming the sale and required documents were verified before marking it successful.');
-    }
     if ($newStage === 'completed' && ($salePrice === null || $salePrice <= 0 || $salePrice > 9999999999.99)) {
         throw new InvalidArgumentException('Enter the verified sale price before marking this transaction successful.');
-    }
-    if ($newStage === 'payment_confirmation' && $note === '') {
-        throw new InvalidArgumentException('Add a note confirming the payment status before recording payment confirmation.');
     }
     if ($note !== '' && strlen($note) > 1000) {
         throw new InvalidArgumentException('Tracking notes must be 1,000 characters or fewer.');
@@ -149,7 +281,7 @@ function advance_property_transaction(
     $conn->begin_transaction();
     try {
         $currentStmt = $conn->prepare(
-            'SELECT currentStage FROM property_transactions
+            'SELECT transactionID, propertyID, clientID, currentStage, paymentMethod FROM property_transactions
              WHERE transactionID = ? FOR UPDATE'
         );
         $currentStmt->bind_param('i', $transactionId);
@@ -160,41 +292,87 @@ function advance_property_transaction(
         }
 
         $currentStage = (string) $transaction['currentStage'];
-        if (!in_array($newStage, property_transaction_next_stages($currentStage), true)) {
+        $effectivePaymentMethod = ($paymentMethod !== null && $paymentMethod !== '')
+            ? $paymentMethod
+            : ($transaction['paymentMethod'] ?? null);
+
+        $allowedStages = property_transaction_next_stages($currentStage, $effectivePaymentMethod);
+        $fallbackStages = property_transaction_next_stages($currentStage, null);
+        if (!in_array($newStage, $allowedStages, true) && !in_array($newStage, $fallbackStages, true)) {
             throw new InvalidArgumentException('That step cannot follow the current status. Update the transaction in order or cancel it.');
         }
 
-        if ($newStage === 'payment_confirmation') {
-            $paymentStmt = $conn->prepare(
-                "SELECT paymentID FROM property_transaction_payments
-                 WHERE transactionID = ? AND status = 'confirmed'
-                 LIMIT 1"
-            );
-            $paymentStmt->bind_param('i', $transactionId);
-            $paymentStmt->execute();
-            if (!$paymentStmt->get_result()->fetch_assoc()) {
-                throw new InvalidArgumentException('Confirm at least one recorded payment before moving this transaction to payment confirmation.');
-            }
-        }
+        $defaultNotes = [
+            'viewing_confirmed' => 'Sales team confirmed the requested property viewing schedule.',
+            'viewing_completed' => 'Sales team conducted and completed the property site visit with the client.',
+            'payment_in_process' => 'Payment processing initiated: Sales agent is coordinating payment terms and paperwork.',
+            'document_verification' => 'Payment processing completed. Sales agent is verifying property title deeds, clearances, and documents.',
+            'payment_confirmation' => 'Document verification completed. Sales agent is finalizing payment confirmation and receipts.',
+            'completed' => 'Payment confirmation complete. Transaction finalized and property successfully turned over.',
+            'cancelled' => 'Transaction was cancelled.',
+        ];
+        $effectiveNote = $note !== '' ? $note : ($defaultNotes[$newStage] ?? 'Transaction advanced to ' . str_replace('_', ' ', $newStage));
 
         if ($newStage === 'completed') {
             $updateStmt = $conn->prepare(
                 'UPDATE property_transactions
-                 SET currentStage = ?, salePrice = ?, updatedAt = CURRENT_TIMESTAMP
+                 SET currentStage = ?, salePrice = ?, paymentMethod = COALESCE(?, paymentMethod), updatedAt = CURRENT_TIMESTAMP
                  WHERE transactionID = ?'
             );
-            $updateStmt->bind_param('sdi', $newStage, $salePrice, $transactionId);
+            $updateStmt->bind_param('sdsi', $newStage, $salePrice, $effectivePaymentMethod, $transactionId);
+            $updateStmt->execute();
+
+            // Property officially sold & turned over: mark as 'Sold' so it disappears from public listings
+            $propertyId = (int) $transaction['propertyID'];
+            $soldStmt = $conn->prepare("UPDATE properties SET status = 'Sold' WHERE propertyID = ?");
+            $soldStmt->bind_param('i', $propertyId);
+            $soldStmt->execute();
         } else {
             $updateStmt = $conn->prepare(
                 'UPDATE property_transactions
-                 SET currentStage = ?, updatedAt = CURRENT_TIMESTAMP
+                 SET currentStage = ?, paymentMethod = COALESCE(?, paymentMethod), updatedAt = CURRENT_TIMESTAMP
                  WHERE transactionID = ?'
             );
-            $updateStmt->bind_param('si', $newStage, $transactionId);
+            $updateStmt->bind_param('ssi', $newStage, $effectivePaymentMethod, $transactionId);
+            $updateStmt->execute();
         }
-        $updateStmt->execute();
+        add_property_transaction_event($conn, $transactionId, $newStage, $effectiveNote, $actorId);
 
-        add_property_transaction_event($conn, $transactionId, $newStage, $note, $actorId);
+        // Record payment if agent provided payment details
+        $clientId = (int) $transaction['clientID'];
+        if ($paymentAmount !== null && $paymentAmount > 0 && !empty($effectivePaymentMethod)) {
+            $refNumber = !empty($paymentRef) ? $paymentRef : 'Paperwork verified';
+            $insPayment = $conn->prepare(
+                "INSERT INTO property_transaction_payments
+                    (transactionID, clientID, amount, paymentMethod, referenceNumber, status, reviewedAt, reviewedBy, reviewNote)
+                 VALUES (?, ?, ?, ?, ?, 'confirmed', CURRENT_TIMESTAMP, ?, ?)"
+            );
+            $insPayment->bind_param('iidssis', $transactionId, $clientId, $paymentAmount, $effectivePaymentMethod, $refNumber, $actorId, $effectiveNote);
+            $insPayment->execute();
+        }
+
+        // If moving to payment_confirmation, ensure at least one confirmed payment record exists
+        if ($newStage === 'payment_confirmation') {
+            $checkPay = $conn->prepare(
+                "SELECT paymentID FROM property_transaction_payments
+                 WHERE transactionID = ? AND status = 'confirmed'
+                 LIMIT 1"
+            );
+            $checkPay->bind_param('i', $transactionId);
+            $checkPay->execute();
+            if (!$checkPay->get_result()->fetch_assoc()) {
+                $paperworkMethod = !empty($effectivePaymentMethod) ? $effectivePaymentMethod : 'Paperwork (Face-to-face)';
+                $ref = 'Paperwork confirmed';
+                $reviewNote = $effectiveNote !== '' ? $effectiveNote : 'Paperwork and payment verified face-to-face.';
+                $insPayment = $conn->prepare(
+                    "INSERT INTO property_transaction_payments
+                        (transactionID, clientID, amount, paymentMethod, referenceNumber, status, reviewedAt, reviewedBy, reviewNote)
+                     VALUES (?, ?, 0.00, ?, ?, 'confirmed', CURRENT_TIMESTAMP, ?, ?)"
+                );
+                $insPayment->bind_param('iissis', $transactionId, $clientId, $paperworkMethod, $ref, $actorId, $reviewNote);
+                $insPayment->execute();
+            }
+        }
 
         if ($newStage === 'viewing_confirmed' || $newStage === 'cancelled') {
             $appointmentStatus = $newStage === 'viewing_confirmed' ? 'Approved' : 'Cancelled';
@@ -221,16 +399,21 @@ function advance_property_transaction(
         $details = $detailsStmt->get_result()->fetch_assoc();
 
         if (is_array($details) && !empty($details['clientID'])) {
-            $statusLabel = $newStage === 'completed' ? 'closed' : str_replace('_', ' ', $newStage);
-            $notificationSubject = 'Property transaction update';
-            $notificationMessage = sprintf(
-                "Hello %s,\n\nYour property transaction for '%s' has been updated to '%s'.\n\nNote: %s\n\nPlease check your dashboard to review the latest status.",
+            $notif = get_transaction_stage_notification(
+                $currentStage,
+                $newStage,
                 (string) ($details['fullname'] ?? 'there'),
                 (string) ($details['title'] ?? 'the property'),
-                ucfirst($statusLabel),
-                $note
+                $effectiveNote,
+                $salePrice,
+                $effectivePaymentMethod
             );
-            send_property_notification($conn, (int) $details['clientID'], $notificationSubject, $notificationMessage);
+            send_property_notification(
+                $conn,
+                (int) $details['clientID'],
+                $notif['title'],
+                $notif['message']
+            );
         }
 
         $conn->commit();
@@ -273,8 +456,8 @@ function submit_property_transaction_payment(
         if (!$transaction) {
             throw new InvalidArgumentException('The selected transaction was not found.');
         }
-        if (!in_array((string) $transaction['currentStage'], ['document_verification', 'payment_confirmation'], true)) {
-            throw new InvalidArgumentException('Payment details can be submitted during document verification or payment confirmation.');
+        if (!in_array((string) $transaction['currentStage'], ['payment_in_process', 'document_verification', 'payment_confirmation'], true)) {
+            throw new InvalidArgumentException('Payment details can be submitted during payment in process, document verification, or payment confirmation.');
         }
 
         $paymentStmt = $conn->prepare(
@@ -301,6 +484,236 @@ function submit_property_transaction_payment(
         );
         $touchStmt->bind_param('i', $transactionId);
         $touchStmt->execute();
+        $conn->commit();
+    } catch (Throwable $exception) {
+        $conn->rollback();
+        throw $exception;
+    }
+}
+
+function record_staff_face_to_face_payment(
+    mysqli $conn,
+    int $transactionId,
+    string $status,
+    string $note,
+    int $actorId
+): void {
+    $note = trim($note);
+    $status = trim($status);
+    if (!in_array($status, ['confirmed', 'in_process'], true)) {
+        throw new InvalidArgumentException('Select a valid payment status (Confirmed or In process).');
+    }
+    if ($transactionId <= 0 || $actorId <= 0) {
+        throw new InvalidArgumentException('Choose a valid transaction.');
+    }
+    if (strlen($note) > 1000) {
+        throw new InvalidArgumentException('The paperwork note must be 1,000 characters or fewer.');
+    }
+
+    $conn->begin_transaction();
+    try {
+        $transactionStmt = $conn->prepare(
+            'SELECT t.transactionID, t.clientID, t.currentStage, p.title, u.fullname
+             FROM property_transactions t
+             JOIN properties p ON p.propertyID = t.propertyID
+             JOIN users u ON u.userID = t.clientID
+             WHERE t.transactionID = ?
+             FOR UPDATE'
+        );
+        $transactionStmt->bind_param('i', $transactionId);
+        $transactionStmt->execute();
+        $transaction = $transactionStmt->get_result()->fetch_assoc();
+        if (!$transaction) {
+            throw new InvalidArgumentException('The selected transaction was not found.');
+        }
+
+        $currentStage = (string) $transaction['currentStage'];
+        if (in_array($currentStage, ['completed', 'cancelled'], true)) {
+            throw new InvalidArgumentException('Payments cannot be recorded on completed or cancelled transactions.');
+        }
+
+        $clientId = (int) $transaction['clientID'];
+        $isConfirmed = ($status === 'confirmed');
+        $newStage = $isConfirmed ? 'payment_confirmation' : 'payment_in_process';
+
+        $updateStageStmt = $conn->prepare(
+            'UPDATE property_transactions SET currentStage = ?, updatedAt = CURRENT_TIMESTAMP WHERE transactionID = ?'
+        );
+        $updateStageStmt->bind_param('si', $newStage, $transactionId);
+        $updateStageStmt->execute();
+
+        if ($isConfirmed) {
+            $paperworkMethod = 'Paperwork (Face-to-face)';
+            $ref = 'Paperwork confirmed';
+            $reviewNote = $note !== '' ? $note : 'Paperwork and payment verified face-to-face.';
+            $paymentStmt = $conn->prepare(
+                "INSERT INTO property_transaction_payments
+                    (transactionID, clientID, amount, paymentMethod, referenceNumber, status, reviewedAt, reviewedBy, reviewNote)
+                 VALUES (?, ?, 0.00, ?, ?, 'confirmed', CURRENT_TIMESTAMP, ?, ?)"
+            );
+            $paymentStmt->bind_param('iissis', $transactionId, $clientId, $paperworkMethod, $ref, $actorId, $reviewNote);
+            $paymentStmt->execute();
+        }
+
+        if ($isConfirmed) {
+            $eventNote = sprintf(
+                'Agent recorded face-to-face payment and paperwork (Status: confirmed).%s',
+                $note !== '' ? ' Note: ' . $note : ' All paperwork and payment confirmed.'
+            );
+        } else {
+            $eventNote = sprintf(
+                'Payment and paperwork in process with client.%s',
+                $note !== '' ? ' Note: ' . $note : ' Paperwork currently being processed.'
+            );
+        }
+
+        add_property_transaction_event(
+            $conn,
+            $transactionId,
+            $newStage,
+            $eventNote,
+            $actorId
+        );
+
+        $notificationSubject = $isConfirmed ? 'Payment & paperwork confirmed' : 'Payment & paperwork in process';
+        $notificationMessage = sprintf(
+            "Hello %s,\n\nYour property transaction for '%s' has updated payment and paperwork status to '%s'.%s\n\nPlease check your client dashboard to review your transaction progress.",
+            (string) ($transaction['fullname'] ?? 'there'),
+            (string) ($transaction['title'] ?? 'the property'),
+            $isConfirmed ? 'Confirmed' : 'In process',
+            $note !== '' ? "\nNote: " . $note : ''
+        );
+        send_property_notification($conn, $clientId, $notificationSubject, $notificationMessage);
+
+        $conn->commit();
+    } catch (Throwable $exception) {
+        $conn->rollback();
+        throw $exception;
+    }
+}
+
+function record_staff_transaction_payment(
+    mysqli $conn,
+    int $transactionId,
+    float $amount,
+    string $paymentMethod,
+    string $referenceNumber,
+    string $paymentStatus,
+    string $note,
+    int $actorId,
+    bool $advanceToPaymentInProcess = true
+): void {
+    $paymentMethod = trim($paymentMethod);
+    $referenceNumber = trim($referenceNumber);
+    $note = trim($note);
+
+    if ($transactionId <= 0 || $actorId <= 0 || !is_finite($amount) || $amount <= 0 || $amount > 9999999999.99) {
+        throw new InvalidArgumentException('Enter a valid payment amount.');
+    }
+    if ($paymentMethod === '' || strlen($paymentMethod) > 50) {
+        throw new InvalidArgumentException('Enter a payment method of 1 to 50 characters.');
+    }
+    if (strlen($referenceNumber) > 100) {
+        throw new InvalidArgumentException('The payment reference must be 100 characters or fewer.');
+    }
+    if (!in_array($paymentStatus, ['confirmed', 'pending'], true)) {
+        throw new InvalidArgumentException('Select a valid payment status (Confirmed or Pending review).');
+    }
+    if (strlen($note) > 1000) {
+        throw new InvalidArgumentException('The payment note must be 1,000 characters or fewer.');
+    }
+
+    $isSpotCash = strcasecmp($paymentMethod, 'Spot cash') === 0;
+    if ($isSpotCash) {
+        $paymentStatus = 'confirmed';
+        $advanceToPaymentInProcess = true;
+    }
+
+    $conn->begin_transaction();
+    try {
+        $transactionStmt = $conn->prepare(
+            'SELECT t.transactionID, t.clientID, t.currentStage, p.title, u.fullname
+             FROM property_transactions t
+             JOIN properties p ON p.propertyID = t.propertyID
+             JOIN users u ON u.userID = t.clientID
+             WHERE t.transactionID = ?
+             FOR UPDATE'
+        );
+        $transactionStmt->bind_param('i', $transactionId);
+        $transactionStmt->execute();
+        $transaction = $transactionStmt->get_result()->fetch_assoc();
+        if (!$transaction) {
+            throw new InvalidArgumentException('The selected transaction was not found.');
+        }
+
+        $currentStage = (string) $transaction['currentStage'];
+        if (in_array($currentStage, ['completed', 'cancelled'], true)) {
+            throw new InvalidArgumentException('Payments cannot be recorded on completed or cancelled transactions.');
+        }
+
+        $clientId = (int) $transaction['clientID'];
+        if ($paymentStatus === 'confirmed') {
+            $paymentStmt = $conn->prepare(
+                "INSERT INTO property_transaction_payments
+                    (transactionID, clientID, amount, paymentMethod, referenceNumber, status, reviewedAt, reviewedBy, reviewNote)
+                 VALUES (?, ?, ?, ?, ?, 'confirmed', CURRENT_TIMESTAMP, ?, ?)"
+            );
+            $paymentStmt->bind_param('iidssis', $transactionId, $clientId, $amount, $paymentMethod, $referenceNumber, $actorId, $note);
+        } else {
+            $paymentStmt = $conn->prepare(
+                "INSERT INTO property_transaction_payments
+                    (transactionID, clientID, amount, paymentMethod, referenceNumber, status)
+                 VALUES (?, ?, ?, ?, ?, 'pending')"
+            );
+            $paymentStmt->bind_param('iidss', $transactionId, $clientId, $amount, $paymentMethod, $referenceNumber);
+        }
+        $paymentStmt->execute();
+
+        $newStage = $currentStage;
+        $shouldAdvance = $advanceToPaymentInProcess || in_array($currentStage, ['viewing_completed', 'viewing_confirmed'], true);
+        if ($shouldAdvance && in_array($currentStage, ['inquiry_received', 'contacting_client', 'viewing_requested', 'viewing_confirmed', 'viewing_completed'], true)) {
+            $newStage = 'payment_in_process';
+            $updateStageStmt = $conn->prepare(
+                'UPDATE property_transactions SET currentStage = ?, updatedAt = CURRENT_TIMESTAMP WHERE transactionID = ?'
+            );
+            $updateStageStmt->bind_param('si', $newStage, $transactionId);
+            $updateStageStmt->execute();
+        } else {
+            $touchStmt = $conn->prepare(
+                'UPDATE property_transactions SET updatedAt = CURRENT_TIMESTAMP WHERE transactionID = ?'
+            );
+            $touchStmt->bind_param('i', $transactionId);
+            $touchStmt->execute();
+        }
+
+        $formattedAmount = number_format($amount, 2);
+        $eventNote = sprintf(
+            'Agent recorded face-to-face payment of PHP %s via %s (Status: %s).%s',
+            $formattedAmount,
+            $paymentMethod,
+            $paymentStatus,
+            $note !== '' ? ' Note: ' . $note : ''
+        );
+        add_property_transaction_event(
+            $conn,
+            $transactionId,
+            $newStage,
+            $eventNote,
+            $actorId
+        );
+
+        $notificationSubject = 'Face-to-face payment recorded (' . ucfirst($paymentStatus) . ')';
+        $notificationMessage = sprintf(
+            "Hello %s,\n\nYour agent recorded a payment of PHP %s for '%s' via %s during/following your viewing discussion.\nStatus: %s%s\n\nPlease check your client dashboard to view your transaction progress.",
+            (string) ($transaction['fullname'] ?? 'there'),
+            $formattedAmount,
+            (string) ($transaction['title'] ?? 'the property'),
+            $paymentMethod,
+            ucfirst($paymentStatus),
+            $note !== '' ? "\nNote: " . $note : ''
+        );
+        send_property_notification($conn, $clientId, $notificationSubject, $notificationMessage);
+
         $conn->commit();
     } catch (Throwable $exception) {
         $conn->rollback();

@@ -18,7 +18,7 @@ $category = is_string($category) && in_array($category, $allowedCategories, true
 $locationFilter = filter_var($_GET['location_filter'] ?? 0, FILTER_VALIDATE_INT);
 $locationFilter = $locationFilter === false ? 0 : max(0, $locationFilter);
 
-$conditions = ["p.status = 'Available'"];
+$conditions = ["p.status = 'Available'", "p.isDeleted = 0"];
 $parameters = [];
 $parameterTypes = '';
 if ($search !== '') {

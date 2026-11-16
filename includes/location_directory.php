@@ -1,7 +1,7 @@
 <?php
 function get_property_locations(mysqli $conn, bool $includeInactive = false): array
 {
-    $activeCondition = $includeInactive ? '' : 'WHERE isActive = 1';
+    $activeCondition = $includeInactive ? 'WHERE isDeleted = 0' : 'WHERE isActive = 1 AND isDeleted = 0';
     $result = $conn->query(
         "SELECT locationID, regionCode, regionName, provinceName, municipalityName, isActive
          FROM property_locations

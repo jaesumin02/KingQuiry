@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS property_locations (
     provinceName VARCHAR(120) NOT NULL,
     municipalityName VARCHAR(120) NOT NULL,
     isActive TINYINT(1) NOT NULL DEFAULT 1,
+    isDeleted TINYINT(1) NOT NULL DEFAULT 0,
+    deletedAt TIMESTAMP NULL DEFAULT NULL,
     createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (locationID),
     UNIQUE KEY uq_property_location (regionCode, provinceName, municipalityName),
@@ -52,6 +54,8 @@ CREATE TABLE IF NOT EXISTS properties (
     landCharacteristics TEXT DEFAULT NULL,
     status VARCHAR(50) DEFAULT 'Available',
     image VARCHAR(255) DEFAULT 'default.jpg',
+    isDeleted TINYINT(1) NOT NULL DEFAULT 0,
+    deletedAt TIMESTAMP NULL DEFAULT NULL,
     createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (propertyID),
     KEY idx_properties_location (locationID),
@@ -159,6 +163,7 @@ CREATE TABLE IF NOT EXISTS property_transactions (
     inquiryID INT DEFAULT NULL,
     currentStage VARCHAR(40) NOT NULL,
     salePrice DECIMAL(12,2) DEFAULT NULL,
+    paymentMethod VARCHAR(50) DEFAULT NULL,
     createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (transactionID),
@@ -235,6 +240,24 @@ CREATE TABLE IF NOT EXISTS agent_reviews (
         FOREIGN KEY (clientID) REFERENCES users (userID) ON DELETE CASCADE,
     CONSTRAINT fk_agent_reviews_agent
         FOREIGN KEY (agentID) REFERENCES users (userID) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_notifications (
+    notificationID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    userID INT NOT NULL,
+    title VARCHAR(150) NOT NULL,
+    message TEXT NOT NULL,
+    link VARCHAR(255) DEFAULT NULL,
+    type VARCHAR(50) NOT NULL DEFAULT 'general',
+    isRead TINYINT(1) NOT NULL DEFAULT 0,
+    createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (notificationID),
+    KEY idx_user_notifications_user_read (userID, isRead, createdAt),
+    KEY idx_user_notifications_created (createdAt),
+    CONSTRAINT fk_user_notifications_user
+        FOREIGN KEY (userID)
+        REFERENCES users (userID)
+        ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS payments (
