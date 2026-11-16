@@ -166,15 +166,17 @@ $stageLabels = property_transaction_stages();
 include 'includes/header.php';
 ?>
 
-<div class="transaction-tracking-page">
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-3 mb-4" id="transactions">
+<div class="transaction-tracking-page" id="transactions">
+<?php if ($role !== 'Admin'): ?>
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-3 mb-4">
     <div>
         <div class="page-eyebrow">Sales pipeline</div>
         <h1 class="page-title h2 mb-1">Transaction tracking</h1>
         <p class="text-muted mb-0">Record each verified milestone so clients can follow their request through completion.</p>
     </div>
-    <?php if ($role === 'Admin'): ?><a href="admin_dashboard.php" class="btn btn-outline-primary">Admin dashboard</a><?php else: ?><a href="agent_dashboard.php" class="btn btn-outline-primary">Agent portal</a><?php endif; ?>
+    <a href="agent_dashboard.php" class="btn btn-outline-primary">Agent portal</a>
 </div>
+<?php endif; ?>
 
 <div class="alert alert-info small" role="note">
     Transactions in this pipeline are completed through face-to-face paperwork and agreements. Click <strong>Record next step</strong> on any transaction below to advance milestones or record paperwork and payments.

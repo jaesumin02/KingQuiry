@@ -1,0 +1,32 @@
+<?php
+
+/** Shared page labels and descriptions for the administrator control room. */
+function kq_admin_pages(): array
+{
+    return [
+        'admin_dashboard.php' => [
+            'title' => 'Admin dashboard',
+            'subtitle' => 'A clear overview of listings and customer activity.',
+        ],
+        'admin_sales.php' => [
+            'title' => 'Sales & transactions',
+            'subtitle' => 'Monitor the pipeline, verified revenue, collections, and every tracked client case.',
+        ],
+        'admin_clients.php' => [
+            'title' => 'Clients',
+            'subtitle' => 'Create and maintain client accounts, contact details, and account status.',
+        ],
+        'admin_payments.php' => [
+            'title' => 'Payments',
+            'subtitle' => 'Record client payments, verify references, and reconcile collections against tracked transactions.',
+        ],
+        'transaction_tracking.php' => [
+            'title' => 'Transaction tracking',
+            'subtitle' => 'Record each verified milestone so clients can follow their request through completion.',
+        ],
+        'admin_chat.php' => [
+            'title' => 'Customer inbox',
+            'subtitle' => 'Reply to client questions and land-estimate requests from your customer inbox.',
+        ],
+    ];
+}

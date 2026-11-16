@@ -3,11 +3,13 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 require_once __DIR__ . '/auth.php';
-require_once __DIR__ . '/notifications.php';
 
 apply_secure_headers();
 $currentUser = $_SESSION['user'] ?? null;
 $currentRole = normalized_user_role($currentUser);
+$currentPageName = basename($_SERVER['PHP_SELF'] ?? '');
+$adminPage = $currentRole === 'Admin' ? (kq_admin_pages()[$currentPageName] ?? null) : null;
+$isAdminControlRoom = $adminPage !== null;
 $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
     ? (string) $currentUser['fullname']
     : (is_array($currentUser) && !empty($currentUser['email']) ? explode('@', (string) $currentUser['email'])[0] : 'My Account');
@@ -30,8 +32,8 @@ if (!empty($currentUser['userID'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#142d4e">
-    <title>KingQuiry | Land & Property</title>
+    <meta name="theme-color" content="<?= $isAdminControlRoom ? '#102a43' : '#142d4e' ?>">
+    <title>KingQuiry | <?= htmlspecialchars($isAdminControlRoom ? $adminPage['title'] : 'Land & Property', ENT_QUOTES, 'UTF-8') ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
@@ -324,7 +326,7 @@ if (!empty($currentUser['userID'])) {
         }
     </style>
 </head>
-<body>
+<body<?= $isAdminControlRoom ? ' class="admin-control-room"' : '' ?>>
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
         <div class="container">
             <a class="navbar-brand fw-bold" href="index.php">King<span>Quiry</span></a>
@@ -487,5 +489,9 @@ if (!empty($currentUser['userID'])) {
     <?php
     $currentPageName = basename($_SERVER['SCRIPT_NAME'] ?? '');
     $mainClass = $currentPageName === 'index.php' ? 'main-catalog' : 'container py-4 py-lg-5';
+    if ($isAdminControlRoom) {
+        $mainClass .= ' kq-admin-shell';
+    }
     ?>
     <main class="<?= $mainClass ?>">
+        <?php if ($isAdminControlRoom) { include __DIR__ . '/admin_page_header.php'; } ?>

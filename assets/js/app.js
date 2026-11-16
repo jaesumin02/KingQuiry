@@ -1,4 +1,25 @@
 document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.admin-control-room .admin-nav').forEach((navigation) => {
+        const revealTab = (tab) => {
+            const navigationBounds = navigation.getBoundingClientRect();
+            const tabBounds = tab.getBoundingClientRect();
+            if (tabBounds.right > navigationBounds.right - 4) {
+                navigation.scrollLeft += tabBounds.right - navigationBounds.right + 4;
+            } else if (tabBounds.left < navigationBounds.left + 4) {
+                navigation.scrollLeft -= navigationBounds.left - tabBounds.left + 4;
+            }
+        };
+
+        const currentTab = navigation.querySelector('[aria-current="page"]');
+        if (currentTab) revealTab(currentTab);
+
+        navigation.addEventListener('focusin', (event) => {
+            if (event.target instanceof HTMLElement && event.target.matches('.admin-nav-tab')) {
+                revealTab(event.target);
+            }
+        });
+    });
+
     document.querySelectorAll('[data-toggle-password]').forEach((button) => {
         button.addEventListener('click', () => {
             const targetInput = document.getElementById(button.dataset.togglePassword);
