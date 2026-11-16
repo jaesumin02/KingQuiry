@@ -496,6 +496,23 @@ $clientOverview = $conn->query(
         color: #123b5a;
     }
 
+    .kq-dashboard-tabs .btn-outline-primary {
+        --bs-btn-color: #e2e8f0;
+        --bs-btn-hover-color: #e2e8f0;
+        --bs-btn-active-color: #e2e8f0;
+        --bs-btn-border-color: rgba(226, 232, 240, 0.35);
+        --bs-btn-hover-border-color: rgba(226, 232, 240, 0.35);
+        --bs-btn-active-border-color: rgba(226, 232, 240, 0.35);
+    }
+
+    .kq-dashboard-tabs .btn-outline-primary,
+    .kq-dashboard-tabs .btn-outline-primary:hover,
+    .kq-dashboard-tabs .btn-outline-primary:focus,
+    .kq-dashboard-tabs .btn-outline-primary:active {
+        color: #e2e8f0;
+        border-color: rgba(226, 232, 240, 0.35);
+    }
+
     .table-responsive, .table {
         border-radius: 1rem;
     }
@@ -521,7 +538,7 @@ $clientOverview = $conn->query(
             <h1 class="page-title h2 mb-1">Admin dashboard</h1>
             <p class="text-muted mb-0">A clear overview of listings and customer activity.</p>
         </div>
-        <div class="d-flex flex-wrap gap-2">
+        <div class="d-flex flex-wrap gap-2 kq-dashboard-tabs">
             <a href="admin_sales.php" class="btn btn-primary">Sales &amp; transactions</a>
             <a href="admin_clients.php" class="btn btn-outline-primary">Clients</a>
             <a href="admin_payments.php" class="btn btn-outline-primary">Payments</a>
