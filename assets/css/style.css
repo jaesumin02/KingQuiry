@@ -89,17 +89,17 @@ body.admin-control-room {
 .kq-menu-toggle {
     position: absolute;
     top: 0;
-    right: -52px;
+    right: -53px;
     display: flex;
     width: 52px;
     height: 52px;
     align-items: center;
     justify-content: center;
     padding: 0.65rem;
-    border: 1px solid rgba(19, 45, 66, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 0 0.7rem 0.7rem 0;
-    background: #fff;
-    color: #173d56;
+    background: rgba(27, 46, 53, 0.9);
+    color: #ffffff;
     font: inherit;
     font-weight: 700;
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.14);
@@ -379,10 +379,10 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
     padding: 1rem;
     transform: translateX(-100%);
     transition: transform 180ms ease;
-    border: 1px solid rgba(19, 45, 66, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 0 1rem 1rem 0;
-    background: #fff;
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
+    background: rgba(27, 46, 53, 0.9);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14);
 }
 
 .kq-portal-sidebar.is-open { transform: translateX(0); }
@@ -390,7 +390,7 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
 .kq-portal-sidebar-heading {
     display: none;
     margin: 0 0 0.65rem 0.5rem;
-    color: #80612b;
+    color: #d9a74a;
     font-size: 0.72rem;
     font-weight: 800;
     letter-spacing: 0.12em;
@@ -414,9 +414,10 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
     min-height: 42px;
     align-items: center;
     padding: 0.55rem 0.75rem;
-    border: 1px solid transparent;
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 0.65rem;
-    color: #29445a;
+    background: #1e323a;
+    color: #e2e8f0;
     font-size: 0.9rem;
     font-weight: 600;
     line-height: 1.4;
@@ -425,19 +426,31 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
 
 .kq-portal-nav a:hover,
 .kq-portal-nav a:focus-visible {
-    border-color: #d7e2ea;
-    background: #f2f6f9;
-    color: #123b5a;
+    border-color: rgba(255, 255, 255, 0.35);
+    background: #2b4652;
+    color: #ffffff;
+}
+
+.kq-portal-nav a[aria-current="location"] {
+    border-color: #1b4d6e;
+    background: #1b4d6e;
+    color: #ffffff;
+    box-shadow: inset 0 -2px 0 #d9a74a;
 }
 
 .kq-portal-nav a:focus-visible {
-    outline: 2px solid #2877a5;
+    outline: 2px solid #38bdf8;
     outline-offset: 2px;
 }
 
 .kq-portal-main {
     width: 100%;
     min-width: 0;
+}
+
+.kq-dashboard-hero[id],
+.kq-portal-main > section[id] {
+    scroll-margin-top: 8rem;
 }
 
 .kq-dashboard-hero-copy {
@@ -543,7 +556,7 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
 .kq-client-shell .kq-tracking-event-content span,
 .kq-client-shell .kq-tracking-event-content div,
 .kq-client-shell .kq-tracking-event-content time {
-    color: #000000 !important;
+    color: var(--kq-client-card-muted, #536579) !important;
     --bs-text-opacity: 1 !important;
 }
 

@@ -7,6 +7,8 @@ Dates use `YYYY-MM-DD`.
 
 - Added full property-detail editing from the admin inventory, including safe optional image replacement and preservation of the listing's map pin.
 - Added fixed hamburger drawers with full-width navigation links for admin, agent, and client dashboards at desktop and mobile sizes.
+- Matched agent and client dashboard banners, navigation drawers, and accents to the admin color palette; added active section highlighting for in-dashboard links.
+- Hid the redundant Agent Portal navbar link on the agent dashboard itself while retaining it on other agent pages.
 - Documented the actual weighted property-ranking and batch-gradient-descent estimation algorithms beside their implementations.
 
 ## 2026-11-17 — Dashboard Layout and Branding Polish

@@ -38,7 +38,7 @@ if (!empty($currentUser['userID'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="<?= $isAdminControlRoom ? '#102a43' : '#142d4e' ?>">
+    <meta name="theme-color" content="#102a43">
     <title>KingQuiry | <?= htmlspecialchars($isAdminControlRoom ? $adminPage['title'] : 'Land & Property', ENT_QUOTES, 'UTF-8') ?></title>
     <script>
         (function() {
@@ -86,7 +86,7 @@ if (!empty($currentUser['userID'])) {
             position: sticky;
             top: 0;
             z-index: 1030;
-            background: rgba(20, 45, 78, .97) !important;
+            background: #102a43 !important;
             backdrop-filter: blur(12px);
         }
         .kq-timebar {
@@ -405,7 +405,9 @@ if (!empty($currentUser['userID'])) {
                                 </button>
                             </li>
                         <?php elseif($currentRole === 'Sales Agent'): ?>
-                            <li class="nav-item"><a class="nav-link text-info fw-bold" href="agent_dashboard.php">Agent Portal</a></li>
+                            <?php if ($currentPageName !== 'agent_dashboard.php'): ?>
+                                <li class="nav-item"><a class="nav-link text-info fw-bold" href="agent_dashboard.php">Agent Portal</a></li>
+                            <?php endif; ?>
                             <li class="nav-item"><a class="nav-link" href="transaction_tracking.php">Transaction Tracking</a></li>
                         <?php endif; ?>
                         <!-- Notifications Bell Dropdown -->

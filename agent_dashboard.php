@@ -119,12 +119,8 @@ $statsRow = $stats && $stats->num_rows > 0 ? $stats->fetch_assoc() : ['total_app
 include 'includes/header.php';
 ?>
 <style>
-    body {
-        background: radial-gradient(circle at top, rgba(13, 37, 43, 0.85), rgba(6, 15, 19, 1) 52%);
-    }
-
     .kq-agent-shell {
-        max-width: 1220px;
+        max-width: 1360px;
         width: 100%;
         margin: 0 auto;
         padding: 1.2rem 0 2rem;
@@ -137,32 +133,32 @@ include 'includes/header.php';
         gap: 0.9rem;
         padding: 1rem 1.2rem;
         margin-bottom: 1.5rem;
-        border: 1px solid rgba(212, 175, 110, 0.28);
+        border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 1.1rem;
-        background: linear-gradient(135deg, rgba(14, 29, 39, 0.92), rgba(25, 47, 58, 0.82));
-        box-shadow: 0 14px 32px rgba(0, 0, 0, 0.14);
+        background: rgba(27, 46, 53, 0.9);
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14);
     }
 
     .page-eyebrow {
         letter-spacing: .15em;
-        color: #d9b87d;
+        color: #d9a74a;
     }
 
     .page-title {
-        color: #f7f5f0;
+        color: #ffffff;
         letter-spacing: -.05em;
     }
 
     .kq-agent-shell .kq-dashboard-hero .text-muted {
-        color: rgba(245, 238, 227, 0.74) !important;
+        color: #b8c7ce !important;
     }
 
     .card {
-        border: 1px solid rgba(20, 34, 41, 0.08) !important;
-        border-radius: 1.2rem !important;
+        border: 1px solid #dfe7ed !important;
+        border-radius: 1rem !important;
         background: rgba(255, 255, 255, 0.98);
-        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.12);
-        color: #132d42;
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14);
+        color: #0f2942;
     }
 
     .kq-agent-shell .card .text-muted {

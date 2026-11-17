@@ -18,12 +18,16 @@ ensure_agent_reviews_table($conn);
 include 'includes/header.php';
 ?>
 <style>
-    body {
-        background: radial-gradient(circle at top, rgba(13, 37, 43, 0.85), rgba(6, 15, 19, 1) 52%);
+    .kq-client-shell {
+        --kq-client-card-muted: #536579;
+    }
+
+    html[data-bs-theme="dark"] .kq-client-shell {
+        --kq-client-card-muted: #94a3b8;
     }
 
     .kq-client-shell {
-        max-width: 1220px;
+        max-width: 1360px;
         width: 100%;
         margin: 0 auto;
         padding: 1.2rem 0 2rem;
@@ -36,24 +40,24 @@ include 'includes/header.php';
         gap: 0.9rem;
         padding: 1rem 1.2rem;
         margin-bottom: 1.5rem;
-        border: 1px solid rgba(212, 175, 110, 0.28);
+        border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 1.1rem;
-        background: linear-gradient(135deg, rgba(14, 29, 39, 0.92), rgba(25, 47, 58, 0.82));
-        box-shadow: 0 14px 32px rgba(0, 0, 0, 0.14);
+        background: rgba(27, 46, 53, 0.9);
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14);
     }
 
     .page-eyebrow {
         letter-spacing: .15em;
-        color: #d9b87d;
+        color: #d9a74a;
     }
 
     .page-title {
-        color: #f7f5f0;
+        color: #ffffff;
         letter-spacing: -.05em;
     }
 
     .kq-client-shell .kq-dashboard-hero .text-muted {
-        color: rgba(245, 238, 227, 0.85) !important;
+        color: #b8c7ce !important;
     }
 
     .card .text-muted,
@@ -66,11 +70,11 @@ include 'includes/header.php';
     }
 
     .card {
-        border: 1px solid rgba(20, 34, 41, 0.08) !important;
-        border-radius: 1.2rem !important;
+        border: 1px solid #dfe7ed !important;
+        border-radius: 1rem !important;
         background: #ffffff;
-        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.12);
-        color: #132d42;
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14);
+        color: #0f2942;
     }
 
     .card .page-eyebrow {
@@ -785,12 +789,12 @@ $clientUnreadCount = get_user_unread_notification_count($conn, $clientID);
                                                                 }
                                                             }
                                                             ?>
-                                                            <span class="fw-bold text-dark" style="color: #000000 !important; font-size: 0.95rem;"><?= htmlspecialchars($eventTitle, ENT_QUOTES, 'UTF-8') ?></span>
-                                                            <time class="small fw-semibold text-dark" style="color: #212529 !important;" datetime="<?= htmlspecialchars(date('c', strtotime($event['createdAt'])), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars(date('M j, Y g:i A', strtotime($event['createdAt'])), ENT_QUOTES, 'UTF-8') ?></time>
+                                                            <span class="fw-bold text-dark" style="font-size: 0.95rem;"><?= htmlspecialchars($eventTitle, ENT_QUOTES, 'UTF-8') ?></span>
+                                                            <time class="small fw-semibold text-dark" datetime="<?= htmlspecialchars(date('c', strtotime($event['createdAt'])), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars(date('M j, Y g:i A', strtotime($event['createdAt'])), ENT_QUOTES, 'UTF-8') ?></time>
                                                         </div>
                                                         <?php if ($eventIndex === 0): ?><div class="small text-primary fw-semibold mt-1">Latest update</div><?php endif; ?>
-                                                        <?php if (!empty($event['changedByName'])): ?><div class="small fw-semibold text-dark mt-1" style="color: #212529 !important;">Updated by <?= htmlspecialchars($event['changedByName'], ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
-                                                        <?php if (!empty($event['note'])): ?><p class="small text-dark text-break mb-0 mt-1 fw-normal" style="color: #000000 !important;"><?= htmlspecialchars($event['note'], ENT_QUOTES, 'UTF-8') ?></p><?php endif; ?>
+                                                        <?php if (!empty($event['changedByName'])): ?><div class="small fw-semibold text-dark mt-1">Updated by <?= htmlspecialchars($event['changedByName'], ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
+                                                        <?php if (!empty($event['note'])): ?><p class="small text-dark text-break mb-0 mt-1 fw-normal"><?= htmlspecialchars($event['note'], ENT_QUOTES, 'UTF-8') ?></p><?php endif; ?>
                                                     </div>
                                                 </li>
                                             <?php endforeach; ?>

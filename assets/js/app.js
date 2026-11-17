@@ -19,6 +19,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         navigation.addEventListener('click', (event) => {
             const target = event.target instanceof Element ? event.target.closest('a, button') : null;
+            if (target instanceof HTMLAnchorElement && target.hash) {
+                const sectionId = target.hash.slice(1);
+                if (document.getElementById(sectionId)) {
+                    navigation.querySelectorAll('a[aria-current="location"]').forEach((link) => {
+                        link.removeAttribute('aria-current');
+                    });
+                    target.setAttribute('aria-current', 'location');
+                }
+            }
             if (target) {
                 setMenuOpen(false);
             }
