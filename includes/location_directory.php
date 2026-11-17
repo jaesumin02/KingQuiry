@@ -72,7 +72,7 @@ function get_batangas_municipality_coordinates(): array
     ];
 }
 
-function find_municipality_center_coordinates(string $municipalityName): array
+function find_municipality_coordinates(string $municipalityName): ?array
 {
     $coords = get_batangas_municipality_coordinates();
     if (isset($coords[$municipalityName])) {
@@ -83,20 +83,23 @@ function find_municipality_center_coordinates(string $municipalityName): array
             return $pair;
         }
     }
-    return [13.7565, 121.0583];
+    return null;
+}
+
+function find_municipality_center_coordinates(string $municipalityName): array
+{
+    return find_municipality_coordinates($municipalityName) ?? [13.7565, 121.0583];
 }
 
 function property_location_options(array $locations, ?int $selectedLocationId = null): string
 {
     $html = '<option value="">Choose a municipality or city</option>';
-    $coords = get_batangas_municipality_coordinates();
     foreach ($locations as $location) {
         $locationId = (int) $location['locationID'];
         $mName = (string) $location['municipalityName'];
         $label = $mName . ', ' . $location['provinceName'];
         $selected = $selectedLocationId === $locationId ? ' selected' : '';
-        $lat = $coords[$mName][0] ?? 13.7565;
-        $lng = $coords[$mName][1] ?? 121.0583;
+        [$lat, $lng] = find_municipality_coordinates($mName) ?? [13.7565, 121.0583];
         $html .= '<option value="' . $locationId . '" data-municipality="' . htmlspecialchars($mName, ENT_QUOTES, 'UTF-8') . '" data-lat="' . $lat . '" data-lng="' . $lng . '"' . $selected . '>'
             . htmlspecialchars($label, ENT_QUOTES, 'UTF-8')
             . '</option>';

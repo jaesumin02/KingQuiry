@@ -109,9 +109,12 @@ $chatLocations = get_property_locations($conn);
 
 <section id="kingquiry-chat-panel" class="card border-0 flex-column" aria-label="KingQuiry customer chat" aria-hidden="true" inert>
     <header class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-3 px-3">
-        <div>
-            <strong>KingQuiry Assistant</strong>
-            <div id="kingquiry-chat-status" class="small">Connecting...</div>
+        <div class="d-flex align-items-center gap-2 min-w-0">
+            <img class="kq-official-logo kq-logo-chat kq-logo-on-dark" src="assets/images/kings-land-properties-logo-light.png" alt="" aria-hidden="true">
+            <div class="min-w-0">
+                <strong>KingQuiry Assistant</strong>
+                <div id="kingquiry-chat-status" class="small">Connecting...</div>
+            </div>
         </div>
         <button id="kingquiry-chat-close" type="button" class="btn-close btn-close-white" aria-label="Minimize chat"></button>
     </header>

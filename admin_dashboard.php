@@ -20,7 +20,9 @@ ensure_admin_management_schema($conn);
 
 $locations = get_property_locations($conn);
 $formError = '';
-$formSuccess = isset($_GET['property_added']) ? 'The property listing has been published.' : '';
+$formSuccess = isset($_GET['property_added'])
+    ? 'The property listing has been published.'
+    : (isset($_GET['property_updated']) ? 'The property listing has been updated.' : '');
 $estimate = null;
 $estimateError = '';
 $inputSqm = '';
@@ -49,14 +51,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($longitude === false || $longitude < -180 || $longitude > 180) {
             $longitude = null;
         }
-        if ($location) {
-            $defaultCoords = find_municipality_center_coordinates($location['municipalityName']);
-            if ($latitude === null) {
-                $latitude = (float) $defaultCoords[0];
-            }
-            if ($longitude === null) {
-                $longitude = (float) $defaultCoords[1];
-            }
+        if ($latitude === null || $longitude === null) {
+            $latitude = null;
+            $longitude = null;
         }
 
         if (strlen($title) < 3 || strlen($title) > 150 || strlen($description) < 10 || strlen($description) > 10000) {
@@ -98,6 +95,171 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } catch (RuntimeException $exception) {
                 $formError = $exception->getMessage();
             }
+            }
+        }
+    } elseif (isset($_POST['update_property'])) {
+        $editPropertyId = filter_var($_POST['propertyID'] ?? null, FILTER_VALIDATE_INT);
+        $title = is_string($_POST['title'] ?? null) ? trim($_POST['title']) : '';
+        $description = is_string($_POST['description'] ?? null) ? trim($_POST['description']) : '';
+        $price = filter_var($_POST['price'] ?? null, FILTER_VALIDATE_FLOAT);
+        $areaSqm = filter_var($_POST['areaSqm'] ?? null, FILTER_VALIDATE_FLOAT);
+        $locationId = filter_var($_POST['locationID'] ?? null, FILTER_VALIDATE_INT);
+        $propertyType = is_string($_POST['propertyType'] ?? null) ? $_POST['propertyType'] : '';
+        $landCharacteristics = is_string($_POST['landCharacteristics'] ?? null) ? trim($_POST['landCharacteristics']) : '';
+        $barangay = is_string($_POST['barangay'] ?? null) ? trim($_POST['barangay']) : '';
+        $location = $locationId === false ? null : find_property_location($locations, (int) $locationId);
+
+        $latitudeInput = is_string($_POST['latitude'] ?? null) ? trim($_POST['latitude']) : '';
+        $longitudeInput = is_string($_POST['longitude'] ?? null) ? trim($_POST['longitude']) : '';
+        $latitude = $latitudeInput === '' ? null : filter_var($latitudeInput, FILTER_VALIDATE_FLOAT);
+        $longitude = $longitudeInput === '' ? null : filter_var($longitudeInput, FILTER_VALIDATE_FLOAT);
+        $coordinatesValid = ($latitudeInput === '' && $longitudeInput === '')
+            || (
+                $latitudeInput !== ''
+                && $longitudeInput !== ''
+                && $latitude !== false
+                && $latitude >= -90
+                && $latitude <= 90
+                && $longitude !== false
+                && $longitude >= -180
+                && $longitude <= 180
+            );
+        $imageUpload = $_FILES['propertyImage'] ?? [];
+        $hasImageUpload = is_array($imageUpload) && ($imageUpload['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
+
+        if ($editPropertyId === false || $editPropertyId <= 0) {
+            $formError = 'Choose a valid property to edit.';
+        } elseif (strlen($title) < 3 || strlen($title) > 150 || strlen($description) < 10 || strlen($description) > 10000) {
+            $formError = 'Enter a title (3-150 characters) and a description (10-10,000 characters).';
+        } elseif ($price === false || $price <= 0 || $price > 9999999999.99 || $areaSqm === false || $areaSqm < 0.01 || $areaSqm > 1000000) {
+            $formError = 'Enter a valid total price and a land area between 0 and 1,000,000 sq.m.';
+        } elseif (round((float) $price / (float) $areaSqm, 2) > 9999999999.99) {
+            $formError = 'The calculated price per square meter is outside the supported price range.';
+        } elseif (!in_array($propertyType, ['Residential', 'Commercial', 'Farmlot', 'Beachlot', 'Condo'], true)) {
+            $formError = 'Choose a valid property category.';
+        } elseif (!$location || strlen($barangay) > 120 || strlen($landCharacteristics) > 2000) {
+            $formError = 'Choose an active directory location and check the optional land details.';
+        } elseif (!$coordinatesValid) {
+            $formError = 'Enter both valid map coordinates or leave both blank to use the municipality location.';
+        } else {
+            $existingStmt = $conn->prepare('SELECT image FROM properties WHERE propertyID = ? AND isDeleted = 0');
+            $existingStmt->bind_param('i', $editPropertyId);
+            $existingStmt->execute();
+            $existingProperty = $existingStmt->get_result()->fetch_assoc();
+
+            if (!$existingProperty) {
+                $formError = 'The active property listing could not be found.';
+            } else {
+                $newImageName = null;
+                $transactionStarted = false;
+                $databaseUpdated = false;
+                $commitAttempted = false;
+                $oldImagePath = '';
+                $cleanupNewImage = static function () use (&$newImageName): void {
+                    if ($newImageName !== null && $newImageName !== 'default.jpg') {
+                        $newImagePath = __DIR__ . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'images' . DIRECTORY_SEPARATOR . basename($newImageName);
+                        if (is_file($newImagePath) && !unlink($newImagePath)) {
+                            error_log('KingQuiry property image cleanup failed: ' . $newImagePath);
+                        }
+                    }
+                };
+                try {
+                    if ($hasImageUpload) {
+                        $newImageName = store_property_image($imageUpload);
+                    }
+
+                    $canonicalLocation = $location['municipalityName'] . ', ' . $location['provinceName'];
+                    $pricePerSqm = round((float) $price / (float) $areaSqm, 2);
+                    $updateStmt = $conn->prepare(
+                        'UPDATE properties
+                         SET title = ?, description = ?, price = ?, pricePerSqm = ?, location = ?, propertyType = ?,
+                             landCharacteristics = ?, locationID = ?, latitude = ?, longitude = ?, barangay = ?,
+                             areaSqm = ?, image = COALESCE(?, image)
+                         WHERE propertyID = ? AND isDeleted = 0'
+                    );
+                    $updateStmt->bind_param(
+                        'ssddsssiddsdsi',
+                        $title,
+                        $description,
+                        $price,
+                        $pricePerSqm,
+                        $canonicalLocation,
+                        $propertyType,
+                        $landCharacteristics,
+                        $locationId,
+                        $latitude,
+                        $longitude,
+                        $barangay,
+                        $areaSqm,
+                        $newImageName,
+                        $editPropertyId
+                    );
+                    if (!$conn->begin_transaction()) {
+                        throw new RuntimeException('The database transaction could not be started. Please try again.');
+                    }
+                    $transactionStarted = true;
+                    $lockStmt = $conn->prepare('SELECT image FROM properties WHERE propertyID = ? AND isDeleted = 0 FOR UPDATE');
+                    $lockStmt->bind_param('i', $editPropertyId);
+                    $lockStmt->execute();
+                    $lockedProperty = $lockStmt->get_result()->fetch_assoc();
+                    if (!$lockedProperty) {
+                        throw new RuntimeException('This property listing is no longer active and could not be updated.');
+                    }
+                    $existingProperty = $lockedProperty;
+                    $updateStmt->execute();
+
+                    $removeOldImage = false;
+                    if ($newImageName !== null && $newImageName !== 'default.jpg') {
+                        $oldImageValue = (string) ($existingProperty['image'] ?? '');
+                        $oldImageName = basename($oldImageValue);
+                        $oldImagePath = __DIR__ . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'images' . DIRECTORY_SEPARATOR . $oldImageName;
+                        if ($oldImageName !== '' && $oldImageName !== 'default.jpg' && is_file($oldImagePath)) {
+                            $imageReferenceStmt = $conn->prepare('SELECT COUNT(*) AS referencesCount FROM properties WHERE image = ? AND propertyID <> ?');
+                            $imageReferenceStmt->bind_param('si', $oldImageValue, $editPropertyId);
+                            $imageReferenceStmt->execute();
+                            $otherImageReferences = (int) $imageReferenceStmt->get_result()->fetch_assoc()['referencesCount'];
+                            $removeOldImage = $otherImageReferences === 0;
+                        }
+                    }
+
+                    $commitAttempted = true;
+                    if (!$conn->commit()) {
+                        throw new RuntimeException('The property changes could not be committed. Please check the listing before retrying.');
+                    }
+                    $transactionStarted = false;
+                    $databaseUpdated = true;
+                    if ($removeOldImage && $oldImagePath !== '' && is_file($oldImagePath) && !unlink($oldImagePath)) {
+                        error_log('KingQuiry replaced property image could not be removed: ' . $oldImagePath);
+                    }
+
+                    header('Location: admin_dashboard.php?property_updated=1#property-list');
+                    exit();
+                } catch (InvalidArgumentException $exception) {
+                    if ($transactionStarted) {
+                        $conn->rollback();
+                    }
+                    if (!$databaseUpdated && !$commitAttempted) {
+                        $cleanupNewImage();
+                    }
+                    $formError = $exception->getMessage();
+                } catch (mysqli_sql_exception $exception) {
+                    if ($transactionStarted) {
+                        $conn->rollback();
+                    }
+                    if (!$databaseUpdated && !$commitAttempted) {
+                        $cleanupNewImage();
+                    }
+                    error_log('KingQuiry property update failed: ' . $exception->getMessage());
+                    $formError = 'The property could not be updated. Check the database connection and try again.';
+                } catch (RuntimeException $exception) {
+                    if ($transactionStarted) {
+                        $conn->rollback();
+                    }
+                    if (!$databaseUpdated && !$commitAttempted) {
+                        $cleanupNewImage();
+                    }
+                    $formError = $exception->getMessage();
+                }
             }
         }
     } elseif (isset($_POST['delete_property']) || isset($_POST['trash_property'])) {
@@ -404,6 +566,32 @@ $properties = $conn->query(
      WHERE p.isDeleted = 0
      ORDER BY p.createdAt DESC, p.propertyID DESC"
 );
+$editingProperty = null;
+$editPropertyRequest = $_GET['edit_property'] ?? ($_POST['propertyID'] ?? null);
+if (isset($_GET['edit_property']) || isset($_POST['update_property'])) {
+    $requestedEditId = filter_var($editPropertyRequest, FILTER_VALIDATE_INT);
+    if ($requestedEditId === false || $requestedEditId <= 0) {
+        if ($formError === '') {
+            $formError = 'Choose a valid property to edit.';
+        }
+    } else {
+        $editPropertyStmt = $conn->prepare('SELECT * FROM properties WHERE propertyID = ? AND isDeleted = 0');
+        $editPropertyStmt->bind_param('i', $requestedEditId);
+        $editPropertyStmt->execute();
+        $editingProperty = $editPropertyStmt->get_result()->fetch_assoc() ?: null;
+        if ($editingProperty === null && $formError === '') {
+            $formError = 'The active property listing could not be found.';
+        }
+    }
+}
+$propertyFormValues = $editingProperty ?? [];
+if (isset($_POST['update_property'])) {
+    foreach (['title', 'description', 'price', 'areaSqm', 'locationID', 'propertyType', 'landCharacteristics', 'barangay', 'latitude', 'longitude'] as $formField) {
+        if (is_scalar($_POST[$formField] ?? null)) {
+            $propertyFormValues[$formField] = (string) $_POST[$formField];
+        }
+    }
+}
 $trashedProperties = $conn->query(
     "SELECT p.*, l.municipalityName, l.provinceName
      FROM properties p
@@ -425,45 +613,46 @@ $clientOverview = $conn->query(
      FROM users
      WHERE role = 'Client'"
 )->fetch_assoc();
+
+$demandPrescription = [];
+$demandRes = $conn->query("
+    SELECT l.municipalityName,
+           COUNT(DISTINCT i.inquiryID) AS totalInquiries,
+           COUNT(DISTINCT p.propertyID) AS availableListings
+    FROM property_locations l
+    LEFT JOIN properties p ON p.locationID = l.locationID AND p.status = 'Available' AND p.isDeleted = 0
+    LEFT JOIN feedbackinquiries i ON i.propertyID = p.propertyID
+    WHERE l.isActive = 1
+    GROUP BY l.locationID, l.municipalityName
+    HAVING totalInquiries > 0 OR availableListings > 0
+    ORDER BY totalInquiries DESC, availableListings DESC
+    LIMIT 6
+");
+if ($demandRes) {
+    $demandPrescription = $demandRes->fetch_all(MYSQLI_ASSOC);
+}
+
+$auditLogsRes = $conn->query("
+    SELECT a.logID, a.userID, a.action, a.timestamp, u.fullname, u.email, u.role
+    FROM auditlogs a
+    LEFT JOIN users u ON u.userID = a.userID
+    ORDER BY a.logID DESC
+    LIMIT 50
+");
+$recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
 ?>
 <style>
     body {
-        background: radial-gradient(circle at top, rgba(13, 37, 43, 0.85), rgba(6, 15, 19, 1) 52%);
+        background: var(--admin-canvas);
     }
 
     .kq-admin-shell {
         max-width: 1280px;
+        width: 100%;
+        min-width: 0;
         margin: 0 auto;
         padding: 1.2rem 0 2rem;
-        color: #f7f5f0;
-    }
-
-    .kq-dashboard-hero {
-        display: flex;
-        align-items: center;
-        gap: 0.9rem;
-        padding: 1rem 1.2rem;
-        margin-bottom: 1.5rem;
-        border: 1px solid rgba(212, 175, 110, 0.28);
-        border-radius: 1.1rem;
-        background: linear-gradient(135deg, rgba(14, 29, 39, 0.92), rgba(25, 47, 58, 0.82));
-        box-shadow: 0 14px 32px rgba(0, 0, 0, 0.14);
-    }
-
-    .kq-dashboard-brand {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-width: 86px;
-        padding: 0.5rem 0.8rem;
-        border: 1px solid rgba(212, 175, 110, 0.4);
-        border-radius: 999px;
-        background: rgba(212, 175, 110, 0.12);
-        color: #f2d79f;
-        font-size: 0.7rem;
-        font-weight: 800;
-        letter-spacing: 0.2em;
-        text-transform: uppercase;
+        color: var(--admin-title);
     }
 
     .page-eyebrow {
@@ -472,12 +661,12 @@ $clientOverview = $conn->query(
     }
 
     .page-title {
-        color: #f7f5f0;
+        color: var(--admin-title);
         letter-spacing: -.05em;
     }
 
     .text-muted {
-        color: rgba(245, 238, 227, 0.74) !important;
+        color: var(--admin-subtitle) !important;
     }
 
     .card {
@@ -503,7 +692,7 @@ $clientOverview = $conn->query(
     }
 
     .kq-admin-shell > section .kq-panel-header h2 {
-        color: #f7f5f0;
+        color: var(--admin-title);
     }
 
     .kq-badge-soft {
@@ -552,29 +741,6 @@ $clientOverview = $conn->query(
 </style>
 
 <div class="kq-admin-shell">
-    <div class="kq-dashboard-hero">
-        <span class="kq-dashboard-brand">4 KINGS</span>
-        <div>
-            <div class="page-eyebrow">KingQuiry management</div>
-            <div class="text-white fw-semibold mb-0">System admin control room</div>
-        </div>
-    </div>
-    <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-end gap-3 mb-4">
-        <div>
-            <div class="page-eyebrow">KingQuiry management</div>
-            <h1 class="page-title h2 mb-1">Admin dashboard</h1>
-            <p class="text-muted mb-0">A clear overview of listings and customer activity.</p>
-        </div>
-        <div class="d-flex flex-wrap gap-2">
-            <a href="#property-list" class="btn btn-success fw-bold text-white shadow-sm">🏘️ Property list (<?= number_format($totalProperties) ?>)</a>
-            <a href="admin_sales.php" class="btn btn-primary">Sales &amp; transactions</a>
-            <a href="admin_clients.php" class="btn btn-outline-primary">Clients</a>
-            <a href="admin_payments.php" class="btn btn-outline-primary">Payments</a>
-            <a href="transaction_tracking.php" class="btn btn-outline-primary">Transaction tracking</a>
-            <a href="admin_chat.php" class="btn btn-outline-primary">Customer inbox</a>
-        </div>
-    </div>
-
 <section class="mb-4" aria-labelledby="business-analytics-title">
     <div class="kq-panel-header mb-3">
         <div>
@@ -651,33 +817,18 @@ $clientOverview = $conn->query(
     <div class="row g-3">
         <div class="col-lg-7">
             <section class="card h-100 p-3 p-lg-4" aria-labelledby="monthly-sales-title">
-                <div class="mb-3">
-                    <h3 class="h5 fw-bold mb-1" id="monthly-sales-title">Monthly actual sales revenue</h3>
-                    <p class="small text-muted mb-0">Last six months · based on staff-recorded sale prices</p>
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                    <div>
+                        <h3 class="h5 fw-bold mb-1" id="monthly-sales-title">Monthly actual sales revenue</h3>
+                        <p class="small text-muted mb-0">Verified completed sales, grouped by month</p>
+                    </div>
+                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle small fw-bold">Verified sales data</span>
                 </div>
-                <div class="overflow-auto">
-                    <svg class="w-100" style="min-width: 600px;" viewBox="0 0 720 300" role="img" aria-labelledby="monthly-sales-title monthly-sales-description">
-                        <desc id="monthly-sales-description">Line graph of verified actual sale revenue by month for the last six months. Months without recorded sales have a value of zero.</desc>
-                        <?php for ($gridLine = 0; $gridLine <= 4; $gridLine++):
-                            $gridY = 245 - ($gridLine * 51);
-                            $gridValue = $monthlyRevenueMaximum * $gridLine / 4;
-                        ?>
-                            <line x1="78" y1="<?= $gridY ?>" x2="700" y2="<?= $gridY ?>" stroke="#e5ebf0" stroke-width="1"/>
-                            <text x="70" y="<?= $gridY - 5 ?>" text-anchor="end" fill="#687789" font-size="12"><?= htmlspecialchars($formatCompactPeso($gridValue), ENT_QUOTES, 'UTF-8') ?></text>
-                        <?php endfor; ?>
-                        <line x1="78" y1="40" x2="78" y2="245" stroke="#aab6c2" stroke-width="1"/>
-                        <line x1="78" y1="245" x2="700" y2="245" stroke="#aab6c2" stroke-width="1"/>
-                        <polyline points="<?= htmlspecialchars($monthlyRevenueLine, ENT_QUOTES, 'UTF-8') ?>" fill="none" stroke="#174a70" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-                        <?php foreach ($monthlyRevenuePoints as $point): ?>
-                            <circle cx="<?= $point['x'] ?>" cy="<?= number_format($point['y'], 2, '.', '') ?>" r="5" fill="#174a70" stroke="#fff" stroke-width="2">
-                                <title><?= htmlspecialchars($point['label'] . ': ₱' . number_format($point['revenue'], 2) . ' (' . $point['sales'] . ' sale(s))', ENT_QUOTES, 'UTF-8') ?></title>
-                            </circle>
-                            <text x="<?= $point['x'] ?>" y="274" text-anchor="middle" fill="#687789" font-size="12"><?= htmlspecialchars($point['label'], ENT_QUOTES, 'UTF-8') ?></text>
-                        <?php endforeach; ?>
-                    </svg>
+                <div style="position: relative; height: 260px; width: 100%;">
+                    <canvas id="adminRevenueTrajectoryChart"></canvas>
                 </div>
                 <?php if (!$hasMonthlySales): ?>
-                    <p class="small text-muted mb-0 mt-2">No verified sales with a recorded sale price in this period. The graph is ready and will update when staff records a completed sale.</p>
+                    <p class="small text-muted mb-0 mt-2">No verified sales with a recorded sale price in this period yet. The graph is live and dynamically updates as soon as transactions are closed.</p>
                 <?php endif; ?>
             </section>
         </div>
@@ -716,10 +867,63 @@ $clientOverview = $conn->query(
             </section>
         </div>
     </div>
+
+    <section class="card p-3 p-lg-4 mt-3" aria-labelledby="inventory-insights-title">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <div>
+                <span class="badge bg-warning-subtle text-dark border border-warning fw-bold mb-1">Inventory insights</span>
+                <h3 class="h5 fw-bold mb-0" id="inventory-insights-title">Listing activity by municipality</h3>
+                <p class="small text-muted mb-0">Compare current inquiry counts with available listings to guide inventory and marketing reviews.</p>
+            </div>
+            <span class="badge text-bg-light border text-secondary small py-2 px-3">Municipal summary</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr class="table-light">
+                        <th>Municipality / Location</th>
+                        <th class="text-center">Inquiry Volume</th>
+                        <th class="text-center">Available Listings</th>
+                        <th>Demand / Supply Status</th>
+                        <th>Suggested next step</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if ($demandPrescription !== []): ?>
+                        <?php foreach ($demandPrescription as $dem):
+                            $inq = (int) $dem['totalInquiries'];
+                            $avail = (int) $dem['availableListings'];
+                            if ($inq > $avail) {
+                                $statusBadge = '<span class="badge bg-danger-subtle text-danger border border-danger-subtle fw-bold">High inquiry activity</span>';
+                                $prescription = '<strong>Review inventory:</strong> Compare available listings and verify pricing against similar properties.';
+                            } elseif ($avail > 3 && $inq === 0) {
+                                $statusBadge = '<span class="badge bg-warning-subtle text-dark border border-warning-subtle fw-semibold">No recent inquiries</span>';
+                                $prescription = '<strong>Review marketing:</strong> Check listing details, visibility, and current buyer interest.';
+                            } else {
+                                $statusBadge = '<span class="badge bg-success-subtle text-success border border-success-subtle fw-semibold">Activity within range</span>';
+                                $prescription = '<strong>Monitor activity:</strong> Continue reviewing inquiries and available inventory.';
+                            }
+                        ?>
+                            <tr>
+                                <td class="fw-bold text-dark"><?= htmlspecialchars($dem['municipalityName'], ENT_QUOTES, 'UTF-8') ?></td>
+                                <td class="text-center"><span class="badge text-bg-light border px-2 py-1"><?= $inq ?></span></td>
+                                <td class="text-center"><span class="badge text-bg-light border px-2 py-1"><?= $avail ?></span></td>
+                                <td><?= $statusBadge ?></td>
+                                <td class="small text-muted"><?= $prescription ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <tr><td colspan="5" class="text-center text-muted py-3">These insights appear when listings and inquiry records are available.</td></tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </section>
 </section>
+</div>
 
 <?php if ($formSuccess !== ''): ?><div class="alert alert-success" role="status"><?= htmlspecialchars($formSuccess, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
-<?php if ($formError !== ''): ?><div class="alert alert-danger" role="alert"><?= htmlspecialchars($formError, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
+<?php if ($formError !== '' && !isset($_GET['edit_property']) && !isset($_POST['update_property'])): ?><div class="alert alert-danger" role="alert"><?= htmlspecialchars($formError, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
 
 <div class="row g-3 mb-4">
     <div class="col-6 col-xl-3">
@@ -904,6 +1108,7 @@ $clientOverview = $conn->query(
                         </td>
                         <td class="text-end">
                             <div class="d-flex justify-content-end align-items-center gap-1">
+                                <a href="admin_dashboard.php?edit_property=<?= (int) $row['propertyID'] ?>#properties" class="btn btn-sm btn-outline-primary py-1 px-2" title="Edit all property details">✏️ Edit</a>
                                 <a href="property_detail.php?id=<?= (int) $row['propertyID'] ?>" target="_blank" class="btn btn-sm btn-outline-secondary py-1 px-2" title="View live property page">👁️ View</a>
                                 <form method="POST" class="m-0 d-inline">
                                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
@@ -1038,7 +1243,6 @@ $clientOverview = $conn->query(
             </div>
             <div class="modal-footer bg-light p-2 justify-content-between">
                 <span class="small text-muted">Archived properties can be restored at any time.</span>
-                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
@@ -1103,8 +1307,8 @@ $clientOverview = $conn->query(
 
 <section class="card p-4 p-lg-5 mb-4">
     <div class="page-eyebrow mb-2">Comparable listing analysis</div>
-    <h2 class="h4 fw-bold mb-2">Machine-learning land price estimate</h2>
-    <p class="text-muted small mb-4">This module uses a trained regression-style pricing model based on comparable listings, land area, category, and municipality. It is an informed estimate for planning use and not a formal appraisal.</p>
+    <h2 class="h4 fw-bold mb-2">Property price estimate</h2>
+    <p class="text-muted small mb-4">Uses available listing prices and the selected land area, category, and municipality to provide an indicative range. This is a planning reference, not a formal appraisal.</p>
     <form method="POST" class="row g-3 align-items-end">
         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
         <div class="col-md-3">
@@ -1134,32 +1338,38 @@ $clientOverview = $conn->query(
         <div class="alert alert-success mt-4 mb-0" role="status">
             <h3 class="h6 fw-bold mb-2">Indicative estimate for <?= htmlspecialchars($estimate['location_name'], ENT_QUOTES, 'UTF-8') ?></h3>
             <p class="mb-1"><strong><?= number_format((float) $inputSqm, 2) ?> sq.m.</strong>: <strong class="text-dark">₱<?= number_format($estimate['low_estimate'], 2) ?>–₱<?= number_format($estimate['high_estimate'], 2) ?></strong></p>
-            <p class="small mb-0">Weighted rate: ₱<?= number_format($estimate['price_per_sqm'], 2) ?>/sq.m.; <?= $estimate['comparable_count'] ?> comparable listing(s), <?= $estimate['exact_match_count'] ?> exact match(es). Confidence is heuristic only.</p>
+            <p class="small mb-0">Based on <?= $estimate['comparable_count'] ?> available listing(s), including <?= $estimate['exact_match_count'] ?> in the same category and municipality. This range is indicative only.</p>
         </div>
     <?php endif; ?>
     <?php if ($estimateError !== ''): ?>
         <div class="alert alert-warning mt-4 mb-0" role="alert"><?= htmlspecialchars($estimateError, ENT_QUOTES, 'UTF-8') ?></div>
     <?php endif; ?>
-</div>
+</section>
 
 <section class="card p-4 p-lg-5 mb-4" id="properties">
     <div class="page-eyebrow mb-2">Inventory management</div>
-    <h2 class="h4 fw-bold mb-4">Publish a property</h2>
+    <h2 class="h4 fw-bold mb-2"><?= $editingProperty ? 'Edit property listing' : 'Publish a property' ?></h2>
+    <?php if ($formError !== '' && (isset($_GET['edit_property']) || isset($_POST['update_property']))): ?>
+        <div class="alert alert-danger" role="alert"><?= htmlspecialchars($formError, ENT_QUOTES, 'UTF-8') ?></div>
+    <?php endif; ?>
     <p class="text-muted small">Choose a verified municipality/city from the directory.</p>
-    <form method="POST" enctype="multipart/form-data">
+    <form method="POST" action="admin_dashboard.php<?= $editingProperty ? '?edit_property=' . (int) $editingProperty['propertyID'] : '' ?>#properties" enctype="multipart/form-data">
         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
-        <div class="row g-3">
-            <div class="col-md-6"><label class="form-label fw-semibold" for="property-title">Listing title</label><input id="property-title" type="text" name="title" class="form-control" required minlength="3" maxlength="150" placeholder="e.g. Residential lot near the town center"></div>
-            <div class="col-md-4"><label class="form-label fw-semibold" for="property-area">Land area (sq.m.)</label><input id="property-area" type="number" min="0.01" max="1000000" step="0.01" name="areaSqm" class="form-control" required placeholder="e.g. 500"></div>
-            <div class="col-md-4"><label class="form-label fw-semibold" for="property-price">Total asking price (PHP)</label><input id="property-price" type="number" min="0.01" max="9999999999.99" step="0.01" name="price" class="form-control" required placeholder="1500000"></div>
-            <div class="col-md-4"><label class="form-label fw-semibold" for="property-type">Property category</label><select id="property-type" name="propertyType" class="form-select" required><option value="">Choose a category</option><option value="Residential">Residential Lot</option><option value="Farmlot">Farm Lot</option><option value="Beachlot">Beach Lot</option><option value="Condo">Condo</option><option value="Commercial">Commercial</option></select></div>
-            <div class="col-md-6">            <label class="form-label fw-semibold" for="property-location">City / municipality</label><select id="property-location" name="locationID" class="form-select" required><?= property_location_options($locations) ?></select></div>
-            <div class="col-md-6"><label class="form-label fw-semibold" for="property-barangay">Barangay <span class="text-muted fw-normal">(optional)</span></label><input id="property-barangay" type="text" maxlength="120" name="barangay" class="form-control" placeholder="Enter verified barangay"></div>
+        <?php if ($editingProperty): ?>
+            <input type="hidden" name="propertyID" value="<?= (int) $editingProperty['propertyID'] ?>">
+        <?php endif; ?>
+        <div class="row g-3 kq-property-form-grid">
+            <div class="col-md-6"><label class="form-label fw-semibold" for="property-title">Listing title</label><input id="property-title" type="text" name="title" class="form-control" required minlength="3" maxlength="150" placeholder="e.g. Residential lot near the town center" value="<?= htmlspecialchars((string) ($propertyFormValues['title'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"></div>
+            <div class="col-md-4"><label class="form-label fw-semibold" for="property-area">Land area (sq.m.)</label><input id="property-area" type="number" min="0.01" max="1000000" step="0.01" name="areaSqm" class="form-control" required placeholder="e.g. 500" value="<?= htmlspecialchars((string) ($propertyFormValues['areaSqm'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"></div>
+            <div class="col-md-4"><label class="form-label fw-semibold" for="property-price">Total asking price (PHP)</label><input id="property-price" type="number" min="0.01" max="9999999999.99" step="0.01" name="price" class="form-control" required placeholder="1500000" value="<?= htmlspecialchars((string) ($propertyFormValues['price'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"></div>
+            <div class="col-md-4"><label class="form-label fw-semibold" for="property-type">Property category</label><select id="property-type" name="propertyType" class="form-select" required><option value="">Choose a category</option><option value="Residential" <?= ($propertyFormValues['propertyType'] ?? '') === 'Residential' ? 'selected' : '' ?>>Residential Lot</option><option value="Farmlot" <?= ($propertyFormValues['propertyType'] ?? '') === 'Farmlot' ? 'selected' : '' ?>>Farm Lot</option><option value="Beachlot" <?= ($propertyFormValues['propertyType'] ?? '') === 'Beachlot' ? 'selected' : '' ?>>Beach Lot</option><option value="Condo" <?= ($propertyFormValues['propertyType'] ?? '') === 'Condo' ? 'selected' : '' ?>>Condo</option><option value="Commercial" <?= ($propertyFormValues['propertyType'] ?? '') === 'Commercial' ? 'selected' : '' ?>>Commercial</option></select></div>
+            <div class="col-md-6"><label class="form-label fw-semibold" for="property-location">City / municipality</label><select id="property-location" name="locationID" class="form-select" required><?= property_location_options($locations, isset($propertyFormValues['locationID']) ? (int) $propertyFormValues['locationID'] : null) ?></select></div>
+            <div class="col-md-6"><label class="form-label fw-semibold" for="property-barangay">Barangay <span class="text-muted fw-normal">(optional)</span></label><input id="property-barangay" type="text" maxlength="120" name="barangay" class="form-control" placeholder="Enter verified barangay" value="<?= htmlspecialchars((string) ($propertyFormValues['barangay'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"></div>
             
             <!-- Interactive Map Picker for Pinning Land Location -->
             <div class="col-12">
-                <input type="hidden" id="property-latitude" name="latitude" value="">
-                <input type="hidden" id="property-longitude" name="longitude" value="">
+                <input type="hidden" id="property-latitude" name="latitude" value="<?= htmlspecialchars((string) ($propertyFormValues['latitude'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                <input type="hidden" id="property-longitude" name="longitude" value="<?= htmlspecialchars((string) ($propertyFormValues['longitude'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
 
                 <div class="card bg-light border p-3 p-md-4 rounded-3">
                     <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
@@ -1168,7 +1378,7 @@ $clientOverview = $conn->query(
                                 <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="me-1 text-primary align-text-bottom"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
                                 Pin exact land location on the interactive map
                             </label>
-                            <div class="text-muted small">Selecting a municipality pans to that area. Click anywhere on the map or drag the pin marker to specify the exact land location.</div>
+                            <div class="text-muted small">Select a municipality to center the map, then click the exact location or drag its pin. The municipality center will not be saved as the property pin.</div>
                         </div>
                         <span class="badge text-bg-light border text-dark fw-semibold" id="pin-coords-badge">
                             Select municipality or click map to pin
@@ -1179,7 +1389,7 @@ $clientOverview = $conn->query(
 
                     <div class="d-flex align-items-center justify-content-between mt-2 flex-wrap gap-2">
                         <small class="text-muted">
-                            Pinned coordinates: <strong class="text-primary" id="pin-coords-text">Not placed yet (will default to municipality center)</strong>
+                            Pinned coordinates: <strong class="text-primary" id="pin-coords-text">No exact pin selected</strong>
                         </small>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="btn-recenter-municipality">
                             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="me-1 align-text-bottom"><circle cx="12" cy="12" r="10"/><path d="m12 8 4 4-4 4M8 12h8"/></svg>Center on selected city
@@ -1188,11 +1398,20 @@ $clientOverview = $conn->query(
                 </div>
             </div>
 
-            <div class="col-12"><label class="form-label fw-semibold" for="property-characteristics">Land characteristics <span class="text-muted fw-normal">(optional)</span></label><input id="property-characteristics" type="text" maxlength="2000" name="landCharacteristics" class="form-control" placeholder="Road access, terrain, utilities, lot dimensions"></div>
-            <div class="col-12"><label class="form-label fw-semibold" for="property-image">Property image <span class="text-muted fw-normal">(optional, JPG/PNG/WebP up to 5 MB)</span></label><input id="property-image" type="file" name="propertyImage" class="form-control" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"><img id="property-image-preview" class="img-thumbnail d-none mt-2" style="max-height: 180px;" alt="Preview of the selected property image"></div>
-            <div class="col-12"><label class="form-label fw-semibold" for="property-description">Description</label><textarea id="property-description" name="description" class="form-control" rows="4" required minlength="10" maxlength="10000" placeholder="Share accurate property details, terms, documents available, and viewing instructions."></textarea></div>
+            <div class="col-12"><label class="form-label fw-semibold" for="property-characteristics">Land characteristics <span class="text-muted fw-normal">(optional)</span></label><input id="property-characteristics" type="text" maxlength="2000" name="landCharacteristics" class="form-control" placeholder="Road access, terrain, utilities, lot dimensions" value="<?= htmlspecialchars((string) ($propertyFormValues['landCharacteristics'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"></div>
+            <div class="col-12"><label class="form-label fw-semibold" for="property-image"><?= $editingProperty ? 'Replace property image' : 'Property image' ?> <span class="text-muted fw-normal">(optional, JPG/PNG/WebP up to 5 MB<?= $editingProperty ? '; leave blank to keep the current image' : '' ?>)</span></label><input id="property-image" type="file" name="propertyImage" class="form-control" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"><?php
+                $currentPropertyImage = basename((string) ($editingProperty['image'] ?? ''));
+                $currentPropertyImagePath = __DIR__ . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'images' . DIRECTORY_SEPARATOR . $currentPropertyImage;
+                $hasCurrentPropertyImage = $currentPropertyImage !== '' && $currentPropertyImage !== 'default.jpg' && is_file($currentPropertyImagePath);
+            ?><img id="property-image-preview" class="img-thumbnail mt-2<?= $hasCurrentPropertyImage ? '' : ' d-none' ?>" style="max-height: 180px;" alt="<?= $hasCurrentPropertyImage ? 'Current property image; selecting a new image will replace it' : 'Preview of the selected property image' ?>"<?= $hasCurrentPropertyImage ? ' src="assets/images/' . htmlspecialchars($currentPropertyImage, ENT_QUOTES, 'UTF-8') . '"' : '' ?>></div>
+            <div class="col-12"><label class="form-label fw-semibold" for="property-description">Description</label><textarea id="property-description" name="description" class="form-control" rows="4" required minlength="10" maxlength="10000" placeholder="Share accurate property details, terms, documents available, and viewing instructions."><?= htmlspecialchars((string) ($propertyFormValues['description'] ?? ''), ENT_QUOTES, 'UTF-8') ?></textarea></div>
         </div>
-        <button type="submit" name="add_property" class="btn btn-primary mt-3 px-4">Publish listing</button>
+        <?php if ($editingProperty): ?>
+            <button type="submit" name="update_property" class="btn btn-primary mt-3 px-4">Save listing changes</button>
+            <a href="admin_dashboard.php#property-list" class="btn btn-outline-secondary mt-3 ms-2">Cancel edit</a>
+        <?php else: ?>
+            <button type="submit" name="add_property" class="btn btn-primary mt-3 px-4">Publish listing</button>
+        <?php endif; ?>
     </form>
 </section>
 
@@ -1368,112 +1587,118 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
-    const locSelect = document.getElementById('property-location');
-    const latInput = document.getElementById('property-latitude');
-    const lngInput = document.getElementById('property-longitude');
-    const coordsText = document.getElementById('pin-coords-text');
-    const coordsBadge = document.getElementById('pin-coords-badge');
-    const recenterBtn = document.getElementById('btn-recenter-municipality');
-    const pickerMapContainer = document.getElementById('property-picker-map');
+});
+</script>
 
-    if (!pickerMapContainer || typeof L === 'undefined') return;
+<!-- ══════════ SYSTEM AUDIT LOGS MODAL (SIR SADD) ══════════ -->
+<div class="modal fade" id="auditLogsModal" tabindex="-1" aria-labelledby="auditLogsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
+        <div class="modal-content shadow-lg border-0 rounded-4 overflow-hidden">
+            <div class="modal-header border-0 text-white" style="background: linear-gradient(135deg, #142d4e 0%, #174a70 100%); padding: 1.25rem 1.5rem;">
+                <div class="d-flex align-items-center gap-3">
+                    <span class="fs-4">🛡️</span>
+                    <div>
+                        <h5 class="modal-title fw-bold text-white mb-0" id="auditLogsModalLabel">System Security &amp; Activity Audit Logs</h5>
+                        <div class="small text-white-50">Immutable trail of administrative updates, role changes, and system modifications</div>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-3 p-md-4" style="background: #f8fafc;">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="small text-muted">Showing latest 50 logged security events</div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover align-middle bg-white small mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>Timestamp</th>
+                                <th>User / Actor</th>
+                                <th>Role</th>
+                                <th>Action Taken</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if ($recentAuditLogs !== []): ?>
+                                <?php foreach ($recentAuditLogs as $log): ?>
+                                    <tr>
+                                        <td class="text-muted fw-bold">#<?= (int) $log['logID'] ?></td>
+                                        <td class="text-nowrap"><?= htmlspecialchars(date('M j, Y g:i A', strtotime($log['timestamp'])), ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td>
+                                            <div class="fw-bold text-dark"><?= htmlspecialchars($log['fullname'] ?? 'System / Anonymous', ENT_QUOTES, 'UTF-8') ?></div>
+                                            <?php if (!empty($log['email'])): ?><div class="text-muted" style="font-size: 0.75rem;"><?= htmlspecialchars($log['email'], ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
+                                        </td>
+                                        <td><span class="badge text-bg-light border"><?= htmlspecialchars($log['role'] ?? 'System', ENT_QUOTES, 'UTF-8') ?></span></td>
+                                        <td class="text-break"><?= htmlspecialchars($log['action'], ENT_QUOTES, 'UTF-8') ?></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php else: ?>
+                                <tr><td colspan="5" class="text-center text-muted py-4">No audit log records found yet. All administrative actions are automatically recorded here.</td></tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
-    const defaultBatangasCenter = [13.7565, 121.0583];
-    const pickerMap = L.map('property-picker-map', {
-        scrollWheelZoom: true,
-        zoomControl: true
-    }).setView(defaultBatangasCenter, 10);
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const revenueCanvas = document.getElementById('adminRevenueTrajectoryChart');
+    if (revenueCanvas && typeof Chart !== 'undefined') {
+        const labels = <?= json_encode(array_column($monthlySales, 'label')) ?>;
+        const revenues = <?= json_encode(array_column($monthlySales, 'revenue')) ?>;
+        const deals = <?= json_encode(array_column($monthlySales, 'sales')) ?>;
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors',
-        maxZoom: 18,
-    }).addTo(pickerMap);
-
-    const pickerPinIcon = L.divIcon({
-        className: 'kq-picker-pin',
-        html: `<div style="
-            width: 36px; height: 36px;
-            background: #174a70;
-            border: 3px solid #d8ad63;
-            border-radius: 50% 50% 50% 0;
-            transform: rotate(-45deg);
-            box-shadow: 0 4px 14px rgba(18, 40, 66, 0.4);
-            display: grid; place-items: center;
-            cursor: grab;
-        "><div style="
-            transform: rotate(45deg);
-            color: #ffffff;
-            font-size: 14px;
-            font-weight: 800;
-        ">★</div></div>`,
-        iconSize: [36, 36],
-        iconAnchor: [18, 36],
-        popupAnchor: [0, -36],
-    });
-
-    let pickerMarker = null;
-
-    function setPin(lat, lng, zoomTo = false) {
-        const fixedLat = Number(lat).toFixed(6);
-        const fixedLng = Number(lng).toFixed(6);
-        latInput.value = fixedLat;
-        lngInput.value = fixedLng;
-        coordsText.textContent = `${fixedLat}, ${fixedLng}`;
-        coordsBadge.textContent = `Pinned: ${fixedLat}, ${fixedLng}`;
-        coordsBadge.className = 'badge text-bg-success text-white fw-bold px-2 py-1';
-
-        if (!pickerMarker) {
-            pickerMarker = L.marker([lat, lng], {
-                icon: pickerPinIcon,
-                draggable: true
-            }).addTo(pickerMap);
-
-            pickerMarker.bindPopup(`<strong>Pinned Land Location</strong><br><small>${fixedLat}, ${fixedLng}</small>`);
-
-            pickerMarker.on('dragend', function (e) {
-                const pos = e.target.getLatLng();
-                setPin(pos.lat, pos.lng, false);
-                pickerMarker.openPopup();
-            });
-        } else {
-            pickerMarker.setLatLng([lat, lng]);
-            pickerMarker.setPopupContent(`<strong>Pinned Land Location</strong><br><small>${fixedLat}, ${fixedLng}</small>`);
-        }
-
-        if (zoomTo) {
-            pickerMap.setView([lat, lng], 14, { animate: true });
-        }
+        new Chart(revenueCanvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Verified Revenue (₱)',
+                    data: revenues,
+                    borderColor: '#174a70',
+                    backgroundColor: 'rgba(23, 74, 112, 0.12)',
+                    fill: true,
+                    tension: 0.35,
+                    borderWidth: 3,
+                    pointRadius: 5,
+                    pointBackgroundColor: '#174a70',
+                    pointHoverRadius: 7
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                if (value >= 1000000) return '₱' + (value / 1000000).toFixed(1) + 'M';
+                                if (value >= 1000) return '₱' + (value / 1000).toFixed(0) + 'K';
+                                return '₱' + value;
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const idx = context.dataIndex;
+                                const val = Number(context.parsed.y).toLocaleString('en-US', { minimumFractionDigits: 2 });
+                                return ' Revenue: ₱' + val + ' (' + deals[idx] + ' completed deals)';
+                            }
+                        }
+                    }
+                }
+            }
+        });
     }
-
-    pickerMap.on('click', function(e) {
-        setPin(e.latlng.lat, e.latlng.lng, false);
-        if (pickerMarker) pickerMarker.openPopup();
-    });
-
-    function syncWithMunicipality(zoom = true) {
-        if (!locSelect) return;
-        const opt = locSelect.options[locSelect.selectedIndex];
-        if (opt && opt.dataset.lat && opt.dataset.lng) {
-            const lat = parseFloat(opt.dataset.lat);
-            const lng = parseFloat(opt.dataset.lng);
-            setPin(lat, lng, zoom);
-        }
-    }
-
-    if (locSelect) {
-        locSelect.addEventListener('change', () => syncWithMunicipality(true));
-        if (locSelect.value !== '') {
-            syncWithMunicipality(false);
-        }
-    }
-
-    if (recenterBtn) {
-        recenterBtn.addEventListener('click', () => syncWithMunicipality(true));
-    }
-
-    setTimeout(() => {
-        pickerMap.invalidateSize();
-    }, 250);
 });
 </script>
 

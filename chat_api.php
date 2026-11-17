@@ -251,24 +251,32 @@ try {
         } else {
             $message = trim($payload['message']);
             chat_add_message($conn, $conversationId, 'client', $message);
-
-            if (!chat_admin_is_online($conn)) {
-                $lowerMessage = mb_strtolower($message);
-                if (preg_match('/hello|hi\b|good morning|good afternoon|good evening|kamusta|kumusta/', $lowerMessage)) {
-                    $reply = 'Hello! Thanks for contacting KingQuiry. How can I help you today? You can also request a land estimate using the button below.';
-                } elseif (preg_match('/estimate|estimation|presyo|price|halaga|sqm|square meter|lupa/', $lowerMessage)) {
-                    $reply = 'I can help estimate a land price. Use the estimate calculator below and enter the area in square meters, property category, and location.';
-                } elseif (preg_match('/thank|salamat/', $lowerMessage)) {
-                    $reply = 'You’re welcome! Thank you for contacting KingQuiry.';
-                } elseif (preg_match('/purchase|bought|order|checkout|bumili|binili/', $lowerMessage)) {
-                    $reply = 'Thank you for your interest in KingQuiry properties! Share the listing title or location if you have a question, and our admin can follow up.';
-                } elseif (preg_match('/appointment|book|schedule|viewing/', $lowerMessage)) {
-                    $reply = 'To request a property viewing, open a listing and use its “Book Viewing Appointment” form. An agent will review your request.';
-                } else {
-                    $reply = 'Thanks for your message! Our admin is currently away. I can help with property questions, appointments, or a land estimate. Please leave your question and the team can follow up.';
-                }
-                chat_add_message($conn, $conversationId, 'bot', $reply);
+            $lowerMessage = mb_strtolower($message);
+            if (preg_match('/hello|hi\b|good morning|good afternoon|good evening|kamusta|kumusta|magandang umaga|magandang hapon|magandang gabi/', $lowerMessage)) {
+                $reply = 'Hello! Welcome to KingQuiry. I can help with property listings, viewing appointments, contact details, and land estimates. What would you like to know?';
+            } elseif (preg_match('/estimate|estimation|presyo|price|halaga|how much|magkano|sqm|square meter/', $lowerMessage)) {
+                $reply = 'For an indicative land estimate, use the calculator below and enter the area in square meters, property category, and location. The estimate is not an appraisal or a confirmed sale price.';
+            } elseif (preg_match('/thank|salamat/', $lowerMessage)) {
+                $reply = 'You’re welcome! Thank you for contacting KingQuiry.';
+            } elseif (preg_match('/reservation|reserve|7.?day|grace period|down.?payment|dp\b/', $lowerMessage)) {
+                $reply = 'Under Kings Land Properties policy, placing a reservation deposit initiates a strict 7-day grace period to complete your down payment and submit compliance documents. Once completed, your transaction advances to Contract to Sell (CTS) or Deed of Absolute Sale (DOAS).';
+            } elseif (preg_match('/contract|cts|contract to sell|deed of absolute sale|doas|title transfer|transfer of title|taxes|tax\b|transfer fee/', $lowerMessage)) {
+                $reply = 'For installment purchases, a notarized Contract to Sell (CTS) is issued. For Spot Cash or fully paid purchases, a Deed of Absolute Sale (DOAS) is executed. Please note that title transfer, registration, and Documentary Stamp Taxes (DST) are shouldered by the buyer as standard practice.';
+            } elseif (preg_match('/agent|live agent|human|speak with|talk to|kausap|staff/', $lowerMessage)) {
+                $reply = 'Your inquiry has been flagged for our live sales agents. An agent will review your questions and follow up directly here or via your registered client dashboard.';
+            } elseif (preg_match('/appointment|book|schedule|viewing|site visit|tripping|mag.?book|pasyal/', $lowerMessage)) {
+                $reply = 'To schedule a property tripping, sign in with a client account, open the property listing, and submit the “Book Viewing Appointment” form. Site visits require at least 1-hour spacing to avoid overlapping bookings and give you dedicated agent support.';
+            } elseif (preg_match('/contact|phone|call|location|address|hours|open|oras|numero|tawag|saan|lokasyon|bukas/', $lowerMessage)) {
+                $reply = 'You can contact Kings Land Properties at 0965 803 0933 or visit Munting Indang, Nasugbu, Batangas. The contact listing says Always Open; staff reply times may vary.';
+            } elseif (preg_match('/property|listing|available|bahay|condo|farm|commercial|beach lot|lupa|land|lote|bibili|buy|purchase|order/', $lowerMessage)) {
+                $reply = 'Browse the published listings in the Property Catalog. For confirmed availability, title, boundaries, price, or sale terms, send the listing title and our team will verify the details before you proceed.';
+            } else {
+                $adminOnline = chat_admin_is_online($conn);
+                $reply = $adminOnline
+                    ? 'Thanks for your message! The KingQuiry team has received it. An admin will reply here as soon as they are available.'
+                    : 'Thanks for your message! Our admin is currently away. Your message is saved, and the team can follow up when they are available.';
             }
+            chat_add_message($conn, $conversationId, 'bot', $reply);
         }
 
         chat_respond([

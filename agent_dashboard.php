@@ -57,14 +57,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($longitude === false || $longitude < -180 || $longitude > 180) {
             $longitude = null;
         }
-        if ($location) {
-            $defaultCoords = find_municipality_center_coordinates($location['municipalityName']);
-            if ($latitude === null) {
-                $latitude = (float) $defaultCoords[0];
-            }
-            if ($longitude === null) {
-                $longitude = (float) $defaultCoords[1];
-            }
+        if ($latitude === null || $longitude === null) {
+            $latitude = null;
+            $longitude = null;
         }
 
         if (strlen($title) < 3 || strlen($title) > 150 || strlen($description) < 10 || strlen($description) > 10000) {
@@ -130,12 +125,14 @@ include 'includes/header.php';
 
     .kq-agent-shell {
         max-width: 1220px;
+        width: 100%;
         margin: 0 auto;
         padding: 1.2rem 0 2rem;
     }
 
     .kq-dashboard-hero {
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
         gap: 0.9rem;
         padding: 1rem 1.2rem;
@@ -144,22 +141,6 @@ include 'includes/header.php';
         border-radius: 1.1rem;
         background: linear-gradient(135deg, rgba(14, 29, 39, 0.92), rgba(25, 47, 58, 0.82));
         box-shadow: 0 14px 32px rgba(0, 0, 0, 0.14);
-    }
-
-    .kq-dashboard-brand {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-width: 86px;
-        padding: 0.5rem 0.8rem;
-        border: 1px solid rgba(212, 175, 110, 0.4);
-        border-radius: 999px;
-        background: rgba(212, 175, 110, 0.12);
-        color: #f2d79f;
-        font-size: 0.7rem;
-        font-weight: 800;
-        letter-spacing: 0.2em;
-        text-transform: uppercase;
     }
 
     .page-eyebrow {
@@ -172,7 +153,7 @@ include 'includes/header.php';
         letter-spacing: -.05em;
     }
 
-    .text-muted {
+    .kq-agent-shell .kq-dashboard-hero .text-muted {
         color: rgba(245, 238, 227, 0.74) !important;
     }
 
@@ -181,6 +162,15 @@ include 'includes/header.php';
         border-radius: 1.2rem !important;
         background: rgba(255, 255, 255, 0.98);
         box-shadow: 0 18px 40px rgba(0, 0, 0, 0.12);
+        color: #132d42;
+    }
+
+    .kq-agent-shell .card .text-muted {
+        color: #536579 !important;
+    }
+
+    .kq-agent-shell .card .page-eyebrow {
+        color: #805a20;
     }
 
     .kq-panel-header {
@@ -213,6 +203,10 @@ include 'includes/header.php';
         border-radius: 1rem;
     }
 
+    html[data-bs-theme="light"] body {
+        background: #f4f7fb;
+    }
+
     @media (max-width: 767.98px) {
         .kq-agent-shell {
             padding-top: .75rem;
@@ -221,21 +215,31 @@ include 'includes/header.php';
 </style>
 
 <div class="kq-agent-shell">
-    <div class="kq-dashboard-hero">
-        <span class="kq-dashboard-brand">4 KINGS</span>
-        <div>
-            <div class="page-eyebrow">Client services</div>
-            <div class="text-white fw-semibold mb-0">Private sales operations</div>
+    <div class="kq-portal-workspace">
+        <aside class="kq-portal-sidebar" aria-label="Agent dashboard navigation">
+            <button class="kq-menu-toggle" type="button" data-portal-menu-toggle data-menu-label="Agent menu" aria-label="Open Agent menu" aria-controls="agent-navigation" aria-expanded="false">
+                <span class="kq-menu-toggle-icon" aria-hidden="true"><span></span><span></span><span></span></span>
+                <span>Agent menu</span>
+            </button>
+            <div class="kq-portal-sidebar-heading">Agent menu</div>
+            <nav class="kq-portal-nav" id="agent-navigation" aria-label="Agent dashboard sections">
+                <a href="#agent-overview">Overview</a>
+                <a href="#appointments">Viewing requests</a>
+                <a href="#agent-inquiries">Inquiries</a>
+                <a href="#add-property">Publish a listing</a>
+                <a href="transaction_tracking.php">Transaction tracking</a>
+            </nav>
+        </aside>
+        <div class="kq-portal-main">
+    <header class="kq-dashboard-hero" id="agent-overview">
+        <img class="kq-official-logo kq-logo-dashboard kq-logo-on-dark" src="assets/images/kings-land-properties-logo-light.png" alt="4 Kings Realty Services">
+        <div class="kq-dashboard-hero-copy">
+            <div class="page-eyebrow">SALES AGENT WORKSPACE</div>
+            <h1 class="page-title h2 mb-1">Agent dashboard</h1>
+            <p class="text-muted mb-0">Welcome, <?= htmlspecialchars($_SESSION['user']['fullname'], ENT_QUOTES, 'UTF-8') ?>. Manage viewing requests and share transaction updates.</p>
         </div>
-    </div>
-    <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
-        <div>
-            <div class="page-eyebrow">Client services</div>
-            <h1 class="page-title h2 mb-1">Sales agent portal</h1>
-            <p class="text-muted mb-0">Welcome, <?= htmlspecialchars($_SESSION['user']['fullname'], ENT_QUOTES, 'UTF-8') ?>. Manage viewing requests and share verified transaction progress.</p>
-        </div>
-        <a href="transaction_tracking.php" class="btn btn-primary">Open transaction tracker</a>
-    </div>
+        <a href="transaction_tracking.php" class="btn btn-primary flex-shrink-0">Transaction tracking</a>
+    </header>
 
 <?php if ($statusMessage !== ''): ?><div class="alert alert-success" role="status"><?= htmlspecialchars($statusMessage, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
 <?php if ($statusError !== ''): ?><div class="alert alert-danger" role="alert"><?= htmlspecialchars($statusError, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
@@ -384,7 +388,7 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
     </div>
 </section>
 
-<section class="card p-3 p-lg-4">
+<section class="card p-3 p-lg-4" id="agent-inquiries">
     <div class="kq-panel-header mb-3">
         <div>
             <div class="page-eyebrow">Customer questions</div>
@@ -427,7 +431,7 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
 
     <form method="POST" enctype="multipart/form-data">
         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
-        <div class="row g-3">
+        <div class="row g-3 kq-property-form-grid">
             <div class="col-md-6">
                 <label class="form-label fw-semibold" for="property-title">Listing title</label>
                 <input id="property-title" type="text" name="title" class="form-control" required minlength="3" maxlength="150" placeholder="e.g. Scenic Residential lot in Nasugbu">
@@ -474,7 +478,7 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
                                 <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="me-1 text-primary align-text-bottom"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
                                 Pin exact land location on the interactive map
                             </label>
-                            <div class="text-muted small">Select a municipality to zoom in, then click anywhere on the map or drag the pin marker to specify the exact land location.</div>
+                            <div class="text-muted small">Select a municipality to center the map, then click the exact location or drag its pin. The municipality center will not be saved as the property pin.</div>
                         </div>
                         <span class="badge text-bg-light border text-dark fw-semibold" id="pin-coords-badge">
                             Select municipality or click map to pin
@@ -485,7 +489,7 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
 
                     <div class="d-flex align-items-center justify-content-between mt-2 flex-wrap gap-2">
                         <small class="text-muted">
-                            Pinned coordinates: <strong class="text-primary" id="pin-coords-text">Not placed yet (will default to municipality center)</strong>
+                            Pinned coordinates: <strong class="text-primary" id="pin-coords-text">No exact pin selected</strong>
                         </small>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="btn-recenter-municipality">
                             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="me-1 align-text-bottom"><circle cx="12" cy="12" r="10"/><path d="m12 8 4 4-4 4M8 12h8"/></svg>Center on selected city
@@ -511,116 +515,7 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
     </form>
 </section>
 </div>
-
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    const locSelect = document.getElementById('property-location');
-    const latInput = document.getElementById('property-latitude');
-    const lngInput = document.getElementById('property-longitude');
-    const coordsText = document.getElementById('pin-coords-text');
-    const coordsBadge = document.getElementById('pin-coords-badge');
-    const recenterBtn = document.getElementById('btn-recenter-municipality');
-    const pickerMapContainer = document.getElementById('property-picker-map');
-
-    if (!pickerMapContainer || typeof L === 'undefined') return;
-
-    const defaultBatangasCenter = [13.7565, 121.0583];
-    const pickerMap = L.map('property-picker-map', {
-        scrollWheelZoom: true,
-        zoomControl: true
-    }).setView(defaultBatangasCenter, 10);
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors',
-        maxZoom: 18,
-    }).addTo(pickerMap);
-
-    const pickerPinIcon = L.divIcon({
-        className: 'kq-picker-pin',
-        html: `<div style="
-            width: 36px; height: 36px;
-            background: #174a70;
-            border: 3px solid #d8ad63;
-            border-radius: 50% 50% 50% 0;
-            transform: rotate(-45deg);
-            box-shadow: 0 4px 14px rgba(18, 40, 66, 0.4);
-            display: grid; place-items: center;
-            cursor: grab;
-        "><div style="
-            transform: rotate(45deg);
-            color: #ffffff;
-            font-size: 14px;
-            font-weight: 800;
-        ">★</div></div>`,
-        iconSize: [36, 36],
-        iconAnchor: [18, 36],
-        popupAnchor: [0, -36],
-    });
-
-    let pickerMarker = null;
-
-    function setPin(lat, lng, zoomTo = false) {
-        const fixedLat = Number(lat).toFixed(6);
-        const fixedLng = Number(lng).toFixed(6);
-        latInput.value = fixedLat;
-        lngInput.value = fixedLng;
-        coordsText.textContent = `${fixedLat}, ${fixedLng}`;
-        coordsBadge.textContent = `Pinned: ${fixedLat}, ${fixedLng}`;
-        coordsBadge.className = 'badge text-bg-success text-white fw-bold px-2 py-1';
-
-        if (!pickerMarker) {
-            pickerMarker = L.marker([lat, lng], {
-                icon: pickerPinIcon,
-                draggable: true
-            }).addTo(pickerMap);
-
-            pickerMarker.bindPopup(`<strong>Pinned Land Location</strong><br><small>${fixedLat}, ${fixedLng}</small>`);
-
-            pickerMarker.on('dragend', function (e) {
-                const pos = e.target.getLatLng();
-                setPin(pos.lat, pos.lng, false);
-                pickerMarker.openPopup();
-            });
-        } else {
-            pickerMarker.setLatLng([lat, lng]);
-            pickerMarker.setPopupContent(`<strong>Pinned Land Location</strong><br><small>${fixedLat}, ${fixedLng}</small>`);
-        }
-
-        if (zoomTo) {
-            pickerMap.setView([lat, lng], 14, { animate: true });
-        }
-    }
-
-    pickerMap.on('click', function(e) {
-        setPin(e.latlng.lat, e.latlng.lng, false);
-        if (pickerMarker) pickerMarker.openPopup();
-    });
-
-    function syncWithMunicipality(zoom = true) {
-        if (!locSelect) return;
-        const opt = locSelect.options[locSelect.selectedIndex];
-        if (opt && opt.dataset.lat && opt.dataset.lng) {
-            const lat = parseFloat(opt.dataset.lat);
-            const lng = parseFloat(opt.dataset.lng);
-            setPin(lat, lng, zoom);
-        }
-    }
-
-    if (locSelect) {
-        locSelect.addEventListener('change', () => syncWithMunicipality(true));
-        if (locSelect.value !== '') {
-            syncWithMunicipality(false);
-        }
-    }
-
-    if (recenterBtn) {
-        recenterBtn.addEventListener('click', () => syncWithMunicipality(true));
-    }
-
-    setTimeout(() => {
-        pickerMap.invalidateSize();
-    }, 250);
-});
-</script>
+</div>
+</div>
 
 <?php include 'includes/footer.php'; ?>

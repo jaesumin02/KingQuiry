@@ -10,11 +10,15 @@ apply_secure_headers();
 $currentUser = $_SESSION['user'] ?? null;
 $currentRole = normalized_user_role($currentUser);
 $currentPageName = basename($_SERVER['PHP_SELF'] ?? '');
+$isAuthPage = in_array($currentPageName, ['register.php', 'client_login.php', 'agent_login.php', 'admin_login.php'], true);
+$needsLeaflet = in_array($currentPageName, ['property_detail.php', 'agent_dashboard.php', 'admin_dashboard.php'], true);
 $adminPage = ($currentRole === 'Admin' && function_exists('kq_admin_pages')) ? (kq_admin_pages()[$currentPageName] ?? null) : null;
 $isAdminControlRoom = $adminPage !== null;
 $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
     ? (string) $currentUser['fullname']
     : (is_array($currentUser) && !empty($currentUser['email']) ? explode('@', (string) $currentUser['email'])[0] : 'My Account');
+$clockNow = new DateTimeImmutable('now', new DateTimeZone('Asia/Manila'));
+$clockEpochMs = $clockNow->getTimestamp() * 1000;
 
 $unreadNotificationCount = 0;
 $userNotifications = [];
@@ -36,12 +40,25 @@ if (!empty($currentUser['userID'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="<?= $isAdminControlRoom ? '#102a43' : '#142d4e' ?>">
     <title>KingQuiry | <?= htmlspecialchars($isAdminControlRoom ? $adminPage['title'] : 'Land & Property', ENT_QUOTES, 'UTF-8') ?></title>
+    <script>
+        (function() {
+            try {
+                var theme = localStorage.getItem('kq_theme') || 'light';
+                document.documentElement.setAttribute('data-bs-theme', theme);
+            } catch (e) {}
+        })();
+    </script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <link rel="stylesheet" href="assets/css/style.css">
+    <?php if ($needsLeaflet): ?>
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <?php endif; ?>
+    <link rel="stylesheet" href="assets/css/style.css?v=<?= (int) filemtime(__DIR__ . '/../assets/css/style.css') ?>">
     <style>
         :root {
+            --kq-content-width: 1360px;
+            --kq-auth-width: 460px;
+            --kq-control-height: 44px;
             --kq-ink: #18304c;
             --kq-muted: #687789;
             --kq-primary: #174a70;
@@ -72,13 +89,28 @@ if (!empty($currentUser['userID'])) {
             background: rgba(20, 45, 78, .97) !important;
             backdrop-filter: blur(12px);
         }
+        .kq-timebar {
+            color: #fff;
+            background: #343a40;
+        }
+        .kq-timebar .container { min-height: 56px; }
+        .kq-timebar-brand { font-size: .98rem; font-weight: 650; }
+        .kq-live-clock { text-align: right; font-variant-numeric: tabular-nums; }
+        .kq-live-clock-date { display: block; color: rgba(255,255,255,.82); font-size: .82rem; }
+        .kq-live-clock-time { display: block; font-size: 1.05rem; font-weight: 650; line-height: 1.2; }
         .navbar .container { min-height: 68px; }
         .navbar-brand {
+            display: inline-flex;
+            align-items: center;
+            gap: .7rem;
             color: #fff !important;
-            font-size: 1.24rem;
+        }
+        .kq-navbar-wordmark {
+            color: #fff;
+            font-size: 1.2rem;
+            font-weight: 750;
             letter-spacing: -.035em;
         }
-        .navbar-brand span { color: var(--kq-accent); }
         .navbar-nav { align-items: center; gap: .25rem; }
         .navbar .nav-link {
             padding: .55rem .8rem !important;
@@ -91,7 +123,7 @@ if (!empty($currentUser['userID'])) {
             background: rgba(255,255,255,.1);
         }
         main { flex: 1; }
-        main.container { max-width: 1360px; }
+        main.container { max-width: var(--kq-content-width); }
         .card {
             border: 1px solid var(--kq-line);
             border-radius: var(--kq-radius);
@@ -180,7 +212,7 @@ if (!empty($currentUser['userID'])) {
             font-weight: 700;
         }
         .form-control, .form-select {
-            min-height: 44px;
+            min-height: var(--kq-control-height);
             border-color: #dbe3ea;
             border-radius: .65rem;
             color: var(--kq-ink);
@@ -321,6 +353,10 @@ if (!empty($currentUser['userID'])) {
             .navbar-nav { align-items: stretch; padding: .5rem 0 1rem; }
             .navbar .nav-link { padding: .7rem .8rem !important; }
             .property-card-image { height: 205px; }
+            .kq-timebar .container { min-height: 48px; }
+            .kq-timebar-brand { font-size: .82rem; }
+            .kq-live-clock-date { font-size: .7rem; }
+            .kq-live-clock-time { font-size: .92rem; }
         }
         @media (prefers-reduced-motion: reduce) {
             html { scroll-behavior: auto; }
@@ -328,10 +364,22 @@ if (!empty($currentUser['userID'])) {
         }
     </style>
 </head>
-<body<?= $isAdminControlRoom ? ' class="admin-control-room"' : '' ?>>
+<body<?= $isAdminControlRoom || $isAuthPage ? ' class="' . ($isAdminControlRoom ? 'admin-control-room ' : '') . ($isAuthPage ? 'kq-auth-body' : '') . '"' : '' ?>>
+    <div class="kq-timebar">
+        <div class="container d-flex justify-content-between align-items-center gap-3 py-1">
+            <strong class="kq-timebar-brand">Kings Land Properties</strong>
+            <div class="kq-live-clock" id="kq-live-clock" data-server-epoch-ms="<?= (int) $clockEpochMs ?>" aria-label="Current time in the Philippines">
+                <time class="kq-live-clock-date" id="kq-live-clock-date" datetime="<?= htmlspecialchars($clockNow->format(DateTimeInterface::ATOM), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($clockNow->format('l, F j, Y'), ENT_QUOTES, 'UTF-8') ?></time>
+                <time class="kq-live-clock-time" id="kq-live-clock-time" datetime="<?= htmlspecialchars($clockNow->format(DateTimeInterface::ATOM), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($clockNow->format('h:i:s A'), ENT_QUOTES, 'UTF-8') ?></time>
+            </div>
+        </div>
+    </div>
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
         <div class="container">
-            <a class="navbar-brand fw-bold" href="index.php">King<span>Quiry</span></a>
+            <a class="navbar-brand" href="index.php" aria-label="KingQuiry by 4 Kings Realty Services">
+                <img class="kq-official-logo kq-logo-navbar kq-logo-on-dark" src="assets/images/kings-land-properties-logo-light.png" alt="4 Kings Realty Services">
+                <span class="kq-navbar-wordmark">KingQuiry</span>
+            </a>
             <div class="d-flex align-items-center gap-2">
                 <?php if ($currentRole === null || $currentRole === 'Client'): ?>
                     <button type="button" class="btn btn-warning btn-sm fw-bold text-dark d-lg-none d-inline-flex align-items-center gap-1 kq-contact-btn-mobile" data-bs-toggle="modal" data-bs-target="#contactUsModal" title="Contact Kings Land Properties">
@@ -359,21 +407,6 @@ if (!empty($currentUser['userID'])) {
                         <?php elseif($currentRole === 'Sales Agent'): ?>
                             <li class="nav-item"><a class="nav-link text-info fw-bold" href="agent_dashboard.php">Agent Portal</a></li>
                             <li class="nav-item"><a class="nav-link" href="transaction_tracking.php">Transaction Tracking</a></li>
-                        <?php elseif($currentRole === 'Admin'): ?>
-                            <li class="nav-item"><a class="nav-link text-warning fw-bold" href="admin_dashboard.php">Admin Analytics Panel</a></li>
-                            <li class="nav-item dropdown">
-                                <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Manage</a>
-                                <ul class="dropdown-menu dropdown-menu-end">
-                                    <li><a class="dropdown-item fw-semibold" href="admin_dashboard.php#property-list">🏘️ Property list</a></li>
-                                    <li><a class="dropdown-item" href="admin_dashboard.php#properties">+ Publish property</a></li>
-                                    <li><hr class="dropdown-divider"></li>
-                                    <li><a class="dropdown-item" href="admin_clients.php">Clients</a></li>
-                                    <li><a class="dropdown-item" href="admin_payments.php">Payments</a></li>
-                                    <li><a class="dropdown-item" href="admin_sales.php">Sales &amp; transactions</a></li>
-                                    <li><hr class="dropdown-divider"></li>
-                                    <li><a class="dropdown-item" href="transaction_tracking.php">Transaction tracking</a></li>
-                                </ul>
-                            </li>
                         <?php endif; ?>
                         <!-- Notifications Bell Dropdown -->
                         <li class="nav-item dropdown ms-lg-2">
@@ -429,15 +462,15 @@ if (!empty($currentUser['userID'])) {
                                         </div>
                                     <?php endif; ?>
                                 </li>
-                                <li class="p-2 border-top bg-light text-center rounded-bottom">
-                                    <?php if ($currentRole === 'Client'): ?>
+                                <?php if ($currentRole === 'Client'): ?>
+                                    <li class="p-2 border-top bg-light text-center rounded-bottom">
                                         <a href="client_dashboard.php#notifications" class="text-decoration-none small fw-bold text-primary">View in Client Dashboard &rarr;</a>
-                                    <?php elseif ($currentRole === 'Sales Agent'): ?>
+                                    </li>
+                                <?php elseif ($currentRole === 'Sales Agent'): ?>
+                                    <li class="p-2 border-top bg-light text-center rounded-bottom">
                                         <a href="agent_dashboard.php#appointments" class="text-decoration-none small fw-bold text-info">View Viewing Requests &rarr;</a>
-                                    <?php else: ?>
-                                        <a href="admin_dashboard.php" class="text-decoration-none small fw-bold text-warning">Admin Dashboard &rarr;</a>
-                                    <?php endif; ?>
-                                </li>
+                                    </li>
+                                <?php endif; ?>
                             </ul>
                         </li>
 
@@ -475,7 +508,7 @@ if (!empty($currentUser['userID'])) {
                             </ul>
                         </li>
                     <?php else: ?>
-                        <li class="nav-item"><a class="nav-link" href="client_login.php">Client Sign in</a></li>
+                        <li class="nav-item"><a class="nav-link" href="client_login.php">Sign In</a></li>
                         <li class="nav-item"><a class="nav-link btn btn-primary text-white ms-2 px-3" href="register.php">Register</a></li>
                         <li class="nav-item ms-lg-2">
                             <button type="button" class="btn btn-warning fw-bold text-dark px-3 d-inline-flex align-items-center gap-2 kq-contact-btn" data-bs-toggle="modal" data-bs-target="#contactUsModal">
@@ -484,6 +517,19 @@ if (!empty($currentUser['userID'])) {
                             </button>
                         </li>
                     <?php endif; ?>
+                    <!-- Help & Guidelines / User Manual -->
+                    <li class="nav-item ms-lg-2">
+                        <button type="button" class="btn btn-outline-light btn-sm px-2 d-inline-flex align-items-center gap-1 kq-help-btn" data-bs-toggle="modal" data-bs-target="#userManualModal" title="KingQuiry User Manual & Guidelines">
+                            <span class="fs-6">❓</span>
+                            <span class="d-none d-xl-inline small">Help</span>
+                        </button>
+                    </li>
+                    <!-- Theme Toggle Switcher -->
+                    <li class="nav-item ms-lg-1">
+                        <button type="button" class="btn btn-outline-light btn-sm px-2 d-inline-flex align-items-center justify-content-center kq-theme-toggle-btn" id="kqThemeToggle" aria-label="Toggle theme" title="Toggle dark/light theme">
+                            <span id="themeToggleIcon" style="font-size: 0.95rem;">🌙</span>
+                        </button>
+                    </li>
                 </ul>
             </div>
         </div>
@@ -496,4 +542,11 @@ if (!empty($currentUser['userID'])) {
     }
     ?>
     <main class="<?= $mainClass ?>">
-        <?php if ($isAdminControlRoom) { include __DIR__ . '/admin_page_header.php'; } ?>
+        <?php if ($isAdminControlRoom): ?>
+            <div class="kq-admin-workspace">
+                <aside class="kq-admin-sidebar" aria-label="Administration navigation">
+                    <?php include __DIR__ . '/admin_nav.php'; ?>
+                </aside>
+                <div class="kq-admin-content">
+                    <?php include __DIR__ . '/admin_page_header.php'; ?>
+        <?php endif; ?>

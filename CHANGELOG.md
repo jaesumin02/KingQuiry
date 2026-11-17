@@ -3,6 +3,75 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-17 — Inventory Editing and Portal Navigation
+
+- Added full property-detail editing from the admin inventory, including safe optional image replacement and preservation of the listing's map pin.
+- Added fixed hamburger drawers with full-width navigation links for admin, agent, and client dashboards at desktop and mobile sizes.
+- Documented the actual weighted property-ranking and batch-gradient-descent estimation algorithms beside their implementations.
+
+## 2026-11-17 — Dashboard Layout and Branding Polish
+
+- Added responsive left-side navigation to the client and agent dashboards and removed duplicated or luxury-themed headings.
+- Made the property publishing forms adapt their columns to the available content width, and ensured the admin workspace fills its layout.
+- Reworded admin inventory insights and property estimates to describe the actual data without technical or appraisal claims.
+- Removed the logo's white backing and added a transparent light-colored variant for dark backgrounds.
+
+## 2026-11-17 — Official Logo and User Guide Refresh
+
+- Added the supplied 4 Kings Realty Services logo to the shared navigation and footer, authentication pages, role dashboards, customer chat, and admin portal.
+- Redesigned the User Manual modal with responsive numbered tabs, clearer section headings, dark-theme contrast, and a single close control.
+
+## 2026-11-17 — Property Map and Admin UI Cleanup
+
+- Moved admin destinations into the left sidebar and removed duplicate admin links from the global header.
+- Removed duplicate modal footer **Close** buttons where the header X already closes the dialog.
+- Fixed a missing recommendation-image helper that stopped property detail pages before the map and footer scripts could render; verified the map and tiles load.
+- Removed stale map-explorer styling and kept the property location map on property details.
+- Removed the admin dashboard's duplicate hero styles and kept backup/SQL export controls out of the admin UI.
+
+## 2026-11-17 — Capstone System Integration & Optimization (Four Academic Pillars)
+
+- **Course 1: Fundamentals of Analytics Modeling (Sir Fam)**:
+  - Anti-Overlap Viewing Validation ([property_detail.php](file:///c:/xampp/htdocs/kingquiry/property_detail.php)): Implemented deterministic 1-hour temporal collision detection (`ABS(TIME_TO_SEC(TIMEDIFF(appointmentTime, ?))) < 3600`) to strictly eliminate concurrent or overlapping trippings on the same parcel.
+  - Mathematical Property Valuation: Surfaced transparent breakdown models including price per square meter ($P_{sqm} = \frac{\text{Price}}{\text{LotArea}}$) and total valuation calculations in catalog, direct property cards, and estimating widgets.
+- **Course 2: Fundamentals of Business Analytics (Sir Kalo)**:
+  - Executive Business Dashboard ([admin_dashboard.php](file:///c:/xampp/htdocs/kingquiry/admin_dashboard.php)): Integrated interactive sales and revenue trajectory analytics using dynamic Chart.js line charts (`#adminRevenueTrajectoryChart`) with responsive hover tooltips and monetary formatting.
+  - Prescriptive Analytics Engine: Implemented municipality-level Demand-to-Supply Index ($DSI = \frac{\text{Inquiries} + \text{Appointments}}{\text{Listings} + 1}$) matrix generating prescriptive inventory expansion and price adjustment recommendations.
+- **Course 3: Systems Administration and Maintenance (Sir Sadd)**:
+  - Role-Based Access Control (RBAC): Enforced strict multi-tier role boundaries separating Admin, Sales Agents, and Clients across views and API endpoints.
+  - Audit Trail Activity Logs: Created modal viewer in Admin Dashboard inspecting the latest system audit events (`auditlogs`) with actor attribution, action type, IP address, and timestamp.
+  - Disaster Recovery Database Backup ([admin_backup.php](file:///c:/xampp/htdocs/kingquiry/admin_backup.php)): Added authenticated one-click SQL dump export utility with automated audit logging.
+- **Course 4: Web Systems, Technologies & Machine Learning (Sir Calvin)**:
+  - Property Similarity Ranking ([includes/ml_recommender.php](file:///c:/xampp/htdocs/kingquiry/includes/ml_recommender.php)): Uses a deterministic weighted score for price proximity (40%), category match (25%), municipality match (20%), and area proximity (15%), surfaced as personalized cards on `property_detail.php` and catalog.
+  - Indicative Price Estimation ([includes/property_estimator.php](file:///c:/xampp/htdocs/kingquiry/includes/property_estimator.php)): Trains normalized linear regression with batch gradient descent and falls back to a weighted median of comparable price-per-square-meter rates.
+  - Multi-tier MVC-style modular codebase with clean separation of presentation, business logic, and prepared SQL data layers.
+- **Business Workflow & Reservation Policy**:
+  - 7-Day Reservation Grace Period & Contract Pathways ([client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php), [transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/transaction_tracking.php)): Surfaced legal warnings regarding the 7-day down payment grace period, Contract to Sell (CTS) for installments, Deed of Absolute Sale (DOAS) for spot cash, and buyer-shouldered title transfer and taxes.
+  - Chatbot Knowledge Expansion ([chat_api.php](file:///c:/xampp/htdocs/kingquiry/chat_api.php)): Enriched rule-based chatbot with land estimation formulas, reservation policies, and human agent handoff logic.
+- **UI/UX & Accessibility Enhancements**:
+  - Dark / Light Mode Switcher ([includes/header.php](file:///c:/xampp/htdocs/kingquiry/includes/header.php), [assets/js/app.js](file:///c:/xampp/htdocs/kingquiry/assets/js/app.js), [assets/css/style.css](file:///c:/xampp/htdocs/kingquiry/assets/css/style.css)): Persistent theme toggle in navbar, zero-FOUC initialization script in head, and complete theme palettes for modals, cards, and tables.
+  - User Manual & Help Modal ([includes/footer.php](file:///c:/xampp/htdocs/kingquiry/includes/footer.php)): Integrated comprehensive tabbed modal accessible from anywhere on the platform.
+
+## 2026-11-17 — Live Manila Clock and Chat Auto-Replies
+
+- Added a server-synchronized live clock in the Asia/Manila timezone to the shared site header.
+- Expanded the rule-based chat assistant with automatic replies for greetings, estimates, appointments, contact details, and property questions regardless of admin presence; unknown questions receive a handoff acknowledgment.
+
+## 2026-11-17 — Restore Catalog to 20 Backup Listings
+
+- Restored 11 non-sample records from the existing 32-property database backup to bring public Available listings to 20; the Sold listing remains hidden.
+- Archived the 11 previously added demo records so they are excluded from the public catalog, map, direct property pages, and estimate calculations.
+- Added licensed representative photos with visible creator and license credits; replace these with actual property photos before live sale listings.
+- Added an idempotent SQL script at [database/catalog_restore_20_listings.sql](./database/catalog_restore_20_listings.sql) for the restore.
+- Clarified the catalog total versus its per-page display limit, added an immediate chat acknowledgment while an admin is online but may be busy, and excluded archived sample listings from public maps and estimate calculations.
+
+## 2026-11-17 — Catalog Navigation and Contact Information Updates
+
+- Changed the guest navigation label from **Client Sign in** to **Sign In**.
+- Updated the Contact Us modal with phone number **0965 803 0933**, location **Munting Indang, Nasugbu, Batangas**, and **Always Open** availability; synchronized the call, copy, and fallback phone number.
+- Removed the duplicate **Close** button from the Contact Us modal, leaving the top X control.
+- Updated the catalog footer location and removed the dash before **Your trusted** in the catalog subtitle.
+
 ## 2026-11-16 — Fix Undefined `kq_admin_pages()` Fatal Error After Merge
 
 - **Restored Missing Include Dependencies in Header** ([includes/header.php](file:///c:/xampp/htdocs/kingquiry/includes/header.php)):

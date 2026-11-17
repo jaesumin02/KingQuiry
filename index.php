@@ -1,6 +1,8 @@
 <?php
 include 'config/db.php';
 require_once 'includes/location_directory.php';
+require_once 'includes/property_images.php';
+require_once 'includes/ml_recommender.php';
 include 'includes/header.php';
 
 $allowedCategories = ['Residential', 'Commercial', 'Farmlot', 'Beachlot', 'Condo'];
@@ -18,7 +20,11 @@ $category = is_string($category) && in_array($category, $allowedCategories, true
 $locationFilter = filter_var($_GET['location_filter'] ?? 0, FILTER_VALIDATE_INT);
 $locationFilter = $locationFilter === false ? 0 : max(0, $locationFilter);
 
-$conditions = ["p.status = 'Available'", "p.isDeleted = 0"];
+if ($category !== '' || $locationFilter > 0) {
+    record_user_search_preference($category, $locationFilter);
+}
+
+$conditions = ["p.status = 'Available'", "p.isDeleted = 0", "LEFT(p.title, 8) <> '[SAMPLE]'"];
 $parameters = [];
 $parameterTypes = '';
 if ($search !== '') {
@@ -413,7 +419,7 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0 || $sor
     <div class="hero-content">
         <!-- Replaced Title -->
         <h1 class="hero-title">Find the right land for what comes next.</h1>
-        <p class="hero-subtitle">Kings Land Properties (Philippines) — Your trusted real estate service catering to buyers looking for residential lots, farm lots, beach lots, condos, and commercial properties.</p>
+        <p class="hero-subtitle">Kings Land Properties (Philippines). Your trusted real estate service catering to buyers looking for residential lots, farm lots, beach lots, condos, and commercial properties.</p>
 
         <!-- Centered Search Bar at the bottom of hero text -->
         <div class="hero-search-wrapper">
@@ -494,7 +500,10 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0 || $sor
                 <a href="index.php" class="text-danger ms-1 text-decoration-none fw-bold" title="Clear all filters">&times;</a>
             </div>
         <?php endif; ?>
-        <div class="text-muted small"><?= number_format($totalProperties) ?> listing<?= $totalProperties === 1 ? '' : 's' ?> found</div>
+        <div class="text-muted small">
+            <?= number_format($totalProperties) ?> available listing<?= $totalProperties === 1 ? '' : 's' ?>
+            <?= $isFiltered ? 'match your filters' : 'in total' ?>
+        </div>
     </div>
 </div>
 
@@ -571,7 +580,7 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0 || $sor
 
             <div class="d-flex align-items-center gap-2">
                 <label for="catalog-per-page" class="form-label mb-0 small text-muted text-nowrap fw-semibold">
-                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="me-1 align-text-bottom"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>Show:
+                    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="me-1 align-text-bottom"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>Show per page:
                 </label>
                 <select id="catalog-per-page" name="per_page" class="form-select form-select-sm kq-toolbar-select" onchange="this.form.submit()">
                     <option value="10" <?= $perPage === 10 ? 'selected' : '' ?>>10 properties</option>
@@ -596,11 +605,21 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0 || $sor
             $imageName = basename((string) ($row['image'] ?? ''));
             $imagePath = __DIR__ . '/assets/images/' . $imageName;
             $hasImage = $imageName !== '' && $imageName !== 'default.jpg' && is_file($imagePath);
+            $imageCredit = $hasImage ? get_property_image_credit($imageName) : null;
+            $propertyTitle = (string) $row['title'];
+            $isSampleListing = str_starts_with($propertyTitle, '[SAMPLE] ');
+            $displayTitle = $isSampleListing ? substr($propertyTitle, 9) : $propertyTitle;
             ?>
             <div class="col-md-6 col-xl-4">
                 <article class="card property-card h-100" id="prop-card-<?= (int) $row['propertyID'] ?>">
                     <?php if ($hasImage): ?>
-                        <img src="assets/images/<?= rawurlencode($imageName) ?>" class="card-img-top property-card-image" alt="<?= htmlspecialchars($row['title'], ENT_QUOTES, 'UTF-8') ?>">
+                        <img src="assets/images/<?= rawurlencode($imageName) ?>" class="card-img-top property-card-image" alt="<?= htmlspecialchars($imageCredit ? 'Representative image for ' . $displayTitle : $displayTitle, ENT_QUOTES, 'UTF-8') ?>">
+                        <?php if ($imageCredit): ?>
+                            <div class="small text-muted px-3 py-2" style="font-size: .72rem; line-height: 1.35;">
+                                Representative image. <a href="<?= htmlspecialchars($imageCredit['sourceUrl'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer"><?= htmlspecialchars($imageCredit['title'] . ' by ' . $imageCredit['creator'], ENT_QUOTES, 'UTF-8') ?></a>,
+                                <a href="<?= htmlspecialchars($imageCredit['licenseUrl'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer"><?= htmlspecialchars($imageCredit['license'], ENT_QUOTES, 'UTF-8') ?></a>.
+                            </div>
+                        <?php endif; ?>
                     <?php else: ?>
                         <div class="property-placeholder property-card-image d-flex align-items-center justify-content-center" aria-label="No property image available">
                             <span class="property-placeholder-mark" aria-hidden="true">KQ</span>
@@ -608,12 +627,15 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0 || $sor
                     <?php endif; ?>
                     <div class="card-body p-4 d-flex flex-column">
                         <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
-                            <span class="badge rounded-pill text-bg-light"><?= htmlspecialchars($categoryLabels[$row['propertyType']] ?? $row['propertyType'], ENT_QUOTES, 'UTF-8') ?></span>
+                            <div class="d-flex flex-wrap gap-1">
+                                <span class="badge rounded-pill text-bg-light"><?= htmlspecialchars($categoryLabels[$row['propertyType']] ?? $row['propertyType'], ENT_QUOTES, 'UTF-8') ?></span>
+                                <?php if ($isSampleListing): ?><span class="badge rounded-pill text-bg-warning">Sample listing</span><?php endif; ?>
+                            </div>
                             <span class="small text-muted"><?= htmlspecialchars(property_location_label($row), ENT_QUOTES, 'UTF-8') ?></span>
                         </div>
-                        <h3 class="h5 fw-bold mb-2"><?= htmlspecialchars($row['title'], ENT_QUOTES, 'UTF-8') ?></h3>
+                        <h3 class="h5 fw-bold mb-2"><?= htmlspecialchars($displayTitle, ENT_QUOTES, 'UTF-8') ?></h3>
                         <?php if (!empty($row['areaSqm'])): ?>
-                            <div class="small text-muted mb-2"><?= number_format((float) $row['areaSqm'], 2) ?> sq.m. lot</div>
+                            <div class="small text-muted mb-2"><?= number_format((float) $row['areaSqm'], 2) ?> sq.m. <?= $row['propertyType'] === 'Condo' ? 'floor area' : 'lot' ?></div>
                         <?php endif; ?>
                         <p class="text-muted small mb-3"><?= htmlspecialchars($row['landCharacteristics'] ?: 'Contact our team for property characteristics.', ENT_QUOTES, 'UTF-8') ?></p>
                         <div class="border-top pt-3 mt-auto">

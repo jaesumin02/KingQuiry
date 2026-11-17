@@ -6,12 +6,19 @@ if (in_array($currentPage, $chatWidgetPages, true) && ($currentRole === null || 
     include __DIR__ . '/chat_widget.php';
 }
 ?>
+        <?php if ($isAdminControlRoom): ?>
+                </div>
+            </div>
+        <?php endif; ?>
     </main>
     <footer class="app-footer">
         <div class="container d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
-            <div>
-                <div class="fw-bold text-white">KingQuiry</div>
-                <div class="small" style="color: rgba(255,255,255,.72);">Property discovery and client services by Kings Land Properties &bull; Nasugbu, Batangas.</div>
+            <div class="d-flex align-items-center gap-3">
+                <img class="kq-official-logo kq-logo-footer kq-logo-on-dark" src="assets/images/kings-land-properties-logo-light.png" alt="4 Kings Realty Services">
+                <div>
+                    <div class="fw-bold text-white">KingQuiry</div>
+                    <div class="small" style="color: rgba(255,255,255,.72);">Property discovery and client services by Kings Land Properties &bull; Munting Indang, Nasugbu, Batangas.</div>
+                </div>
             </div>
             <div class="d-flex align-items-center gap-3 small flex-wrap">
                 <?php if ($currentRole === null || $currentRole === 'Client'): ?>
@@ -41,7 +48,7 @@ if (in_array($currentPage, $chatWidgetPages, true) && ($currentRole === null || 
                         </div>
                         <div>
                             <h5 class="modal-title fw-bold text-white mb-0" id="contactUsModalLabel">Contact Us</h5>
-                            <div class="small" style="color: rgba(255, 255, 255, 0.85);">Kings Land Properties &bull; Nasugbu, Batangas</div>
+                            <div class="small" style="color: rgba(255, 255, 255, 0.85);">Kings Land Properties &bull; Munting Indang, Nasugbu, Batangas</div>
                         </div>
                     </div>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -91,16 +98,16 @@ if (in_array($currentPage, $chatWidgetPages, true) && ($currentRole === null || 
                                 <div class="flex-grow-1 min-w-0">
                                     <div class="text-uppercase fw-bold text-muted" style="font-size: 0.72rem; letter-spacing: 0.08em;">Contact &amp; Mobile Number</div>
                                     <div class="h5 fw-bold text-dark mb-1 d-flex align-items-center gap-2 flex-wrap">
-                                        <span id="contactPhoneNumber">+63 917 123 4567</span>
-                                        <span class="badge bg-light text-secondary border fw-normal" style="font-size: 0.75rem;">(0917 123 4567)</span>
+                                        <span id="contactPhoneNumber">+63 965 803 0933</span>
+                                        <span class="badge bg-light text-secondary border fw-normal" style="font-size: 0.75rem;">(0965 803 0933)</span>
                                     </div>
-                                    <p class="text-muted small mb-2">Available for calls &amp; inquiries &bull; Mon&ndash;Sat 8:00 AM &ndash; 5:00 PM</p>
+                                    <p class="text-muted small mb-2">Available for calls &amp; inquiries &bull; Always Open</p>
                                     <div class="d-flex align-items-center gap-2 flex-wrap">
-                                        <a href="tel:+639171234567" class="btn btn-sm btn-success fw-semibold d-inline-flex align-items-center gap-1.5" style="border-radius: 0.5rem; padding: 0.38rem 0.85rem;">
+                                        <a href="tel:+639658030933" class="btn btn-sm btn-success fw-semibold d-inline-flex align-items-center gap-1.5" style="border-radius: 0.5rem; padding: 0.38rem 0.85rem;">
                                             <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
                                             <span>Call Now</span>
                                         </a>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary fw-semibold d-inline-flex align-items-center gap-1.5" id="btnCopyPhone" onclick="copyContactPhoneNumber('+63 917 123 4567', this)" style="border-radius: 0.5rem; padding: 0.38rem 0.85rem;">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary fw-semibold d-inline-flex align-items-center gap-1.5" id="btnCopyPhone" onclick="copyContactPhoneNumber('+63 965 803 0933', this)" style="border-radius: 0.5rem; padding: 0.38rem 0.85rem;">
                                             <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                                             <span class="copy-label">Copy Number</span>
                                         </button>
@@ -118,7 +125,7 @@ if (in_array($currentPage, $chatWidgetPages, true) && ($currentRole === null || 
                                     <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
                                 </span>
                                 <strong class="small text-dark">Location:</strong>
-                                <span class="small text-muted">Nasugbu, Batangas, Philippines</span>
+                                <span class="small text-muted">Munting Indang, Nasugbu, Batangas, Philippines</span>
                             </div>
                             <div class="small text-muted ps-4">
                                 Catering to buyers looking for residential lots, farm lots, beach lots, condos &amp; commercial properties.
@@ -127,10 +134,6 @@ if (in_array($currentPage, $chatWidgetPages, true) && ($currentRole === null || 
                     </div>
                 </div>
 
-                <!-- Modal Footer -->
-                <div class="modal-footer border-0 pt-0 px-4 pb-3" style="background: #f8fafc;">
-                    <button type="button" class="btn btn-outline-secondary btn-sm px-3 rounded-pill" data-bs-dismiss="modal">Close</button>
-                </div>
             </div>
         </div>
     </div>
@@ -243,8 +246,99 @@ if (in_array($currentPage, $chatWidgetPages, true) && ($currentRole === null || 
         </div>
     </div>
     <?php endif; ?>
+    <!-- ═══════════════════ USER MANUAL & GUIDELINES MODAL ═══════════════════ -->
+    <div class="modal fade" id="userManualModal" tabindex="-1" aria-labelledby="userManualModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable kq-manual-dialog">
+            <div class="modal-content shadow-lg border-0 rounded-4 overflow-hidden">
+                <div class="modal-header kq-manual-header">
+                    <div class="d-flex align-items-center gap-3 min-w-0">
+                        <img class="kq-official-logo kq-logo-manual" src="assets/images/kings-land-properties-logo.png" alt="4 Kings Realty Services">
+                        <div>
+                            <div class="kq-manual-kicker">KINGQUIRY GUIDE</div>
+                            <h5 class="modal-title fw-bold text-white mb-1" id="userManualModalLabel">User Manual &amp; Guidelines</h5>
+                            <div class="small kq-manual-subtitle">Kings Land Properties &bull; Practical steps for clients</div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body kq-manual-body">
+                    <p class="kq-manual-intro">Find clear guidance for property visits, land estimates, reservations and account access.</p>
+                    <ul class="nav nav-pills kq-manual-tabs" id="userManualTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="manual-tripping-tab" data-bs-toggle="pill" data-bs-target="#manual-tripping" type="button" role="tab" aria-controls="manual-tripping" aria-selected="true">
+                                <span class="kq-manual-tab-number">01</span><span>Site visits</span>
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="manual-calculator-tab" data-bs-toggle="pill" data-bs-target="#manual-calculator" type="button" role="tab" aria-controls="manual-calculator" aria-selected="false">
+                                <span class="kq-manual-tab-number">02</span><span>Price guide</span>
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="manual-reservation-tab" data-bs-toggle="pill" data-bs-target="#manual-reservation" type="button" role="tab" aria-controls="manual-reservation" aria-selected="false">
+                                <span class="kq-manual-tab-number">03</span><span>Reservation</span>
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="manual-roles-tab" data-bs-toggle="pill" data-bs-target="#manual-roles" type="button" role="tab" aria-controls="manual-roles" aria-selected="false">
+                                <span class="kq-manual-tab-number">04</span><span>Account roles</span>
+                            </button>
+                        </li>
+                    </ul>
+
+                    <div class="tab-content kq-manual-content" id="userManualTabsContent">
+                        <div class="tab-pane fade show active" id="manual-tripping" role="tabpanel" aria-labelledby="manual-tripping-tab">
+                            <h6 class="fw-bold mb-2">Booking a property visit</h6>
+                            <p class="small mb-2">Kings Land Properties facilitates physical on-site inspections for all active parcels across Batangas.</p>
+                            <ul class="small mb-3 ps-3">
+                                <li><strong>Anti-Overlap Scheduling:</strong> To ensure dedicated agent assistance and unhurried inspections, appointments on the same property require at least <strong>1 hour spacing</strong>. Double-booking conflicts are automatically blocked.</li>
+                                <li><strong>Confirmation Notice:</strong> Once requested, the sales agent receives an immediate system notification to confirm the appointment. Check your <a href="client_dashboard.php#transaction-tracking">Client Dashboard</a> for real-time schedule status.</li>
+                                <li><strong>What to Bring:</strong> A valid government-issued photo ID and proof of billing for identity verification during site visit.</li>
+                            </ul>
+                        </div>
+
+                        <div class="tab-pane fade" id="manual-calculator" role="tabpanel" aria-labelledby="manual-calculator-tab">
+                            <h6 class="fw-bold mb-2">Land estimates and price breakdown</h6>
+                            <p class="small mb-2">Every property listing displays an exact price per square meter (<strong>₱/sq.m.</strong>) breakdown to assist smart acquisition decisions.</p>
+                            <div class="kq-manual-formula p-3 mb-3 rounded small">
+                                <code>Total Land Value = Registered Area (sq.m.) × Base Price per sq.m.</code>
+                            </div>
+                            <ul class="small mb-0 ps-3">
+                                <li><strong>Virtual Estimator in Chatbot:</strong> Click the floating chat icon at the bottom-right and select <em>"Need a land estimate? Click here"</em> to compute indicative land values for any municipality in Batangas.</li>
+                                <li><strong>Down Payment Rule:</strong> Standard initial down payment is typically 20% of the total verified property price.</li>
+                            </ul>
+                        </div>
+
+                        <div class="tab-pane fade" id="manual-reservation" role="tabpanel" aria-labelledby="manual-reservation-tab">
+                            <h6 class="fw-bold mb-2">Reservation policy and contracts</h6>
+                            <p class="small mb-2">When you decide to acquire a property, a formal reservation secures the parcel exclusively under your name.</p>
+                            <div class="alert alert-warning py-3 px-3 small mb-3 border-warning">
+                                <strong>7-day rule:</strong> Upon payment of the initial reservation fee, the buyer has <strong>7 calendar days</strong> to complete the down payment and submit compliance documents. Unsettled reservations are released back to the public catalog.
+                            </div>
+                            <h6 class="fw-bold mb-2 small">Legal pathway and turnover</h6>
+                            <ul class="small mb-2 ps-3">
+                                <li><strong>Installment Basis:</strong> Execution of a notarized <strong>Contract to Sell (CTS)</strong> accompanied by monthly amortizations or post-dated checks.</li>
+                                <li><strong>Spot Cash / Full Payment:</strong> Execution of a <strong>Deed of Absolute Sale (DOAS)</strong> upon receipt of full payment.</li>
+                                <li><strong>Transfer of Title:</strong> As standard Philippine real estate practice, title transfer fees, Documentary Stamp Tax (DST), and registration fees are <strong>shouldered by the buyer</strong> unless otherwise agreed in writing.</li>
+                                <li><strong>Automatic Off-Market:</strong> Once finalized as completed, the property status automatically shifts to <em>Sold</em> and is removed from public catalog searches.</li>
+                            </ul>
+                        </div>
+
+                        <div class="tab-pane fade" id="manual-roles" role="tabpanel" aria-labelledby="manual-roles-tab">
+                            <h6 class="fw-bold mb-2">Account roles and support</h6>
+                            <ul class="small mb-3 ps-3">
+                                <li><strong>Client:</strong> Search catalog, book viewings, track transaction milestones, rate sales agents, and manage account details.</li>
+                                <li><strong>Sales Agent:</strong> Review client viewings, inspect face-to-face paperwork and payments, advance transaction stages, and chat with clients.</li>
+                                <li><strong>System Admin:</strong> System administration, property publishing, user management, audit logging, and database backups.</li>
+                            </ul>
+                            <div class="small text-muted">For urgent concerns, contact Kings Land Properties at <strong>+63 965 803 0933</strong> or via our <a href="https://www.facebook.com/p/Kings-Land-Properties-61568411772451/" target="_blank" rel="noopener noreferrer">Official Facebook Page</a>.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script src="assets/js/app.js"></script>
 </body>
 </html>

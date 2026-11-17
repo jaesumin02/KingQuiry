@@ -392,10 +392,10 @@ include 'includes/header.php';
                         $stageGuidance = [
                             'viewing_requested' => 'Client requested a site visit. Confirm or approve the viewing schedule.',
                             'viewing_confirmed' => 'Viewing is confirmed! Conduct the property site visit on schedule, then mark "Viewing completed".',
-                            'viewing_completed' => 'Site visit was completed! Next, proceed to "Payment in process" to handle the reservation deposit or agreement terms.',
+                            'viewing_completed' => 'Site visit was completed! Next, proceed to "Payment in process" once client settles the reservation deposit.',
                             'payment_in_process' => $isTxSpotCash
-                                ? 'Spot Cash is selected! Once cash payment details are confirmed, advance directly to "Payment confirmation" (Document verification is skipped).'
-                                : 'Payment is currently in process with the client. Once payment details/paperwork are processed, advance to "Document verification" (or directly to Payment confirmation if Spot Cash).',
+                                ? '⚡ Spot Cash selected: Document verification is bypassed. Prepare Deed of Absolute Sale (DOAS). Note: Title transfer and registration taxes are shouldered by the buyer.'
+                                : '⏳ 7-Day Reservation Policy Active: Buyer has 7 days to complete down payment and IDs. Prepare Contract to Sell (CTS) for installment terms (or DOAS if Spot Cash). Note: Title transfer is shouldered by the buyer.',
                             'document_verification' => 'Review property title deeds, tax declarations, and government clearance documents. Once verified, advance to "Payment confirmation". The client will be notified that document verification is done.',
                             'payment_confirmation' => 'Payment and official paperwork are verified. Once final turnover documents are ready, mark as "Successful / completed".',
                             'completed' => 'Transaction successfully closed and property turned over to client.',
@@ -590,7 +590,6 @@ include 'includes/header.php';
 
                     <div class="modal-footer bg-light p-2 justify-content-between">
                         <span class="small text-muted">Updates are immediately reflected on the client's progress tracker.</span>
-                        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                     </div>
                 </div>
             </div>

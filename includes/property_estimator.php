@@ -1,4 +1,11 @@
 <?php
+/**
+ * ALGORITHM: Batch Gradient Descent Linear Regression
+ * Normalize area and asking-price values, encode category/location as one-hot features,
+ * then train the weights for 2,200 full-batch passes at a 0.03 learning rate.
+ * If regression fails, estimate from the weighted median comparable price per sq.m.
+ */
+
 function build_regression_feature_vector(
     float $area,
     string $propertyType,
@@ -159,7 +166,8 @@ function estimate_property_value(mysqli $conn, float $area, string $propertyType
     $result = $conn->query(
         "SELECT p.price, p.areaSqm, p.propertyType, p.locationID
          FROM properties p
-         WHERE p.price > 0 AND p.areaSqm > 0 AND p.status = 'Available'"
+         WHERE p.price > 0 AND p.areaSqm > 0 AND p.status = 'Available'
+           AND LEFT(p.title, 8) <> '[SAMPLE]'"
     );
 
     $comparables = [];
@@ -229,7 +237,7 @@ function estimate_property_value(mysqli $conn, float $area, string $propertyType
             'comparable_count' => $comparableCount,
             'exact_match_count' => $exactMatchCount,
             'confidence' => $exactMatchCount >= 3 ? 'High' : ($exactMatchCount > 0 ? 'Medium' : 'Low'),
-            'model' => 'Linear regression (ML heuristic)',
+            'model' => 'Linear regression (batch gradient descent)',
         ];
     } catch (Throwable $exception) {
         $fallback = fallback_weighted_median_estimate($comparables, $area);
@@ -242,7 +250,7 @@ function estimate_property_value(mysqli $conn, float $area, string $propertyType
             'comparable_count' => $comparableCount,
             'exact_match_count' => $exactMatchCount,
             'confidence' => $exactMatchCount >= 3 ? 'High' : ($exactMatchCount > 0 ? 'Medium' : 'Low'),
-            'model' => 'Weighted comparable fallback',
+            'model' => 'Weighted median of comparable price per sq.m.',
         ];
     }
 }

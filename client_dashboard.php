@@ -24,12 +24,14 @@ include 'includes/header.php';
 
     .kq-client-shell {
         max-width: 1220px;
+        width: 100%;
         margin: 0 auto;
         padding: 1.2rem 0 2rem;
     }
 
     .kq-dashboard-hero {
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
         gap: 0.9rem;
         padding: 1rem 1.2rem;
@@ -38,22 +40,6 @@ include 'includes/header.php';
         border-radius: 1.1rem;
         background: linear-gradient(135deg, rgba(14, 29, 39, 0.92), rgba(25, 47, 58, 0.82));
         box-shadow: 0 14px 32px rgba(0, 0, 0, 0.14);
-    }
-
-    .kq-dashboard-brand {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-width: 86px;
-        padding: 0.5rem 0.8rem;
-        border: 1px solid rgba(212, 175, 110, 0.4);
-        border-radius: 999px;
-        background: rgba(212, 175, 110, 0.12);
-        color: #f2d79f;
-        font-size: 0.7rem;
-        font-weight: 800;
-        letter-spacing: 0.2em;
-        text-transform: uppercase;
     }
 
     .page-eyebrow {
@@ -66,38 +52,17 @@ include 'includes/header.php';
         letter-spacing: -.05em;
     }
 
-    /* Subtitle on the dark shell header outside cards */
-    .kq-client-shell > div.mb-4 > .text-muted {
+    .kq-client-shell .kq-dashboard-hero .text-muted {
         color: rgba(245, 238, 227, 0.85) !important;
     }
 
-    /* Turn white/light text into black inside all cards, timelines, and panels */
-    .card,
-    .card p,
-    .card span,
-    .card div,
-    .card time,
-    .card td,
-    .card th,
-    .kq-tracking-card,
-    .kq-tracking-event {
-        color: #000000;
-    }
-
     .card .text-muted,
-    .card .small.text-muted,
-    .card time.text-muted,
-    .card p.text-muted,
-    .card span.text-muted,
-    .card div.text-muted,
     .kq-tracking-card .text-muted,
     .kq-tracking-event-content .text-muted,
     .kq-tracking-timeline .text-muted,
-    .kq-tracking-timeline time,
-    .kq-tracking-event time,
-    .kq-tracking-event p,
-    .kq-tracking-event div {
-        color: #000000 !important;
+    .kq-tracking-timeline time.text-muted,
+    .kq-tracking-event time.text-muted {
+        color: #536579 !important;
     }
 
     .card {
@@ -105,7 +70,15 @@ include 'includes/header.php';
         border-radius: 1.2rem !important;
         background: #ffffff;
         box-shadow: 0 18px 40px rgba(0, 0, 0, 0.12);
-        color: #000000;
+        color: #132d42;
+    }
+
+    .card .page-eyebrow {
+        color: #805a20;
+    }
+
+    .kq-tracking-card {
+        color: #132d42;
     }
 
     .kq-panel-header {
@@ -163,6 +136,10 @@ include 'includes/header.php';
         background: rgba(166, 52, 52, 0.08);
         border-color: rgba(166, 52, 52, 0.18);
         color: #8f2f2f;
+    }
+
+    html[data-bs-theme="light"] body {
+        background: #f4f7fb;
     }
 
     @media (max-width: 767.98px) {
@@ -368,18 +345,31 @@ $progressStages = [
 ?>
 
 <div class="kq-client-shell">
-    <div class="kq-dashboard-hero">
-        <span class="kq-dashboard-brand">4 KINGS</span>
-        <div>
-            <div class="page-eyebrow">Your account</div>
-            <div class="text-white fw-semibold mb-0">Luxury client portal</div>
+    <div class="kq-portal-workspace">
+        <aside class="kq-portal-sidebar" aria-label="Client dashboard navigation">
+            <button class="kq-menu-toggle" type="button" data-portal-menu-toggle data-menu-label="Client menu" aria-label="Open Client menu" aria-controls="client-navigation" aria-expanded="false">
+                <span class="kq-menu-toggle-icon" aria-hidden="true"><span></span><span></span><span></span></span>
+                <span>Client menu</span>
+            </button>
+            <div class="kq-portal-sidebar-heading">Client menu</div>
+            <nav class="kq-portal-nav" id="client-navigation" aria-label="Client dashboard sections">
+                <a href="#client-overview">Overview</a>
+                <a href="#notifications">Notifications</a>
+                <a href="#transaction-tracking">Transaction tracking</a>
+                <a href="#viewing-requests">Viewing requests</a>
+                <a href="#client-reviews">Reviews</a>
+                <a href="#client-inquiries">Inquiries</a>
+            </nav>
+        </aside>
+        <div class="kq-portal-main">
+    <header class="kq-dashboard-hero" id="client-overview">
+        <img class="kq-official-logo kq-logo-dashboard kq-logo-on-dark" src="assets/images/kings-land-properties-logo-light.png" alt="4 Kings Realty Services">
+        <div class="kq-dashboard-hero-copy">
+            <div class="page-eyebrow">CLIENT WORKSPACE</div>
+            <h1 class="page-title h2 mb-1">Client dashboard</h1>
+            <p class="text-muted mb-0">Welcome, <?= htmlspecialchars($_SESSION['user']['fullname'], ENT_QUOTES, 'UTF-8') ?>. Follow your property requests in one place.</p>
         </div>
-    </div>
-    <div class="mb-4">
-        <div class="page-eyebrow">Your account</div>
-        <h1 class="page-title h2 mb-1">Client dashboard</h1>
-        <p class="text-muted mb-0">Welcome, <?= htmlspecialchars($_SESSION['user']['fullname'], ENT_QUOTES, 'UTF-8') ?>. Follow your property requests in one place.</p>
-    </div>
+</header>
 
 <?php if (!empty($reviewMessage)): ?>
     <div class="alert alert-danger" role="alert"><?= htmlspecialchars($reviewMessage, ENT_QUOTES, 'UTF-8') ?></div>
@@ -648,6 +638,40 @@ $clientUnreadCount = get_user_unread_notification_count($conn, $clientID);
                                             <div class="mt-1 text-dark fw-semibold">No action needed from you. The agent will handle all remaining steps until the transaction is successfully completed.</div>
                                         </div>
                                     </div>
+
+                                    <!-- 7-Day Reservation & Legal Pathway Guidance (Requirement 5) -->
+                                    <?php if (in_array($stage, ['viewing_completed', 'payment_in_process'], true)): ?>
+                                        <div class="p-2 px-3 rounded-3 mb-3 bg-warning-subtle border border-warning small d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                            <div class="d-flex align-items-center gap-2">
+                                                <span class="fs-5">⏳</span>
+                                                <div>
+                                                    <strong class="text-dark">7-Day Reservation Grace Period:</strong>
+                                                    <div class="text-muted" style="font-size: 0.78rem;">Please settle the down payment and required compliance documents within 7 days to secure this parcel and initiate contract preparation.</div>
+                                                </div>
+                                            </div>
+                                            <span class="badge text-bg-warning text-dark fw-bold">7-Day Rule</span>
+                                        </div>
+                                    <?php endif; ?>
+
+                                    <?php if ($isSpotCash): ?>
+                                        <div class="p-2 px-3 rounded-3 mb-3 bg-success-subtle border border-success small">
+                                            <div class="fw-bold text-success d-flex align-items-center gap-1">
+                                                <i class="bi bi-file-earmark-check-fill"></i> Legal Pathway: Deed of Absolute Sale (DOAS)
+                                            </div>
+                                            <div class="text-muted mt-1" style="font-size: 0.78rem;">
+                                                Spot Cash / Full Payment selected. A notarized Deed of Absolute Sale (DOAS) will be prepared upon full settlement. <em>Note: Title transfer, Documentary Stamp Tax (DST), and registration fees are shouldered by the buyer as standard.</em>
+                                            </div>
+                                        </div>
+                                    <?php else: ?>
+                                        <div class="p-2 px-3 rounded-3 mb-3 bg-info-subtle border border-info small">
+                                            <div class="fw-bold text-primary d-flex align-items-center gap-1">
+                                                <i class="bi bi-file-earmark-text-fill"></i> Legal Pathway: Contract to Sell (CTS)
+                                            </div>
+                                            <div class="text-muted mt-1" style="font-size: 0.78rem;">
+                                                Installment plan active. A notarized Contract to Sell (CTS) preserves your ownership rights while amortizations are completed. <em>Note: Final title transfer upon completion is shouldered by the buyer.</em>
+                                            </div>
+                                        </div>
+                                    <?php endif; ?>
                                 <?php endif; ?>
 
                                 <!-- 1. Transaction Pipeline Stepper -->
@@ -781,7 +805,6 @@ $clientUnreadCount = get_user_unread_notification_count($conn, $clientID);
                                 <a href="property_summary_pdf.php?property_id=<?= (int)$tracking['propertyID'] ?>" target="_blank" class="btn btn-sm btn-outline-primary">
                                     <i class="bi bi-file-earmark-pdf me-1"></i> Download summary PDF
                                 </a>
-                                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
                             </div>
                         </div>
                     </div>
@@ -797,7 +820,7 @@ $clientUnreadCount = get_user_unread_notification_count($conn, $clientID);
     <?php endif; ?>
 </section>
 
-<section class="card p-3 p-lg-4 mb-4">
+<section class="card p-3 p-lg-4 mb-4" id="viewing-requests">
     <div class="kq-panel-header mb-3">
         <div>
             <div class="page-eyebrow">Appointments</div>
@@ -912,7 +935,7 @@ $clientUnreadCount = get_user_unread_notification_count($conn, $clientID);
     <?php endif; ?>
 </section>
 
-<section class="card p-3 p-lg-4">
+<section class="card p-3 p-lg-4" id="client-inquiries">
     <div class="kq-panel-header mb-3">
         <div>
             <div class="page-eyebrow">Messages</div>
@@ -939,6 +962,8 @@ $clientUnreadCount = get_user_unread_notification_count($conn, $clientID);
         <div class="text-muted">No property inquiries yet.</div>
     <?php endif; ?>
 </section>
+</div>
+</div>
 </div>
 
 <script>

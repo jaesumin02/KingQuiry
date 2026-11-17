@@ -2,8 +2,10 @@
 include 'config/db.php';
 require_once 'includes/auth.php';
 require_once 'includes/location_directory.php';
+require_once 'includes/property_images.php';
 require_once 'includes/notifications.php';
 require_once 'includes/transaction_tracking.php';
+require_once 'includes/ml_recommender.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -43,16 +45,19 @@ $categoryLabels = [
     'Condo'       => 'Condo',
     'Commercial'  => 'Commercial Property',
 ];
+$propertyTitle = (string) $property['title'];
+$isSampleListing = str_starts_with($propertyTitle, '[SAMPLE] ');
+if ($isSampleListing) {
+    include 'includes/header.php';
+    echo "<div class='alert alert-warning'>This demo listing is not published and is unavailable for viewing or inquiries.</div>";
+    include 'includes/footer.php';
+    exit();
+}
+$displayTitle = $isSampleListing ? substr($propertyTitle, 9) : $propertyTitle;
 
 $propertyMunicipality = (string) ($property['municipalityName'] ?? '');
 if ($propertyMunicipality === '' && !empty($property['location'])) {
-    $batangasMunicipalities = [
-        'Agoncillo', 'Alitagtag', 'Balayan', 'Balete', 'Batangas City', 'Bauan', 'Calaca City',
-        'Calatagan', 'Cuenca', 'Ibaan', 'Laurel', 'Lemery', 'Lian', 'Lipa City', 'Lobo',
-        'Mabini', 'Malvar', 'Mataasnakahoy', 'Nasugbu', 'Padre Garcia', 'Rosario', 'San Jose',
-        'San Juan', 'San Luis', 'San Nicolas', 'San Pascual', 'Santa Teresita', 'Santo Tomas City',
-        'Taal', 'Talisay', 'Tanauan City', 'Taysan', 'Tingloy', 'Tuy'
-    ];
+    $batangasMunicipalities = array_keys(get_batangas_municipality_coordinates());
     foreach ($batangasMunicipalities as $mName) {
         if (stripos((string) $property['location'], $mName) !== false) {
             $propertyMunicipality = $mName;
@@ -60,6 +65,18 @@ if ($propertyMunicipality === '' && !empty($property['location'])) {
         }
     }
 }
+
+$savedLatitude = $property['latitude'] ?? null;
+$savedLongitude = $property['longitude'] ?? null;
+$hasExactPin = is_numeric($savedLatitude)
+    && is_numeric($savedLongitude)
+    && (float) $savedLatitude >= -90
+    && (float) $savedLatitude <= 90
+    && (float) $savedLongitude >= -180
+    && (float) $savedLongitude <= 180;
+$propertyLocationCoords = $hasExactPin
+    ? [(float) $savedLatitude, (float) $savedLongitude]
+    : find_municipality_coordinates($propertyMunicipality);
 
 $successMsg = "";
 $errorMsg = "";
@@ -69,13 +86,17 @@ if (!empty($_SESSION['flash_success'])) {
     unset($_SESSION['flash_success']);
 }
 
+$currentUserId = isset($_SESSION['user']['userID']) ? (int) $_SESSION['user']['userID'] : null;
+record_user_search_preference((string) $property['propertyType'], (int) ($property['locationID'] ?? 0), (float) $property['price']);
+$mlRecommendations = get_personalized_recommendations($conn, $currentUserId, $propertyID, 3);
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (normalized_user_role($_SESSION['user'] ?? null) !== 'Client') {
+    if ($isSampleListing) {
+        $errorMsg = 'Sample listings are for display only and cannot accept viewings or inquiries.';
+    } elseif (normalized_user_role($_SESSION['user'] ?? null) !== 'Client') {
         header("Location: client_login.php");
         exit();
-    }
-
-    if (!has_valid_csrf_token()) {
+    } elseif (!has_valid_csrf_token()) {
         $errorMsg = 'Your session expired. Refresh the page and try again.';
     } elseif ($property['status'] !== 'Available') {
         $errorMsg = 'This property is not currently accepting new requests.';
@@ -101,41 +122,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($duplicate->get_result()->num_rows > 0) {
                 $errorMsg = 'You already have an active request for this property at that date and time.';
             } else {
-                $bookStmt = $conn->prepare("INSERT INTO appointments (propertyID, clientID, appointmentDate, appointmentTime, status) VALUES (?, ?, ?, ?, 'Pending')");
-                $bookStmt->bind_param('iiss', $propertyID, $clientID, $date, $time);
-                $transactionStarted = false;
-                try {
-                    $conn->begin_transaction();
-                    $transactionStarted = true;
-                    $bookStmt->execute();
-                    $appointmentId = (int) $conn->insert_id;
-                    create_property_transaction($conn, $propertyID, $clientID, 'appointment', $appointmentId, $clientID);
-                    $conn->commit();
+                // Anti-Overlap Scheduling: Prevent double-booking on the same property within a 1-hour buffer
+                $clashStmt = $conn->prepare(
+                    "SELECT appointmentID, appointmentTime FROM appointments
+                     WHERE propertyID = ?
+                       AND appointmentDate = ?
+                       AND status IN ('Pending', 'Approved')
+                       AND ABS(TIME_TO_SEC(TIMEDIFF(appointmentTime, ?))) < 3600
+                     LIMIT 1"
+                );
+                $clashStmt->bind_param('iss', $propertyID, $date, $time);
+                $clashStmt->execute();
+                $clashResult = $clashStmt->get_result()->fetch_assoc();
+                if ($clashResult) {
+                    $clashTime = substr($clashResult['appointmentTime'], 0, 5);
+                    $errorMsg = "Schedule conflict: This property already has a scheduled site visit at {$clashTime}. To ensure dedicated agent assistance and avoid overlapping trippings, please choose a time at least 1 hour before or after.";
+                } else {
+                    $bookStmt = $conn->prepare("INSERT INTO appointments (propertyID, clientID, appointmentDate, appointmentTime, status) VALUES (?, ?, ?, ?, 'Pending')");
+                    $bookStmt->bind_param('iiss', $propertyID, $clientID, $date, $time);
                     $transactionStarted = false;
-                    send_property_notification(
-                        $conn,
-                        $clientID,
-                        'Viewing request received',
-                        "Thank you for booking a site visit for '{$property['title']}'. Your viewing request has been received and is now being reviewed by our sales team. Please monitor your dashboard for updates.",
-                        'client_dashboard.php#transaction-tracking',
-                        'viewing_request'
-                    );
-                    notify_agents_new_viewing($conn, $appointmentId, $propertyID, $clientID, $date, $time);
-                    $_SESSION['flash_success'] = 'Your viewing request has been sent. Track its progress and updates from your dashboard.';
-                    header('Location: property_detail.php?id=' . $propertyID . '#appointment');
-                    exit();
-                } catch (mysqli_sql_exception $exception) {
-                    if ($transactionStarted) {
-                        $conn->rollback();
+                    try {
+                        $conn->begin_transaction();
+                        $transactionStarted = true;
+                        $bookStmt->execute();
+                        $appointmentId = (int) $conn->insert_id;
+                        create_property_transaction($conn, $propertyID, $clientID, 'appointment', $appointmentId, $clientID);
+                        $conn->commit();
+                        $transactionStarted = false;
+                        send_property_notification(
+                            $conn,
+                            $clientID,
+                            'Viewing request received',
+                            "Thank you for booking a site visit for '{$property['title']}'. Your viewing request has been received and is now being reviewed by our sales team. Please monitor your dashboard for updates.",
+                            'client_dashboard.php#transaction-tracking',
+                            'viewing_request'
+                        );
+                        notify_agents_new_viewing($conn, $appointmentId, $propertyID, $clientID, $date, $time);
+                        $_SESSION['flash_success'] = 'Your viewing request has been sent. Track its progress and updates from your dashboard.';
+                        header('Location: property_detail.php?id=' . $propertyID . '#appointment');
+                        exit();
+                    } catch (mysqli_sql_exception $exception) {
+                        if ($transactionStarted) {
+                            $conn->rollback();
+                        }
+                        error_log('KingQuiry appointment creation failed: ' . $exception->getMessage());
+                        $errorMsg = 'We could not submit your viewing request. Please try again.';
+                    } catch (Throwable $exception) {
+                        if ($transactionStarted) {
+                            $conn->rollback();
+                        }
+                        error_log('KingQuiry appointment tracking creation failed: ' . $exception->getMessage());
+                        $errorMsg = 'We could not submit the request and its tracking record. Please try again.';
                     }
-                    error_log('KingQuiry appointment creation failed: ' . $exception->getMessage());
-                    $errorMsg = 'We could not submit your viewing request. Please try again.';
-                } catch (Throwable $exception) {
-                    if ($transactionStarted) {
-                        $conn->rollback();
-                    }
-                    error_log('KingQuiry appointment tracking creation failed: ' . $exception->getMessage());
-                    $errorMsg = 'We could not submit the request and its tracking record. Please try again.';
                 }
             }
         }
@@ -209,27 +247,40 @@ include 'includes/header.php';
                     </div>
                 </div>
             <?php endif; ?>
-            <span class="badge rounded-pill text-bg-light align-self-start mb-2"><?= htmlspecialchars($categoryLabels[$property['propertyType']] ?? $property['propertyType'], ENT_QUOTES, 'UTF-8') ?></span>
-            <h2 class="fw-bold mb-2"><?= htmlspecialchars($property['title']) ?></h2>
+            <?php if ($isSampleListing): ?>
+                <div class="alert alert-warning small" role="status">Sample listing only. This is not a real property offer; the details and representative photo must be replaced with verified information before publication.</div>
+            <?php endif; ?>
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <span class="badge rounded-pill text-bg-light"><?= htmlspecialchars($categoryLabels[$property['propertyType']] ?? $property['propertyType'], ENT_QUOTES, 'UTF-8') ?></span>
+                <?php if ($isSampleListing): ?><span class="badge rounded-pill text-bg-warning">Sample listing</span><?php endif; ?>
+            </div>
+            <h2 class="fw-bold mb-2"><?= htmlspecialchars($displayTitle, ENT_QUOTES, 'UTF-8') ?></h2>
             <p class="text-muted mb-3">Location: <strong><?= htmlspecialchars(property_location_label($property), ENT_QUOTES, 'UTF-8') ?><?php if (!empty($property['barangay'])): ?>, <?= htmlspecialchars($property['barangay'], ENT_QUOTES, 'UTF-8') ?><?php endif; ?></strong></p>
             
             <?php
             $imageName = basename((string) ($property['image'] ?? ''));
             $imagePath = __DIR__ . '/assets/images/' . $imageName;
+            $imageCredit = $imageName !== '' && is_file($imagePath) ? get_property_image_credit($imageName) : null;
             ?>
             <?php if ($imageName !== '' && is_file($imagePath)): ?>
-                <img src="assets/images/<?= rawurlencode($imageName) ?>" class="img-fluid rounded-4 mb-4" alt="<?= htmlspecialchars($property['title'], ENT_QUOTES, 'UTF-8') ?>" style="max-height: 420px; width: 100%; object-fit: cover;">
+                <img src="assets/images/<?= rawurlencode($imageName) ?>" class="img-fluid rounded-4 <?= $imageCredit ? 'mb-1' : 'mb-4' ?>" alt="<?= htmlspecialchars($imageCredit ? 'Representative image for ' . $displayTitle : $displayTitle, ENT_QUOTES, 'UTF-8') ?>" style="max-height: 420px; width: 100%; object-fit: cover;">
+                <?php if ($imageCredit): ?>
+                    <p class="small text-muted mb-4" style="font-size: .78rem;">
+                        Representative image. <a href="<?= htmlspecialchars($imageCredit['sourceUrl'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer"><?= htmlspecialchars($imageCredit['title'] . ' by ' . $imageCredit['creator'], ENT_QUOTES, 'UTF-8') ?></a>,
+                        <a href="<?= htmlspecialchars($imageCredit['licenseUrl'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer"><?= htmlspecialchars($imageCredit['license'], ENT_QUOTES, 'UTF-8') ?></a>.
+                    </p>
+                <?php endif; ?>
             <?php else: ?>
                 <div class="property-placeholder rounded-4 mb-4 d-flex align-items-center justify-content-center" style="height:280px" aria-label="No property image available"><span class="property-placeholder-mark">KQ</span></div>
             <?php endif; ?>
 
             <div class="bg-light p-3 rounded mb-4">
                 <h4 class="text-primary fw-bold mb-1">₱<?= number_format($property['price'], 2) ?></h4>
-                <?php if (!empty($property['areaSqm'])): ?><div class="text-muted small mb-1">Land area: <strong><?= number_format((float) $property['areaSqm'], 2) ?> sq.m.</strong></div><?php endif; ?>
+                <?php if (!empty($property['areaSqm'])): ?><div class="text-muted small mb-1"><?= $property['propertyType'] === 'Condo' ? 'Floor area' : 'Land area' ?>: <strong><?= number_format((float) $property['areaSqm'], 2) ?> sq.m.</strong></div><?php endif; ?>
                 <span class="text-muted">Price per Square Meter: <strong>₱<?= number_format($property['pricePerSqm'] ?? 0, 2) ?> / sq.m.</strong></span>
             </div>
 
-            <h5 class="fw-bold">Land Characteristics</h5>
+            <h5 class="fw-bold"><?= $property['propertyType'] === 'Condo' ? 'Unit Characteristics' : 'Land Characteristics' ?></h5>
             <p class="text-dark mb-3"><?= htmlspecialchars($property['landCharacteristics'] ?: 'Contact our team for verified land characteristics.', ENT_QUOTES, 'UTF-8') ?></p>
 
             <h3 class="h5 fw-bold">Description</h3>
@@ -254,7 +305,12 @@ include 'includes/header.php';
             </div>
 
             <!-- Single pinned property map container -->
-            <div id="property-detail-map" aria-label="Map location for <?= htmlspecialchars($property['title'], ENT_QUOTES, 'UTF-8') ?>" style="height: 300px; width: 100%; border-radius: .85rem; overflow: hidden; border: 1px solid var(--kq-line);"></div>
+            <div id="property-detail-map" class="kq-property-map" aria-label="Map location for <?= htmlspecialchars($property['title'], ENT_QUOTES, 'UTF-8') ?>" style="height: 300px; width: 100%; border-radius: .85rem; overflow: hidden; border: 1px solid var(--kq-line);">
+                <span class="kq-map-fallback">Loading property map…</span>
+            </div>
+            <p class="small text-muted mt-2 mb-0">
+                <?= $hasExactPin ? 'Showing the saved property pin.' : ($propertyLocationCoords ? 'Approximate location: municipality center. Ask the agent to confirm the exact property pin.' : 'Map coordinates are not available for this property yet.') ?>
+            </p>
 
             <div class="small text-muted mt-2 d-flex align-items-center justify-content-center gap-2">
                 <span class="d-inline-block rounded-circle" style="width: 8px; height: 8px; background-color: var(--kq-primary, #174a70);"></span>
@@ -262,7 +318,14 @@ include 'includes/header.php';
             </div>
         </div>
 
-        <?php if ($property['status'] === 'Sold'): ?>
+        <?php if ($isSampleListing): ?>
+            <div class="card p-4 text-center border-0 shadow-sm bg-light mb-4">
+                <span class="badge bg-warning text-dark px-3 py-1 mb-2 align-self-center">Sample listing</span>
+                <h4 class="h5 fw-bold mb-2">For display only</h4>
+                <p class="text-muted small mb-3">This sample property is not accepting site viewing requests or inquiries.</p>
+                <a href="index.php" class="btn btn-primary w-100">Browse Available Properties</a>
+            </div>
+        <?php elseif ($property['status'] === 'Sold'): ?>
             <div class="card p-4 text-center border-0 shadow-sm bg-light mb-4">
                 <div class="rounded-circle bg-danger-subtle text-danger mx-auto d-flex align-items-center justify-content-center mb-3" style="width: 54px; height: 54px;">
                     <span class="fs-4">🏷️</span>
@@ -318,64 +381,92 @@ include 'includes/header.php';
     </div>
 </div>
 
+<?php if (!empty($mlRecommendations)): ?>
+    <section class="mt-5 pt-4 border-top" aria-labelledby="related-properties-title">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <div>
+                <h3 class="h4 fw-bold mb-0" id="related-properties-title">Suggested properties</h3>
+                <p class="text-muted small mb-0">Suggestions are based on this listing's location, category, and price.</p>
+            </div>
+        </div>
+        <div class="row g-3">
+            <?php foreach ($mlRecommendations as $rec): ?>
+paayos ng                <?php
+    $recommendationImageName = basename((string) ($rec['image'] ?? ''));
+                $recommendationImagePath = __DIR__ . '/assets/images/' . $recommendationImageName;
+                $hasRecommendationImage = $recommendationImageName !== '' && is_file($recommendationImagePath);
+                ?>
+                <div class="col-md-4">
+                    <div class="card h-100 shadow-sm border overflow-hidden property-card" style="border-radius: 0.85rem; transition: transform 0.18s ease, box-shadow 0.18s ease;">
+                        <?php if ($hasRecommendationImage): ?>
+                            <img src="assets/images/<?= rawurlencode($recommendationImageName) ?>" class="card-img-top" alt="<?= htmlspecialchars($rec['title'], ENT_QUOTES, 'UTF-8') ?>" style="height: 165px; object-fit: cover;">
+                        <?php else: ?>
+                            <div class="property-placeholder d-flex align-items-center justify-content-center" style="height: 165px" aria-label="No property image available"><span class="property-placeholder-mark">KQ</span></div>
+                        <?php endif; ?>
+                        <div class="card-body p-3 d-flex flex-column justify-content-between">
+                            <div>
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <span class="badge text-bg-light small"><?= htmlspecialchars((string) ($categoryLabels[$rec['propertyType']] ?? $rec['propertyType']), ENT_QUOTES, 'UTF-8') ?></span>
+                                </div>
+                                <h4 class="h6 fw-bold mb-1 text-truncate" title="<?= htmlspecialchars($rec['title'], ENT_QUOTES, 'UTF-8') ?>">
+                                    <a href="property_detail.php?id=<?= (int) $rec['propertyID'] ?>" class="text-decoration-none text-dark"><?= htmlspecialchars($rec['title'], ENT_QUOTES, 'UTF-8') ?></a>
+                                </h4>
+                                <div class="small text-muted mb-2"><i class="bi bi-geo-alt"></i> <?= htmlspecialchars(property_location_label($rec), ENT_QUOTES, 'UTF-8') ?></div>
+                                <div class="small text-success fw-semibold mb-2" style="font-size: 0.76rem;"><?= htmlspecialchars($rec['match_reason'], ENT_QUOTES, 'UTF-8') ?></div>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center pt-2 border-top">
+                                <div>
+                                    <div class="small text-muted" style="font-size: 0.7rem;">Asking Price</div>
+                                    <span class="fw-bold text-primary">₱<?= number_format((float) $rec['price'], 2) ?></span>
+                                </div>
+                                <a href="property_detail.php?id=<?= (int) $rec['propertyID'] ?>" class="btn btn-sm btn-primary px-3 fw-semibold">View</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </section>
+<?php endif; ?>
+
 <script>
-const propertyCoordinates = {
-    'Agoncillo': [13.9379, 120.9282],
-    'Alitagtag': [13.8633, 121.0032],
-    'Balayan': [13.9392, 120.7231],
-    'Balete': [13.7917, 121.1014],
-    'Batangas City': [13.7565, 121.0583],
-    'Bauan': [13.7917, 120.9458],
-    'Calaca City': [13.9308, 120.8131],
-    'Calatagan': [13.8319, 120.6340],
-    'Cuenca': [13.8999, 121.0519],
-    'Ibaan': [13.8170, 121.1319],
-    'Laurel': [14.0481, 120.9184],
-    'Lemery': [13.8814, 120.8458],
-    'Lian': [13.9421, 120.6460],
-    'Lipa City': [13.9413, 121.1632],
-    'Lobo': [13.5845, 121.1956],
-    'Mabini': [13.7154, 120.9502],
-    'Malvar': [14.0471, 121.1572],
-    'Mataasnakahoy': [13.9621, 121.0030],
-    'Nasugbu': [14.0925, 120.6303],
-    'Padre Garcia': [13.8738, 121.2136],
-    'Rosario': [13.8446, 121.2134],
-    'San Jose': [13.8718, 121.1057],
-    'San Juan': [13.8248, 121.3963],
-    'San Luis': [13.8345, 121.5181],
-    'San Nicolas': [13.9282, 121.0759],
-    'San Pascual': [13.8082, 121.0297],
-    'Santa Teresita': [13.8559, 120.7007],
-    'Santo Tomas City': [14.0900, 121.1470],
-    'Taal': [13.8814, 120.9327],
-    'Talisay': [14.0922, 120.7752],
-    'Tanauan City': [14.0862, 121.1513],
-    'Taysan': [13.7329, 121.1877],
-    'Tingloy': [13.6460, 120.8644],
-    'Tuy': [13.9791, 120.7350]
-};
-const propertyLocationName = <?= json_encode($propertyMunicipality !== '' ? $propertyMunicipality : (string) ($property['municipalityName'] ?? ''), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
-const savedLat = <?= json_encode(isset($property['latitude']) && $property['latitude'] !== null && $property['latitude'] !== '' ? (float) $property['latitude'] : null) ?>;
-const savedLng = <?= json_encode(isset($property['longitude']) && $property['longitude'] !== null && $property['longitude'] !== '' ? (float) $property['longitude'] : null) ?>;
-const hasExactPin = (savedLat !== null && savedLng !== null);
-const propertyLocationCoords = hasExactPin ? [savedLat, savedLng] : (propertyCoordinates[propertyLocationName] || [13.7565, 121.0583]);
+const hasExactPin = <?= $hasExactPin ? 'true' : 'false' ?>;
+const propertyLocationCoords = <?= json_encode($propertyLocationCoords, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
 const propertyDetailTitle = <?= json_encode((string) $property['title'], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
 const propertyDetailLocation = <?= json_encode(property_location_label($property), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
 const propertyDetailCategory = <?= json_encode((string) ($categoryLabels[$property['propertyType']] ?? $property['propertyType']), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
 const propertyDetailPrice = <?= json_encode('₱' . number_format((float) $property['price'], 2), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
 
 document.addEventListener('DOMContentLoaded', () => {
-    if (document.getElementById('property-detail-map') && typeof L !== 'undefined') {
-        const map = L.map('property-detail-map', {
+    const mapContainer = document.getElementById('property-detail-map');
+    if (!mapContainer) return;
+    if (!propertyLocationCoords) {
+        mapContainer.textContent = 'Map coordinates are not available for this property yet.';
+        return;
+    }
+    if (typeof L === 'undefined') {
+        mapContainer.textContent = 'The map could not load. Check your internet connection and reload the page.';
+        return;
+    }
+
+    mapContainer.replaceChildren();
+    const map = L.map(mapContainer, {
             scrollWheelZoom: false,
             zoomControl: true
         }).setView(propertyLocationCoords, hasExactPin ? 15 : 13);
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors',
             maxZoom: 18,
-        }).addTo(map);
+    }).addTo(map);
+    tileLayer.on('tileerror', () => {
+        if (mapContainer.dataset.tileError === '1') return;
+        mapContainer.dataset.tileError = '1';
+        const notice = document.createElement('span');
+        notice.className = 'kq-map-error-note';
+        notice.textContent = 'Map tiles could not load. Check your internet connection.';
+        mapContainer.append(notice);
+    });
 
         // Custom branded pin marker for the chosen property
         const singlePropertyPin = L.divIcon({
@@ -400,28 +491,25 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         const detailMarker = L.marker(propertyLocationCoords, { icon: singlePropertyPin }).addTo(map);
-        detailMarker.bindPopup(`
-            <div style="min-width: 190px; max-width: 240px; padding: 2px;">
-                <span style="display:inline-block; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; background:#f1f5f9; color:#174a70; padding:2px 8px; border-radius:12px; margin-bottom:5px;">
-                    ${propertyDetailCategory}
-                </span>
-                <div style="font-weight: 700; font-size: 14px; color: #18304c; margin-bottom: 3px; line-height: 1.3;">
-                    ${propertyDetailTitle}
-                </div>
-                <div style="font-size: 12px; color: #687789; margin-bottom: 5px;">
-                    ${propertyDetailLocation}
-                </div>
-                <div style="font-weight: 800; color: #174a70; font-size: 13px;">
-                    ${propertyDetailPrice}
-                </div>
-            </div>
-        `);
+        const popup = document.createElement('div');
+        popup.className = 'kq-property-map-popup';
+        const category = document.createElement('span');
+        category.className = 'badge rounded-pill text-bg-light mb-2';
+        category.textContent = propertyDetailCategory;
+        const title = document.createElement('strong');
+        title.className = 'd-block mb-1';
+        title.textContent = propertyDetailTitle;
+        const location = document.createElement('span');
+        location.className = 'd-block small text-muted mb-1';
+        location.textContent = propertyDetailLocation;
+        const price = document.createElement('strong');
+        price.className = 'text-primary';
+        price.textContent = propertyDetailPrice;
+        popup.append(category, title, location, price);
+        detailMarker.bindPopup(popup);
         detailMarker.openPopup();
 
-        setTimeout(() => {
-            map.invalidateSize();
-        }, 250);
-    }
+    setTimeout(() => map.invalidateSize(), 250);
 });
 </script>
 
