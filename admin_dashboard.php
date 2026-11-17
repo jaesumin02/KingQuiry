@@ -646,18 +646,6 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
         background: var(--admin-canvas);
     }
 
-<<<<<<< HEAD
-    .kq-admin-shell {
-        max-width: 1280px;
-        width: 100%;
-        min-width: 0;
-        margin: 0 auto;
-        padding: 1.2rem 0 2rem;
-        color: var(--admin-title);
-    }
-
-=======
->>>>>>> 742e6872bfc730e7209010dbdbf7803bd51fecff
     .page-eyebrow {
         letter-spacing: .15em;
         color: #d9b87d;
@@ -737,10 +725,6 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
     }
 </style>
 
-<<<<<<< HEAD
-<div class="kq-admin-shell">
-=======
->>>>>>> 742e6872bfc730e7209010dbdbf7803bd51fecff
 <section class="mb-4" aria-labelledby="business-analytics-title">
     <div class="kq-panel-header mb-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
         <div>

@@ -606,10 +606,8 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
     </form>
 </section>
 </div>
-<<<<<<< HEAD
 </div>
 </div>
-=======
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
@@ -770,6 +768,5 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 </script>
->>>>>>> 742e6872bfc730e7209010dbdbf7803bd51fecff
 
 <?php include 'includes/footer.php'; ?>

@@ -391,7 +391,7 @@ include 'includes/header.php';
         </div>
         <div class="row g-3">
             <?php foreach ($mlRecommendations as $rec): ?>
-paayos ng                <?php
+                <?php
     $recommendationImageName = basename((string) ($rec['image'] ?? ''));
                 $recommendationImagePath = __DIR__ . '/assets/images/' . $recommendationImageName;
                 $hasRecommendationImage = $recommendationImageName !== '' && is_file($recommendationImagePath);

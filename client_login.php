@@ -61,21 +61,10 @@ include 'includes/header.php';
 ?>
 
 <div class="kq-auth-page">
-<<<<<<< HEAD
     <aside class="kq-auth-panel card" aria-label="Client login panel">
         <div class="kq-brand" aria-label="4 Kings Realty Services logo">
             <img class="kq-official-logo kq-logo-auth" src="assets/images/kings-land-properties-logo.png" alt="4 Kings Realty Services">
             <div class="kq-brand-sub">Client portal</div>
-=======
-    <aside class="kq-auth-panel card" aria-label="Sign in panel">
-        <div class="kq-brand" aria-label="KingQuiry logo">
-            <div class="kq-brand-logo">
-                <span class="kq-brand-crown">♛</span>
-                <span class="kq-brand-number">4</span>
-                <span class="kq-brand-word"><span class="accent">K</span>INGS</span>
-            </div>
-            <div class="kq-brand-sub">Account portal</div>
->>>>>>> 742e6872bfc730e7209010dbdbf7803bd51fecff
         </div>
 
         <h2>Sign In</h2>
