@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS appointments (
     appointmentID INT NOT NULL AUTO_INCREMENT,
     propertyID INT DEFAULT NULL,
     clientID INT DEFAULT NULL,
+    agentID INT DEFAULT NULL,
     appointmentDate DATE NOT NULL,
     appointmentTime TIME NOT NULL,
     status ENUM('Pending', 'Approved', 'Cancelled') DEFAULT 'Pending',
@@ -77,6 +78,7 @@ CREATE TABLE IF NOT EXISTS appointments (
     PRIMARY KEY (appointmentID),
     KEY idx_appointments_property (propertyID),
     KEY idx_appointments_client (clientID),
+    KEY idx_appointments_agent (agentID),
     KEY idx_appointments_status_date (status, appointmentDate),
     CONSTRAINT fk_appointments_property
         FOREIGN KEY (propertyID)
@@ -85,8 +87,24 @@ CREATE TABLE IF NOT EXISTS appointments (
     CONSTRAINT fk_appointments_client
         FOREIGN KEY (clientID)
         REFERENCES users (userID)
-        ON DELETE CASCADE
+        ON DELETE CASCADE,
+    CONSTRAINT fk_appointments_agent
+        FOREIGN KEY (agentID)
+        REFERENCES users (userID)
+        ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS agent_dismissed_appointments (
+    agentID INT NOT NULL,
+    appointmentID INT NOT NULL,
+    dismissedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (agentID, appointmentID),
+    KEY idx_dismissed_appointment (appointmentID),
+    CONSTRAINT fk_dismissed_agent
+        FOREIGN KEY (agentID) REFERENCES users (userID) ON DELETE CASCADE,
+    CONSTRAINT fk_dismissed_appointment
+        FOREIGN KEY (appointmentID) REFERENCES appointments (appointmentID) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS feedbackinquiries (
     inquiryID INT NOT NULL AUTO_INCREMENT,

@@ -4,6 +4,8 @@ require_once 'includes/auth.php';
 require_once 'includes/location_directory.php';
 require_once 'includes/property_images.php';
 require_once 'includes/transaction_tracking.php';
+require_once 'includes/appointment_management.php';
+require_once 'includes/notifications.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -14,13 +16,32 @@ if (!user_has_role($_SESSION['user'] ?? null, 'Sales Agent')) {
     exit();
 }
 
+ensure_appointment_management_schema($conn);
+$currentAgentId = (int) $_SESSION['user']['userID'];
+
 $locations = get_property_locations($conn);
-$statusMessage = isset($_GET['property_added']) ? 'The property listing has been published with its pinned location.' : (isset($_GET['updated']) ? 'Viewing request and client tracking were updated.' : '');
+$statusMessage = isset($_GET['property_added'])
+    ? 'The property listing has been published with its pinned location.'
+    : (isset($_GET['updated'])
+        ? 'Viewing request and client tracking were updated.'
+        : (isset($_GET['dismissed']) ? 'The taken viewing request was removed from your queue.' : ''));
 $statusError = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!has_valid_csrf_token()) {
         $statusError = 'Your session expired. Refresh the page and try again.';
+    } elseif (isset($_POST['dismiss_taken_viewing'])) {
+        $appointmentID = filter_var($_POST['appointmentID'] ?? null, FILTER_VALIDATE_INT);
+        if ($appointmentID && $appointmentID > 0) {
+            dismiss_appointment_for_agent($conn, $currentAgentId, (int) $appointmentID);
+            if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+                header('Content-Type: application/json');
+                echo json_encode(['success' => true, 'appointmentID' => $appointmentID]);
+                exit();
+            }
+            header('Location: agent_dashboard.php?dismissed=1#appointments');
+            exit();
+        }
     } elseif (isset($_POST['update_status'])) {
         $appointmentID = filter_var($_POST['appointmentID'] ?? null, FILTER_VALIDATE_INT);
         $newStatus = is_string($_POST['status'] ?? null) ? $_POST['status'] : '';
@@ -28,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $statusError = 'Choose a valid appointment and status.';
         } else {
             try {
-                update_appointment_tracking_status($conn, (int) $appointmentID, $newStatus, (int) $_SESSION['user']['userID']);
+                update_appointment_tracking_status($conn, (int) $appointmentID, $newStatus, $currentAgentId);
                 header('Location: agent_dashboard.php?updated=1');
                 exit();
             } catch (InvalidArgumentException $exception) {
@@ -106,15 +127,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$appointments = $conn->query("SELECT a.*, p.title, p.location, p.barangay, l.municipalityName, l.provinceName, u.fullname as clientName, u.email as clientEmail FROM appointments a JOIN properties p ON a.propertyID = p.propertyID JOIN users u ON a.clientID = u.userID LEFT JOIN property_locations l ON l.locationID = p.locationID ORDER BY a.appointmentDate DESC, a.appointmentTime DESC, a.appointmentID DESC LIMIT 300");
+$apptStmt = $conn->prepare(
+    "SELECT a.*, p.title, p.location, p.barangay, l.municipalityName, l.provinceName,
+            u.fullname as clientName, u.email as clientEmail,
+            ag.fullname as agentName
+     FROM appointments a
+     JOIN properties p ON a.propertyID = p.propertyID
+     JOIN users u ON a.clientID = u.userID
+     LEFT JOIN users ag ON a.agentID = ag.userID
+     LEFT JOIN property_locations l ON l.locationID = p.locationID
+     LEFT JOIN agent_dismissed_appointments ada ON ada.appointmentID = a.appointmentID AND ada.agentID = ?
+     WHERE (ada.appointmentID IS NULL OR a.agentID = ?)
+     ORDER BY a.appointmentDate DESC, a.appointmentTime DESC, a.appointmentID DESC
+     LIMIT 300"
+);
+$apptStmt->bind_param('ii', $currentAgentId, $currentAgentId);
+$apptStmt->execute();
+$appointments = $apptStmt->get_result();
+
 $inquiries = $conn->query("SELECT i.*, p.title, u.fullname as clientName, u.email as clientEmail FROM feedbackinquiries i JOIN properties p ON i.propertyID = p.propertyID JOIN users u ON i.clientID = u.userID ORDER BY i.createdAt DESC, i.inquiryID DESC LIMIT 300");
-$stats = $conn->query("SELECT
-    COUNT(*) AS total_appointments,
-    SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END) AS pending_appointments,
-    SUM(CASE WHEN status = 'Approved' THEN 1 ELSE 0 END) AS approved_appointments,
-    SUM(CASE WHEN status = 'Cancelled' THEN 1 ELSE 0 END) AS cancelled_appointments,
-    (SELECT COUNT(*) FROM feedbackinquiries) AS total_inquiries
-FROM appointments");
+
+$statsStmt = $conn->prepare(
+    "SELECT
+        COUNT(*) AS total_appointments,
+        SUM(CASE WHEN a.status = 'Pending' THEN 1 ELSE 0 END) AS pending_appointments,
+        SUM(CASE WHEN a.status = 'Approved' THEN 1 ELSE 0 END) AS approved_appointments,
+        SUM(CASE WHEN a.status = 'Cancelled' THEN 1 ELSE 0 END) AS cancelled_appointments,
+        (SELECT COUNT(*) FROM feedbackinquiries) AS total_inquiries
+     FROM appointments a
+     LEFT JOIN agent_dismissed_appointments ada ON ada.appointmentID = a.appointmentID AND ada.agentID = ?
+     WHERE (ada.appointmentID IS NULL OR a.agentID = ?)"
+);
+$statsStmt->bind_param('ii', $currentAgentId, $currentAgentId);
+$statsStmt->execute();
+$stats = $statsStmt->get_result();
 $statsRow = $stats && $stats->num_rows > 0 ? $stats->fetch_assoc() : ['total_appointments' => 0, 'pending_appointments' => 0, 'approved_appointments' => 0, 'cancelled_appointments' => 0, 'total_inquiries' => 0];
 include 'includes/header.php';
 ?>
@@ -306,18 +352,29 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
         </div>
         <div class="list-group list-group-flush border rounded-3 overflow-hidden">
             <?php foreach ($agentNotifs as $aNotif):
+                $notifId = (int) $aNotif['notificationID'];
                 $isUnread = !(bool) $aNotif['isRead'];
                 $link = !empty($aNotif['link']) ? $aNotif['link'] : '#appointments';
+                $isTakenNotif = ($aNotif['type'] === 'viewing_taken' || stripos($aNotif['title'], 'taken') !== false);
             ?>
-                <a href="notifications_action.php?action=read_and_go&id=<?= (int)$aNotif['notificationID'] ?>&to=<?= urlencode($link) ?>" class="list-group-item list-group-item-action p-3 d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 <?= $isUnread ? 'bg-primary-subtle border-start border-4 border-primary' : 'bg-white' ?>" style="text-decoration: none;">
-                    <div class="d-flex align-items-start gap-3">
-                        <div class="rounded-circle p-2 d-flex align-items-center justify-content-center <?= $isUnread ? 'bg-primary text-white' : 'bg-light text-secondary border' ?>" style="width: 38px; height: 38px; flex-shrink: 0;">
-                            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                <div class="list-group-item p-3 d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 position-relative <?= $isUnread ? 'bg-primary-subtle border-start border-4 border-primary' : 'bg-white' ?>" id="agent-notif-<?= $notifId ?>">
+                    <!-- Top-right X button to dismiss notification -->
+                    <button type="button" class="btn-close position-absolute top-0 end-0 m-2 kq-dismiss-notif-btn" data-notif-id="<?= $notifId ?>" title="Dismiss alert" aria-label="Dismiss"></button>
+                    
+                    <a href="notifications_action.php?action=read_and_go&id=<?= $notifId ?>&to=<?= urlencode($link) ?>" class="text-decoration-none text-dark d-flex align-items-start gap-3 flex-grow-1 pe-4">
+                        <div class="rounded-circle p-2 d-flex align-items-center justify-content-center <?= $isTakenNotif ? 'bg-secondary text-white' : ($isUnread ? 'bg-primary text-white' : 'bg-light text-secondary border') ?>" style="width: 38px; height: 38px; flex-shrink: 0;">
+                            <?php if ($isTakenNotif): ?>
+                                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+                            <?php else: ?>
+                                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                            <?php endif; ?>
                         </div>
                         <div>
-                            <div class="d-flex align-items-center gap-2 mb-1">
+                            <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
                                 <span class="fw-bold <?= $isUnread ? 'text-primary' : 'text-dark' ?>" style="font-size: 0.95rem;"><?= htmlspecialchars($aNotif['title'], ENT_QUOTES, 'UTF-8') ?></span>
-                                <?php if ($isUnread): ?>
+                                <?php if ($isTakenNotif): ?>
+                                    <span class="badge bg-secondary small" style="font-size: 0.65rem;">Taken by another agent</span>
+                                <?php elseif ($isUnread): ?>
                                     <span class="badge bg-danger small" style="font-size: 0.65rem;">New viewing request</span>
                                 <?php endif; ?>
                             </div>
@@ -326,9 +383,9 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
                                 <?= htmlspecialchars(date('M j, Y g:i A', strtotime($aNotif['createdAt'])), ENT_QUOTES, 'UTF-8') ?>
                             </time>
                         </div>
-                    </div>
-                    <span class="btn btn-sm btn-outline-primary align-self-start align-self-sm-center text-nowrap mt-2 mt-sm-0">View request &rarr;</span>
-                </a>
+                    </a>
+                    <a href="notifications_action.php?action=read_and_go&id=<?= $notifId ?>&to=<?= urlencode($link) ?>" class="btn btn-sm btn-outline-primary align-self-start align-self-sm-center text-nowrap mt-2 mt-sm-0">View queue &rarr;</a>
+                </div>
             <?php endforeach; ?>
         </div>
     </section>
@@ -343,36 +400,74 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
         <span class="kq-badge-soft">Live queue</span>
     </div>
     <div class="table-responsive">
-        <table class="table table-bordered align-middle">
+        <table class="table table-bordered align-middle mb-0">
             <thead class="table-light"><tr><th>Ref ID</th><th>Client</th><th>Property</th><th>Location</th><th>Date & Time</th><th>Status</th><th>Action</th></tr></thead>
             <tbody>
                 <?php if ($appointments && $appointments->num_rows > 0): ?>
-                    <?php while($appt = $appointments->fetch_assoc()): ?>
-                        <tr>
-                            <td class="fw-bold">#KQ-<?= 1000 + $appt['appointmentID'] ?></td>
+                    <?php while($appt = $appointments->fetch_assoc()): 
+                        $apptId = (int) $appt['appointmentID'];
+                        $isApproved = ($appt['status'] === 'Approved');
+                        $assignedAgentId = !empty($appt['agentID']) ? (int) $appt['agentID'] : null;
+                        $isTakenByOther = ($isApproved && $assignedAgentId !== null && $assignedAgentId !== $currentAgentId);
+                        $isTakenByMe = ($isApproved && $assignedAgentId !== null && $assignedAgentId === $currentAgentId);
+                        $agentName = !empty($appt['agentName']) ? $appt['agentName'] : 'another agent';
+                    ?>
+                        <tr class="kq-appt-row <?= $isTakenByOther ? 'table-light text-muted' : '' ?>" id="appt-row-<?= $apptId ?>" data-appointment-id="<?= $apptId ?>">
+                            <td class="fw-bold position-relative">
+                                #KQ-<?= 1000 + $apptId ?>
+                            </td>
                             <td><?= htmlspecialchars($appt['clientName']) ?><br><small class="text-muted"><?= htmlspecialchars($appt['clientEmail']) ?></small></td>
                             <td class="fw-bold"><?= htmlspecialchars($appt['title']) ?></td>
                             <td><?= htmlspecialchars(!empty($appt['municipalityName']) ? $appt['municipalityName'] . ', ' . $appt['provinceName'] : $appt['location'], ENT_QUOTES, 'UTF-8') ?><?php if (!empty($appt['barangay'])): ?><br><small class="text-muted"><?= htmlspecialchars($appt['barangay'], ENT_QUOTES, 'UTF-8') ?></small><?php endif; ?></td>
                             <td><?= htmlspecialchars($appt['appointmentDate'], ENT_QUOTES, 'UTF-8') ?> at <?= htmlspecialchars(substr($appt['appointmentTime'], 0, 5), ENT_QUOTES, 'UTF-8') ?></td>
-                            <td><span class="badge rounded-pill <?= $appt['status'] === 'Approved' ? 'text-bg-success' : ($appt['status'] === 'Cancelled' ? 'text-bg-danger' : 'text-bg-warning') ?>"><?= htmlspecialchars($appt['status'], ENT_QUOTES, 'UTF-8') ?></span></td>
                             <td>
-                                <form method="POST" class="d-flex gap-1">
-                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
-                                    <input type="hidden" name="appointmentID" value="<?= (int) $appt['appointmentID'] ?>">
-                                    <select name="status" class="form-select form-select-sm" style="width: 130px;">
-                                        <?php if ($appt['status'] === 'Pending'): ?>
-                                            <option value="Pending" selected>Pending</option>
-                                            <option value="Approved">Approved</option>
-                                            <option value="Cancelled">Cancelled</option>
-                                        <?php elseif ($appt['status'] === 'Approved'): ?>
-                                            <option value="Approved" selected>Approved</option>
-                                            <option value="Cancelled">Cancelled</option>
-                                        <?php else: ?>
-                                            <option value="Cancelled" selected>Cancelled</option>
-                                        <?php endif; ?>
-                                    </select>
-                                    <button type="submit" name="update_status" class="btn btn-sm btn-primary">Update</button>
-                                </form>
+                                <?php if ($isTakenByOther): ?>
+                                    <span class="badge rounded-pill text-bg-secondary px-2 py-1 d-inline-flex align-items-center gap-1 shadow-sm">
+                                        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+                                        Taken by <?= htmlspecialchars($agentName) ?>
+                                    </span>
+                                <?php elseif ($isTakenByMe): ?>
+                                    <span class="badge rounded-pill text-bg-success px-2 py-1 shadow-sm">
+                                        Confirmed by You
+                                    </span>
+                                <?php elseif ($appt['status'] === 'Cancelled'): ?>
+                                    <span class="badge rounded-pill text-bg-danger px-2 py-1">Cancelled</span>
+                                <?php else: ?>
+                                    <span class="badge rounded-pill text-bg-warning px-2 py-1 text-dark fw-bold">Pending</span>
+                                <?php endif; ?>
+                            </td>
+                            <td class="position-relative">
+                                <?php if ($isTakenByOther): ?>
+                                    <div class="d-flex align-items-center justify-content-between gap-2">
+                                        <span class="small text-secondary fw-semibold">Taken by <?= htmlspecialchars($agentName) ?></span>
+                                        <form method="POST" class="m-0 dismiss-taken-form" data-appointment-id="<?= $apptId ?>">
+                                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                                            <input type="hidden" name="dismiss_taken_viewing" value="1">
+                                            <input type="hidden" name="appointmentID" value="<?= $apptId ?>">
+                                            <button type="button" class="btn btn-sm btn-outline-danger p-1 d-inline-flex align-items-center justify-content-center kq-dismiss-btn" title="Remove taken viewing (<?= htmlspecialchars($agentName) ?>) from your queue" aria-label="Remove taken viewing" style="width: 30px; height: 30px; border-radius: 50%;">
+                                                <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                            </button>
+                                        </form>
+                                    </div>
+                                <?php else: ?>
+                                    <form method="POST" class="d-flex gap-1">
+                                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                                        <input type="hidden" name="appointmentID" value="<?= $apptId ?>">
+                                        <select name="status" class="form-select form-select-sm" style="width: 130px;">
+                                            <?php if ($appt['status'] === 'Pending'): ?>
+                                                <option value="Pending" selected>Pending</option>
+                                                <option value="Approved">Confirm (Approve)</option>
+                                                <option value="Cancelled">Cancel</option>
+                                            <?php elseif ($appt['status'] === 'Approved'): ?>
+                                                <option value="Approved" selected>Approved</option>
+                                                <option value="Cancelled">Cancel</option>
+                                            <?php else: ?>
+                                                <option value="Cancelled" selected>Cancelled</option>
+                                            <?php endif; ?>
+                                        </select>
+                                        <button type="submit" name="update_status" class="btn btn-sm btn-primary">Update</button>
+                                    </form>
+                                <?php endif; ?>
                             </td>
                         </tr>
                     <?php endwhile; ?>
@@ -511,7 +606,170 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
     </form>
 </section>
 </div>
+<<<<<<< HEAD
 </div>
 </div>
+=======
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const locSelect = document.getElementById('property-location');
+    const latInput = document.getElementById('property-latitude');
+    const lngInput = document.getElementById('property-longitude');
+    const coordsText = document.getElementById('pin-coords-text');
+    const coordsBadge = document.getElementById('pin-coords-badge');
+    const recenterBtn = document.getElementById('btn-recenter-municipality');
+    const pickerMapContainer = document.getElementById('property-picker-map');
+
+    if (!pickerMapContainer || typeof L === 'undefined') return;
+
+    const defaultBatangasCenter = [13.7565, 121.0583];
+    const pickerMap = L.map('property-picker-map', {
+        scrollWheelZoom: true,
+        zoomControl: true
+    }).setView(defaultBatangasCenter, 10);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 18,
+    }).addTo(pickerMap);
+
+    const pickerPinIcon = L.divIcon({
+        className: 'kq-picker-pin',
+        html: `<div style="
+            width: 36px; height: 36px;
+            background: #174a70;
+            border: 3px solid #d8ad63;
+            border-radius: 50% 50% 50% 0;
+            transform: rotate(-45deg);
+            box-shadow: 0 4px 14px rgba(18, 40, 66, 0.4);
+            display: grid; place-items: center;
+            cursor: grab;
+        "><div style="
+            transform: rotate(45deg);
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 800;
+        ">★</div></div>`,
+        iconSize: [36, 36],
+        iconAnchor: [18, 36],
+        popupAnchor: [0, -36],
+    });
+
+    let pickerMarker = null;
+
+    function setPin(lat, lng, zoomTo = false) {
+        const fixedLat = Number(lat).toFixed(6);
+        const fixedLng = Number(lng).toFixed(6);
+        latInput.value = fixedLat;
+        lngInput.value = fixedLng;
+        coordsText.textContent = `${fixedLat}, ${fixedLng}`;
+        coordsBadge.textContent = `Pinned: ${fixedLat}, ${fixedLng}`;
+        coordsBadge.className = 'badge text-bg-success text-white fw-bold px-2 py-1';
+
+        if (!pickerMarker) {
+            pickerMarker = L.marker([lat, lng], {
+                icon: pickerPinIcon,
+                draggable: true
+            }).addTo(pickerMap);
+
+            pickerMarker.bindPopup(`<strong>Pinned Land Location</strong><br><small>${fixedLat}, ${fixedLng}</small>`);
+
+            pickerMarker.on('dragend', function (e) {
+                const pos = e.target.getLatLng();
+                setPin(pos.lat, pos.lng, false);
+                pickerMarker.openPopup();
+            });
+        } else {
+            pickerMarker.setLatLng([lat, lng]);
+            pickerMarker.setPopupContent(`<strong>Pinned Land Location</strong><br><small>${fixedLat}, ${fixedLng}</small>`);
+        }
+
+        if (zoomTo) {
+            pickerMap.setView([lat, lng], 14, { animate: true });
+        }
+    }
+
+    pickerMap.on('click', function(e) {
+        setPin(e.latlng.lat, e.latlng.lng, false);
+        if (pickerMarker) pickerMarker.openPopup();
+    });
+
+    function syncWithMunicipality(zoom = true) {
+        if (!locSelect) return;
+        const opt = locSelect.options[locSelect.selectedIndex];
+        if (opt && opt.dataset.lat && opt.dataset.lng) {
+            const lat = parseFloat(opt.dataset.lat);
+            const lng = parseFloat(opt.dataset.lng);
+            setPin(lat, lng, zoom);
+        }
+    }
+
+    if (locSelect) {
+        locSelect.addEventListener('change', () => syncWithMunicipality(true));
+        if (locSelect.value !== '') {
+            syncWithMunicipality(false);
+        }
+    }
+
+    if (recenterBtn) {
+        recenterBtn.addEventListener('click', () => syncWithMunicipality(true));
+    }
+
+    setTimeout(() => {
+        pickerMap.invalidateSize();
+    }, 250);
+
+    // Dismiss taken viewings with smooth zero-reload animation
+    document.addEventListener('click', function(e) {
+        const btn = e.target.closest('.kq-dismiss-btn');
+        if (!btn) return;
+        e.preventDefault();
+        const form = btn.closest('form');
+        if (!form) return;
+        const row = btn.closest('.kq-appt-row') || form.closest('tr');
+        
+        // Smooth visual removal
+        if (row) {
+            row.style.transition = 'all 0.35s ease';
+            row.style.opacity = '0';
+            row.style.transform = 'translateX(25px)';
+            setTimeout(() => row.remove(), 350);
+        }
+
+        const formData = new FormData(form);
+        fetch('agent_dashboard.php', {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        }).catch(err => console.error(err));
+    });
+
+    // Dismiss viewing alert notifications
+    document.addEventListener('click', function(e) {
+        const notifCloseBtn = e.target.closest('.kq-dismiss-notif-btn');
+        if (!notifCloseBtn) return;
+        e.preventDefault();
+        const notifId = notifCloseBtn.getAttribute('data-notif-id');
+        const notifCard = document.getElementById('agent-notif-' + notifId) || notifCloseBtn.closest('.list-group-item');
+        if (notifCard) {
+            notifCard.style.transition = 'all 0.35s ease';
+            notifCard.style.opacity = '0';
+            notifCard.style.transform = 'translateY(-15px)';
+            setTimeout(() => notifCard.remove(), 350);
+        }
+
+        const formData = new FormData();
+        formData.append('action', 'dismiss_notif');
+        formData.append('id', notifId);
+        fetch('notifications_action.php', {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        }).catch(err => console.error(err));
+    });
+});
+</script>
+>>>>>>> 742e6872bfc730e7209010dbdbf7803bd51fecff
 
 <?php include 'includes/footer.php'; ?>

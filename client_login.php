@@ -12,7 +12,7 @@ $loginHumanChallenge = issue_login_human_challenge();
 
 if (isset($_SESSION['user'])) {
     $role = normalized_user_role($_SESSION['user']);
-    $destination = $role === 'Admin' ? 'admin_dashboard.php' : ($role === 'Sales Agent' ? 'agent_dashboard.php' : 'client_dashboard.php');
+    $destination = $role === 'Admin' ? 'admin_dashboard.php' : ($role === 'Sales Agent' ? 'agent_dashboard.php' : 'index.php');
     header('Location: ' . $destination);
     exit();
 }
@@ -37,13 +37,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         if ($result->num_rows === 1) {
             $user = $result->fetch_assoc();
             $normalizedRole = normalized_user_role($user);
-            if (password_verify($password, $user['passwordHash']) && $normalizedRole === 'Client') {
+            if (password_verify($password, $user['passwordHash'])) {
                 if (($user['accountStatus'] ?? 'Active') === 'Inactive') {
-                    $error = 'This client account is inactive. Please contact the KingQuiry administrator.';
+                    $error = 'This account is inactive. Please contact the KingQuiry administrator.';
                 } else {
                     session_regenerate_id(true);
                     $_SESSION['user'] = $user;
-                    header('Location: client_dashboard.php');
+                    $destination = $normalizedRole === 'Admin'
+                        ? 'admin_dashboard.php'
+                        : ($normalizedRole === 'Sales Agent' ? 'agent_dashboard.php' : 'index.php');
+                    header('Location: ' . $destination);
                     exit();
                 }
             }
@@ -58,14 +61,25 @@ include 'includes/header.php';
 ?>
 
 <div class="kq-auth-page">
+<<<<<<< HEAD
     <aside class="kq-auth-panel card" aria-label="Client login panel">
         <div class="kq-brand" aria-label="4 Kings Realty Services logo">
             <img class="kq-official-logo kq-logo-auth" src="assets/images/kings-land-properties-logo.png" alt="4 Kings Realty Services">
             <div class="kq-brand-sub">Client portal</div>
+=======
+    <aside class="kq-auth-panel card" aria-label="Sign in panel">
+        <div class="kq-brand" aria-label="KingQuiry logo">
+            <div class="kq-brand-logo">
+                <span class="kq-brand-crown">♛</span>
+                <span class="kq-brand-number">4</span>
+                <span class="kq-brand-word"><span class="accent">K</span>INGS</span>
+            </div>
+            <div class="kq-brand-sub">Account portal</div>
+>>>>>>> 742e6872bfc730e7209010dbdbf7803bd51fecff
         </div>
 
         <h2>Sign In</h2>
-        <p class="subcopy">Access your client account.</p>
+        <p class="subcopy">Access your KingQuiry account.</p>
 
         <?php if (!empty($error)): ?>
             <div class="alert alert-danger" role="alert"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>

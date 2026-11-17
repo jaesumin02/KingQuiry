@@ -815,12 +815,16 @@ function update_appointment_tracking_status(
         throw new InvalidArgumentException('Choose a valid viewing request status.');
     }
 
+    require_once __DIR__ . '/appointment_management.php';
+    ensure_appointment_management_schema($conn);
+
     $conn->begin_transaction();
     try {
         $stmt = $conn->prepare(
-            'SELECT a.status, t.transactionID, t.currentStage
+            'SELECT a.status, a.agentID, t.transactionID, t.currentStage, ag.fullname AS agentName
              FROM appointments a
              JOIN property_transactions t ON t.appointmentID = a.appointmentID
+             LEFT JOIN users ag ON ag.userID = a.agentID
              WHERE a.appointmentID = ?
              FOR UPDATE'
         );
@@ -834,7 +838,15 @@ function update_appointment_tracking_status(
         $currentStatus = (string) $row['status'];
         $currentStage = (string) $row['currentStage'];
         $transactionId = (int) $row['transactionID'];
-        if ($currentStatus === $newStatus) {
+        $assignedAgentId = !empty($row['agentID']) ? (int) $row['agentID'] : null;
+        $assignedAgentName = (string) ($row['agentName'] ?? 'another agent');
+
+        // Check if viewing was already taken by another agent
+        if ($assignedAgentId !== null && $assignedAgentId !== $actorId) {
+            throw new InvalidArgumentException("This viewing request was already taken by {$assignedAgentName}.");
+        }
+
+        if ($currentStatus === $newStatus && ($assignedAgentId === $actorId || $assignedAgentId === null)) {
             $conn->commit();
             return;
         }
@@ -843,7 +855,7 @@ function update_appointment_tracking_status(
         }
 
         if ($newStatus === 'Approved') {
-            if ($currentStage !== 'viewing_requested') {
+            if ($currentStage !== 'viewing_requested' && $currentStatus !== 'Approved') {
                 throw new InvalidArgumentException('The transaction has already advanced beyond the viewing confirmation step.');
             }
             $newStage = 'viewing_confirmed';
@@ -866,9 +878,9 @@ function update_appointment_tracking_status(
         add_property_transaction_event($conn, $transactionId, $newStage, $note, $actorId);
 
         $updateAppointment = $conn->prepare(
-            'UPDATE appointments SET status = ? WHERE appointmentID = ?'
+            'UPDATE appointments SET status = ?, agentID = ? WHERE appointmentID = ?'
         );
-        $updateAppointment->bind_param('si', $newStatus, $appointmentId);
+        $updateAppointment->bind_param('sii', $newStatus, $actorId, $appointmentId);
         $updateAppointment->execute();
 
         $detailsStmt = $conn->prepare(
@@ -895,6 +907,11 @@ function update_appointment_tracking_status(
                 $statusLabel
             );
             send_property_notification($conn, (int) $details['clientID'], $notificationSubject, $notificationMessage);
+        }
+
+        // Notify all other agents when a viewing is taken/confirmed
+        if ($newStatus === 'Approved') {
+            notify_agents_viewing_taken($conn, $appointmentId, $actorId);
         }
 
         $conn->commit();

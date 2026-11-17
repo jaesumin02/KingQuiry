@@ -646,6 +646,7 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
         background: var(--admin-canvas);
     }
 
+<<<<<<< HEAD
     .kq-admin-shell {
         max-width: 1280px;
         width: 100%;
@@ -655,6 +656,8 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
         color: var(--admin-title);
     }
 
+=======
+>>>>>>> 742e6872bfc730e7209010dbdbf7803bd51fecff
     .page-eyebrow {
         letter-spacing: .15em;
         color: #d9b87d;
@@ -732,22 +735,22 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
     .table-responsive, .table {
         border-radius: 1rem;
     }
-
-    @media (max-width: 767.98px) {
-        .kq-admin-shell {
-            padding-top: .75rem;
-        }
-    }
 </style>
 
+<<<<<<< HEAD
 <div class="kq-admin-shell">
+=======
+>>>>>>> 742e6872bfc730e7209010dbdbf7803bd51fecff
 <section class="mb-4" aria-labelledby="business-analytics-title">
-    <div class="kq-panel-header mb-3">
+    <div class="kq-panel-header mb-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
         <div>
             <div class="page-eyebrow">Live business analytics</div>
             <h2 class="h4 fw-bold mb-0" id="business-analytics-title">Sales performance</h2>
         </div>
-        <span class="kq-badge-soft">Updated live</span>
+        <div class="d-flex align-items-center gap-2">
+            <a href="#property-list" class="btn btn-sm btn-success fw-bold text-white shadow-sm">🏘️ Property list (<?= number_format($totalProperties) ?>)</a>
+            <span class="kq-badge-soft">Updated live</span>
+        </div>
     </div>
     <div class="row g-3 mb-3">
         <div class="col-sm-6 col-xl-4">
@@ -1432,8 +1435,6 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
         </div>
     </div>
 <?php endif; ?>
-
-</div>
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {

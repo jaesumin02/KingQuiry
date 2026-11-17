@@ -48,6 +48,24 @@ if ($action === 'read_and_go') {
     header('Content-Type: application/json');
     echo json_encode(['success' => false]);
     exit();
+} elseif ($action === 'dismiss_notif') {
+    $notifId = filter_var($_POST['id'] ?? $_GET['id'] ?? null, FILTER_VALIDATE_INT);
+    if ($notifId && $notifId > 0) {
+        $delStmt = $conn->prepare("DELETE FROM user_notifications WHERE notificationID = ? AND userID = ?");
+        if ($delStmt) {
+            $delStmt->bind_param('ii', $notifId, $userId);
+            $delStmt->execute();
+            $delStmt->close();
+        }
+        if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => true]);
+            exit();
+        }
+    }
+    $redirect = $_POST['redirect'] ?? $_GET['redirect'] ?? 'agent_dashboard.php#viewing-alerts';
+    header('Location: ' . $redirect);
+    exit();
 }
 
 header('Location: index.php');
