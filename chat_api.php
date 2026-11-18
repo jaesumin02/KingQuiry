@@ -1,14 +1,12 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
 require_once __DIR__ . '/includes/auth.php';
+kq_start_session();
 apply_secure_headers('application/json; charset=utf-8');
 
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/includes/location_directory.php';
 require_once __DIR__ . '/includes/property_estimator.php';
+require_once __DIR__ . '/includes/rate_limit.php';
 
 function chat_respond(array $data, int $statusCode = 200): void
 {
@@ -17,10 +15,25 @@ function chat_respond(array $data, int $statusCode = 200): void
     exit();
 }
 
+function chat_enforce_rate_limit(
+    mysqli $conn,
+    string $scope,
+    string $identity,
+    int $limit,
+    int $windowSeconds
+): void {
+    $result = kq_rate_limit_consume($conn, $scope, $identity, $limit, $windowSeconds);
+    if (!$result['allowed']) {
+        header('Retry-After: ' . max(1, $result['retry_after']));
+        chat_respond(['error' => 'You are sending requests too quickly. Please wait and try again.'], 429);
+    }
+}
+
 function chat_require_admin(): int
 {
-    if (normalized_user_role($_SESSION['user'] ?? null) !== 'Admin') {
-        chat_respond(['error' => 'Admin access is required.'], 403);
+    $role = normalized_user_role($_SESSION['user'] ?? null);
+    if (!in_array($role, ['Admin', 'Sales Agent'], true)) {
+        chat_respond(['error' => 'Admin or Sales Agent access is required.'], 403);
     }
 
     return (int) $_SESSION['user']['userID'];
@@ -117,6 +130,12 @@ function chat_csrf_token(): string
 }
 
 try {
+    if (isset($_SESSION['user'])) {
+        if (kq_sync_session_user($conn) === null) {
+            chat_respond(['error' => 'Your account is no longer active. Sign in again.'], 401);
+        }
+    }
+
     $action = $_SERVER['REQUEST_METHOD'] === 'GET'
         ? ($_GET['action'] ?? '')
         : '';
@@ -203,7 +222,8 @@ try {
         }
 
         if ($action === 'admin_reply') {
-            chat_require_admin();
+            $adminId = chat_require_admin();
+            chat_enforce_rate_limit($conn, 'chat-admin', (string) $adminId, 60, 60);
             $conversationId = max(0, (int) ($payload['conversation_id'] ?? 0));
             $check = $conn->prepare("SELECT conversation_id FROM chat_conversations WHERE conversation_id = ? AND status = 'open'");
             $check->bind_param('i', $conversationId);
@@ -218,6 +238,14 @@ try {
         if (isset($_SESSION['user']) && normalized_user_role($_SESSION['user']) !== 'Client') {
             chat_respond(['error' => 'Only clients and guests can start customer conversations.'], 403);
         }
+
+        $clientIpAddress = is_string($_SERVER['REMOTE_ADDR'] ?? null) && $_SERVER['REMOTE_ADDR'] !== ''
+            ? $_SERVER['REMOTE_ADDR']
+            : 'unknown';
+        $chatSessionKey = session_id();
+        $messageLimit = $action === 'estimate' ? 5 : 12;
+        chat_enforce_rate_limit($conn, 'chat-ip', $clientIpAddress, 40, 60);
+        chat_enforce_rate_limit($conn, 'chat-session', $chatSessionKey, $messageLimit, 60);
 
         $conversationId = chat_conversation($conn);
 

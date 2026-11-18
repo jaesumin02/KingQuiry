@@ -84,13 +84,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_payment_review
         : filter_var($postedPaymentAmount, FILTER_VALIDATE_FLOAT);
     $paymentMethod = is_string($_POST['paymentMethod'] ?? null) ? trim($_POST['paymentMethod']) : '';
     $paymentRef = is_string($_POST['paymentRef'] ?? null) ? trim($_POST['paymentRef']) : '';
-    $allowedPaymentMethods = ['Spot Cash', 'Bank Transfer', 'Check', 'Paperwork (Face-to-face)'];
+    $invalidSalePrice = $postedSalePrice !== null && $postedSalePrice !== '' && $salePrice === false;
+    $invalidPaymentAmount = $postedPaymentAmount !== null && $postedPaymentAmount !== '' && $paymentAmount === false;
 
     if (!has_valid_csrf_token()) {
         $formError = 'Your session expired. Refresh the page and try again.';
     } elseif ($transactionId === false || $transactionId <= 0) {
         $formError = 'Choose a valid transaction.';
-    } elseif ($paymentMethod !== '' && !in_array($paymentMethod, $allowedPaymentMethods, true)) {
+    } elseif ($invalidSalePrice) {
+        $formError = 'Enter a valid sale price or leave the field blank.';
+    } elseif ($invalidPaymentAmount) {
+        $formError = 'Enter a valid payment amount or leave the field blank.';
+    } elseif ($paymentMethod !== '' && !in_array($paymentMethod, property_staff_payment_methods(), true)) {
         $formError = 'Choose a supported payment method.';
     } elseif ($newStage === 'completed' && ($salePrice === false || $salePrice === null || $salePrice <= 0)) {
         $formError = 'Enter the verified sale price before marking this transaction successful.';
@@ -119,22 +124,129 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_payment_review
             $formError = 'The transaction status could not be saved. Please retry.';
         }
     }
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['assign_agent_to_transaction'])) {
+    if ($role !== 'Admin') {
+        $formError = 'Only an administrator can assign sales agents to transactions.';
+    } else {
+        $transactionId = filter_var($_POST['transactionID'] ?? null, FILTER_VALIDATE_INT);
+        $assignedAgentId = filter_var($_POST['assignedAgentID'] ?? null, FILTER_VALIDATE_INT);
+
+        if (!has_valid_csrf_token()) {
+            $formError = 'Your session expired. Refresh the page and try again.';
+        } elseif ($transactionId === false || $transactionId <= 0 || $assignedAgentId === false || $assignedAgentId <= 0) {
+            $formError = 'Choose a valid transaction and active sales agent.';
+        } else {
+            try {
+                // Verify active agent
+                $agentStmt = $conn->prepare("SELECT fullname, email FROM users WHERE userID = ? AND role IN ('Agent', 'Sales Agent') AND accountStatus = 'Active' LIMIT 1");
+                $agentStmt->bind_param('i', $assignedAgentId);
+                $agentStmt->execute();
+                $agent = $agentStmt->get_result()->fetch_assoc();
+                if (!$agent) {
+                    throw new InvalidArgumentException('Selected agent is not active or not a licensed sales agent.');
+                }
+
+                // Get transaction details
+                $tStmt = $conn->prepare("SELECT transactionID, propertyID, clientID, appointmentID, inquiryID, currentStage FROM property_transactions WHERE transactionID = ? LIMIT 1");
+                $tStmt->bind_param('i', $transactionId);
+                $tStmt->execute();
+                $tRow = $tStmt->get_result()->fetch_assoc();
+                if (!$tRow) {
+                    throw new InvalidArgumentException('Transaction not found.');
+                }
+
+                $conn->begin_transaction();
+
+                // If transaction is linked to an appointment, assign agent
+                if (!empty($tRow['appointmentID'])) {
+                    $apptStmt = $conn->prepare("UPDATE appointments SET agentID = ? WHERE appointmentID = ?");
+                    $apptStmt->bind_param('ii', $assignedAgentId, $tRow['appointmentID']);
+                    $apptStmt->execute();
+                }
+
+                // If transaction is linked to an inquiry, assign agent in agent_inquiry_assignments
+                if (!empty($tRow['inquiryID'])) {
+                    $inqStmt = $conn->prepare("INSERT INTO agent_inquiry_assignments (inquiryID, agentID, assignedAt) VALUES (?, ?, CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE agentID = ?, assignedAt = CURRENT_TIMESTAMP");
+                    $inqStmt->bind_param('iii', $tRow['inquiryID'], $assignedAgentId, $assignedAgentId);
+                    $inqStmt->execute();
+                }
+
+                $assignNote = 'Administrator manually assigned Sales Agent ' . $agent['fullname'] . ' to handle this transaction.';
+                add_property_transaction_event($conn, (int) $transactionId, (string) $tRow['currentStage'], $assignNote, $actorId);
+
+                // Notify the assigned agent
+                send_property_notification(
+                    $conn,
+                    $assignedAgentId,
+                    'Assigned to Transaction #KQT-' . $transactionId,
+                    'You have been assigned to manage Transaction #KQT-' . $transactionId . ' by the administrator.',
+                    'transaction_tracking.php#transactions',
+                    'agent_assignment'
+                );
+
+                // Notify the client
+                send_property_notification(
+                    $conn,
+                    (int) $tRow['clientID'],
+                    'Assigned Agent Update',
+                    'Sales Agent ' . $agent['fullname'] . ' has been assigned to assist you with your property transaction #KQT-' . $transactionId . '.',
+                    'client_dashboard.php#transaction-tracking',
+                    'agent_assigned'
+                );
+
+                $conn->commit();
+                header('Location: transaction_tracking.php?agent_assigned=1#transactions');
+                exit();
+            } catch (Throwable $ex) {
+                $conn->rollback();
+                error_log('Agent assignment failed: ' . $ex->getMessage());
+                $formError = $ex->getMessage();
+            }
+        }
+    }
 }
 
-$transactions = $conn->query(
+$activeAgentsList = [];
+if ($role === 'Admin') {
+    $agentsQuery = $conn->query("SELECT userID, fullname, email FROM users WHERE role IN ('Agent', 'Sales Agent') AND accountStatus = 'Active' ORDER BY fullname ASC");
+    if ($agentsQuery) {
+        $activeAgentsList = $agentsQuery->fetch_all(MYSQLI_ASSOC);
+    }
+}
+
+$transactionsSql =
     "SELECT t.transactionID, t.propertyID, t.clientID, t.appointmentID, t.inquiryID,
             t.currentStage, t.salePrice, t.paymentMethod, t.createdAt, t.updatedAt,
             p.title, p.location, l.municipalityName, l.provinceName,
             u.fullname AS clientName, u.email AS clientEmail,
-            a.appointmentDate, a.appointmentTime
+            a.appointmentDate, a.appointmentTime,
+            COALESCE(a.agentID, ia.agentID) AS assignedAgentID,
+            COALESCE(agentUser.fullname, inqAgentUser.fullname, 'Unassigned') AS assignedAgentName
      FROM property_transactions t
      JOIN properties p ON p.propertyID = t.propertyID
      JOIN users u ON u.userID = t.clientID
      LEFT JOIN property_locations l ON l.locationID = p.locationID
      LEFT JOIN appointments a ON a.appointmentID = t.appointmentID
-     ORDER BY (t.currentStage IN ('completed', 'cancelled')) ASC, t.updatedAt DESC, t.transactionID DESC
-     LIMIT 300"
-);
+     LEFT JOIN users agentUser ON agentUser.userID = a.agentID
+     LEFT JOIN agent_inquiry_assignments ia ON ia.inquiryID = t.inquiryID
+     LEFT JOIN users inqAgentUser ON inqAgentUser.userID = ia.agentID";
+if ($role === 'Admin') {
+    $transactions = $conn->query(
+        $transactionsSql . "
+         ORDER BY (t.currentStage IN ('completed', 'cancelled')) ASC, t.updatedAt DESC, t.transactionID DESC
+         LIMIT 300"
+    );
+} else {
+    $transactionsStmt = $conn->prepare(
+        $transactionsSql . "
+         WHERE a.agentID = ? OR ia.agentID = ?
+         ORDER BY (t.currentStage IN ('completed', 'cancelled')) ASC, t.updatedAt DESC, t.transactionID DESC
+         LIMIT 300"
+    );
+    $transactionsStmt->bind_param('ii', $actorId, $actorId);
+    $transactionsStmt->execute();
+    $transactions = $transactionsStmt->get_result();
+}
 $transactionRows = $transactions->fetch_all(MYSQLI_ASSOC);
 $paymentRowsByTransaction = [];
 $eventsByTransaction = [];
@@ -182,7 +294,7 @@ include 'includes/header.php';
 <?php endif; ?>
 
 <div class="alert alert-info small" role="note">
-    Transactions in this pipeline are completed through face-to-face paperwork and agreements. Click <strong>Record next step</strong> on any transaction below to advance milestones or record paperwork and payments.
+    Transactions in this pipeline are completed through face-to-face paperwork and agreements. Record and verify payments before payment confirmation; verified payments must cover the sale price before completion. Click <strong>Record next step</strong> on any transaction below to advance milestones or record paperwork and payments.
 </div>
 
 <?php if ($formSuccess !== ''): ?><div class="alert alert-success" role="status"><?= htmlspecialchars($formSuccess, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
@@ -277,10 +389,10 @@ include 'includes/header.php';
         $currentStage = (string) $transaction['currentStage'];
         $isTxSpotCash = strcasecmp((string)($transaction['paymentMethod'] ?? ''), 'Spot Cash') === 0;
         $nextStages = property_transaction_next_stages($currentStage, $isTxSpotCash ? 'Spot Cash' : null);
-        // Ensure for payment_in_process both stages are available in DOM for dynamic JS switching
+        // Keep both method-dependent choices available so the client-side selector can switch them.
         if ($currentStage === 'payment_in_process') {
-            $allStagesForProcess = ['document_verification', 'payment_confirmation', 'completed', 'cancelled'];
-            $nextStages = array_values(array_unique(array_merge($nextStages, $allStagesForProcess)));
+            $methodDependentStages = ['document_verification', 'payment_confirmation'];
+            $nextStages = array_values(array_unique(array_merge($nextStages, $methodDependentStages)));
         }
         $location = !empty($transaction['municipalityName'])
             ? $transaction['municipalityName'] . ', ' . $transaction['provinceName']
@@ -447,7 +559,7 @@ include 'includes/header.php';
                                         <label class="form-label fw-semibold small mb-1" for="modal-stage-<?= $tId ?>">
                                             Choose next step <span class="text-danger">*</span>
                                         </label>
-                                        <select id="modal-stage-<?= $tId ?>" name="stage" class="form-select form-select-sm fw-semibold stage-dropdown-trigger" data-tid="<?= $tId ?>" required>
+                                        <select id="modal-stage-<?= $tId ?>" name="stage" class="form-select form-select-sm fw-semibold stage-dropdown-trigger" data-tid="<?= $tId ?>" data-payment-in-process="<?= $currentStage === 'payment_in_process' ? '1' : '0' ?>" required>
                                             <option value="">Choose next step</option>
                                             <?php foreach ($nextStages as $idx => $nextStage):
                                                 $isDocVerification = ($nextStage === 'document_verification');
@@ -644,6 +756,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         select.addEventListener('change', function() {
+            const paymentMethodSelect = document.getElementById('modal-payment-method-' + tid);
+            if (
+                this.dataset.paymentInProcess === '1'
+                && this.value === 'payment_confirmation'
+                && paymentMethodSelect
+                && paymentMethodSelect.value.trim().toLowerCase() !== 'spot cash'
+            ) {
+                this.value = 'document_verification';
+            }
             updateModalFields(this.value);
         });
 
@@ -681,7 +802,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     } else {
                         docOpt.style.display = '';
                         docOpt.disabled = false;
-                        if (stageSelect.value === 'payment_confirmation' && (method.includes('Bank') || method.includes('Check'))) {
+                        if (stageSelect.value === 'payment_confirmation') {
                             stageSelect.value = 'document_verification';
                             stageSelect.dispatchEvent(new Event('change'));
                         }

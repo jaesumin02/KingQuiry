@@ -3,10 +3,59 @@
  * Appointment Management & Agent Assignment Helpers
  */
 
+function kq_is_future_appointment_datetime(
+    string $date,
+    string $time,
+    ?DateTimeImmutable $now = null
+): bool {
+    $timeZone = new DateTimeZone('Asia/Manila');
+    $dateTimeString = $date . ' ' . $time;
+    $appointmentAt = DateTimeImmutable::createFromFormat('!Y-m-d H:i', $dateTimeString, $timeZone);
+    $parseErrors = DateTimeImmutable::getLastErrors();
+
+    if (
+        $appointmentAt === false
+        || ($parseErrors !== false && ($parseErrors['warning_count'] > 0 || $parseErrors['error_count'] > 0))
+        || $appointmentAt->format('Y-m-d H:i') !== $dateTimeString
+    ) {
+        return false;
+    }
+
+    $currentTime = $now !== null
+        ? $now->setTimezone($timeZone)
+        : new DateTimeImmutable('now', $timeZone);
+
+    return $appointmentAt > $currentTime;
+}
+
 function ensure_appointment_management_schema(mysqli $conn): void
 {
     static $ensured = false;
     if ($ensured) {
+        return;
+    }
+
+    if (strtolower((string) (getenv('KINGQUIRY_ENV') ?: 'development')) === 'production') {
+        $agentColumnStmt = $conn->prepare(
+            'SELECT COUNT(*) AS columnCount
+             FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = ?
+               AND COLUMN_NAME = ?'
+        );
+        $tableName = 'appointments';
+        $columnName = 'agentID';
+        $agentColumnStmt->bind_param('ss', $tableName, $columnName);
+        $agentColumnStmt->execute();
+        if ((int) ($agentColumnStmt->get_result()->fetch_assoc()['columnCount'] ?? 0) === 0) {
+            throw new RuntimeException('The production appointments table is missing agentID. Apply the documented migration.');
+        }
+
+        $dismissedTable = $conn->query("SHOW TABLES LIKE 'agent_dismissed_appointments'");
+        if ($dismissedTable->num_rows === 0) {
+            throw new RuntimeException('The production database is missing agent_dismissed_appointments. Apply the documented migration.');
+        }
+        $ensured = true;
         return;
     }
 
@@ -54,6 +103,56 @@ function dismiss_appointment_for_agent(mysqli $conn, int $agentId, int $appointm
     }
     $stmt->bind_param('ii', $agentId, $appointmentId);
     return $stmt->execute();
+}
+
+function claim_inquiry_for_agent(mysqli $conn, int $agentId, int $inquiryId): void
+{
+    if ($agentId <= 0 || $inquiryId <= 0) {
+        throw new InvalidArgumentException('Choose a valid inquiry.');
+    }
+
+    $conn->begin_transaction();
+    try {
+        $agentStmt = $conn->prepare(
+            "SELECT userID FROM users
+             WHERE userID = ? AND role IN ('Agent', 'Sales Agent') AND accountStatus = 'Active'
+             LIMIT 1"
+        );
+        $agentStmt->bind_param('i', $agentId);
+        $agentStmt->execute();
+        if (!$agentStmt->get_result()->fetch_assoc()) {
+            throw new InvalidArgumentException('An active sales-agent account is required to claim an inquiry.');
+        }
+
+        $inquiryStmt = $conn->prepare('SELECT inquiryID FROM feedbackinquiries WHERE inquiryID = ? FOR UPDATE');
+        $inquiryStmt->bind_param('i', $inquiryId);
+        $inquiryStmt->execute();
+        if (!$inquiryStmt->get_result()->fetch_assoc()) {
+            throw new InvalidArgumentException('The selected inquiry was not found.');
+        }
+
+        $assignmentStmt = $conn->prepare(
+            'SELECT agentID FROM agent_inquiry_assignments WHERE inquiryID = ? LIMIT 1 FOR UPDATE'
+        );
+        $assignmentStmt->bind_param('i', $inquiryId);
+        $assignmentStmt->execute();
+        $assignment = $assignmentStmt->get_result()->fetch_assoc();
+        if ($assignment && (int) $assignment['agentID'] !== $agentId) {
+            throw new InvalidArgumentException('This inquiry has already been claimed by another agent.');
+        }
+        if (!$assignment) {
+            $claimStmt = $conn->prepare(
+                'INSERT INTO agent_inquiry_assignments (inquiryID, agentID) VALUES (?, ?)'
+            );
+            $claimStmt->bind_param('ii', $inquiryId, $agentId);
+            $claimStmt->execute();
+        }
+
+        $conn->commit();
+    } catch (Throwable $exception) {
+        $conn->rollback();
+        throw $exception;
+    }
 }
 
 function notify_agents_viewing_taken(mysqli $conn, int $appointmentId, int $actingAgentId): void

@@ -4,14 +4,15 @@
  * Rank up to 50 available listings using 40% price proximity, 25% exact category,
  * 20% exact municipality, and 15% area proximity; return the highest-scoring results.
  * The score is deterministic and rule-based, not a trained machine-learning model.
- * Without a client/search profile, return the newest available listings instead.
+ * Without a client/search profile, return newest listings without a match score.
  */
 
 if (!function_exists('record_user_search_preference')) {
     function record_user_search_preference(string $category = '', int $locationId = 0, float $price = 0.0): void
     {
         if (session_status() === PHP_SESSION_NONE) {
-            session_start();
+            require_once __DIR__ . '/auth.php';
+            kq_start_session();
         }
 
         if (!isset($_SESSION['kq_search_history'])) {
@@ -31,6 +32,32 @@ if (!function_exists('record_user_search_preference')) {
                 array_shift($_SESSION['kq_search_history']);
             }
         }
+    }
+}
+
+if (!function_exists('kq_property_similarity_score')) {
+    function kq_property_similarity_score(
+        float $price,
+        float $referencePrice,
+        float $area,
+        float $referenceArea,
+        bool $categoryMatch,
+        bool $locationMatch
+    ): float {
+        $priceProximity = 1.0 - (abs($price - $referencePrice) / max($price, $referencePrice, 1.0));
+        $areaProximity = 1.0 - (abs($area - $referenceArea) / max($area, $referenceArea, 1.0));
+
+        return (0.40 * max(0.0, $priceProximity))
+            + (0.25 * (int) $categoryMatch)
+            + (0.20 * (int) $locationMatch)
+            + (0.15 * max(0.0, $areaProximity));
+    }
+}
+
+if (!function_exists('kq_property_match_percentage')) {
+    function kq_property_match_percentage(float $score): int
+    {
+        return (int) round(min(1.0, max(0.0, $score)) * 100);
     }
 }
 
@@ -112,8 +139,8 @@ if (!function_exists('get_personalized_recommendations')) {
         if ($targetPrice === null && $preferredCategory === '' && $preferredLocationId === 0) {
             $defaultSample = array_slice($candidates, 0, $limit);
             foreach ($defaultSample as &$item) {
-                $item['match_percentage'] = 90;
-                $item['match_reason'] = 'Top-featured Kings Land opportunity';
+                $item['match_percentage'] = null;
+                $item['match_reason'] = 'Recently added property';
             }
             unset($item);
             return $defaultSample;
@@ -128,26 +155,25 @@ if (!function_exists('get_personalized_recommendations')) {
             $price = (float) $prop['price'];
             $area = (float) ($prop['areaSqm'] ?? 500.0);
 
-            // Distance calculations
-            $priceProximity = 1.0 - (abs($price - $refPrice) / max($price, $refPrice, 1.0));
-            $areaProximity = 1.0 - (abs($area - $refArea) / max($area, $refArea, 1.0));
             $categoryMatch = (!empty($preferredCategory) && $prop['propertyType'] === $preferredCategory) ? 1.0 : 0.0;
             $locationMatch = ($preferredLocationId > 0 && (int)$prop['locationID'] === $preferredLocationId) ? 1.0 : 0.0;
 
-            // Weighted composite property similarity score
-            $score = (0.40 * max(0.0, $priceProximity)) +
-                     (0.25 * $categoryMatch) +
-                     (0.20 * $locationMatch) +
-                     (0.15 * max(0.0, $areaProximity));
-
-            // Normalize match percentage (60% to 99%)
-            $matchPct = min(99, max(65, (int) round($score * 100)));
+            $score = kq_property_similarity_score(
+                $price,
+                $refPrice,
+                $area,
+                $refArea,
+                $categoryMatch > 0,
+                $locationMatch > 0
+            );
+            $matchPct = kq_property_match_percentage($score);
             $prop['similarity_score'] = $score;
             $prop['match_percentage'] = $matchPct;
 
             $reasons = [];
             if ($locationMatch > 0) $reasons[] = 'same municipality';
             if ($categoryMatch > 0) $reasons[] = 'same category';
+            $priceProximity = 1.0 - (abs($price - $refPrice) / max($price, $refPrice, 1.0));
             if ($priceProximity > 0.8) $reasons[] = 'similar price range';
 
             $prop['match_reason'] = $reasons !== []

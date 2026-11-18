@@ -1,6 +1,7 @@
 <?php
 include 'config/db.php';
 require_once 'includes/auth.php';
+require_once 'includes/rate_limit.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -22,6 +23,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     if (!has_valid_csrf_token()) {
         $error = 'Your session expired. Refresh the page and try again.';
+    } elseif (($retryAfter = kq_registration_rate_limit(
+        $conn,
+        $email,
+        is_string($_SERVER['REMOTE_ADDR'] ?? null) ? $_SERVER['REMOTE_ADDR'] : ''
+    )) !== null) {
+        $error = 'Too many registration attempts. Please wait ' . (int) ceil($retryAfter / 60) . ' minute(s) and try again.';
     } elseif (strlen($fullname) < 2 || strlen($fullname) > 100 || !preg_match("/^[\p{L}\p{M} .'-]+$/u", $fullname)) {
         $error = 'Enter a valid name using letters and standard punctuation.';
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 100) {

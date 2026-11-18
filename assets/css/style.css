@@ -1508,3 +1508,56 @@ body.kq-auth-body {
     .kq-manual-content { min-height: 0; }
 }
 
+html[data-bs-theme="dark"] .kq-agent-shell .card .text-muted,
+html[data-bs-theme="dark"] .kq-client-shell .card .text-muted {
+    color: #a9bacb !important;
+}
+
+html[data-bs-theme="dark"] .kq-agent-shell .card .page-eyebrow,
+html[data-bs-theme="dark"] .kq-client-shell .card .page-eyebrow {
+    color: #e7c77f !important;
+}
+
+html[data-bs-theme="dark"] .kq-agent-shell .kq-badge-soft,
+html[data-bs-theme="dark"] .kq-client-shell .kq-badge-soft {
+    border-color: #35536b;
+    background: #162838;
+    color: #bfdbfe;
+}
+
+html[data-bs-theme="dark"] .kq-agent-shell .btn-outline-primary,
+html[data-bs-theme="dark"] .kq-client-shell .btn-outline-primary {
+    --bs-btn-color: #bfdbfe;
+    --bs-btn-border-color: #53738b;
+    --bs-btn-hover-color: #ffffff;
+    --bs-btn-hover-bg: #1b3a50;
+    --bs-btn-hover-border-color: #7d9bb2;
+    color: #bfdbfe;
+    border-color: #53738b;
+}
+
+html[data-bs-theme="dark"] .kq-agent-shell .btn-outline-primary:hover,
+html[data-bs-theme="dark"] .kq-client-shell .btn-outline-primary:hover {
+    color: #ffffff;
+    background: #1b3a50;
+    border-color: #7d9bb2;
+}
+
+html[data-bs-theme="dark"] .kq-client-shell .alert-info {
+    border-color: #29475a;
+    background: #142a39;
+    color: #c8ddeb;
+}
+
+html[data-bs-theme="dark"] .kq-client-shell .alert-success {
+    border-color: #28624e;
+    background: #123226;
+    color: #b7e5d0;
+}
+
+html[data-bs-theme="dark"] .kq-client-shell .alert-danger {
+    border-color: #783e46;
+    background: #3a2026;
+    color: #f0c3ca;
+}
+

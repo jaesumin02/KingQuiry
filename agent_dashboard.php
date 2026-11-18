@@ -24,7 +24,9 @@ $statusMessage = isset($_GET['property_added'])
     ? 'The property listing has been published with its pinned location.'
     : (isset($_GET['updated'])
         ? 'Viewing request and client tracking were updated.'
-        : (isset($_GET['dismissed']) ? 'The taken viewing request was removed from your queue.' : ''));
+        : (isset($_GET['dismissed'])
+            ? 'The taken viewing request was removed from your queue.'
+            : (isset($_GET['claimed']) ? 'The inquiry was assigned to your account.' : '')));
 $statusError = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -41,6 +43,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             header('Location: agent_dashboard.php?dismissed=1#appointments');
             exit();
+        }
+    } elseif (isset($_POST['claim_inquiry'])) {
+        $inquiryID = filter_var($_POST['inquiryID'] ?? null, FILTER_VALIDATE_INT);
+        if ($inquiryID === false || $inquiryID <= 0) {
+            $statusError = 'Choose a valid inquiry.';
+        } else {
+            try {
+                claim_inquiry_for_agent($conn, $currentAgentId, (int) $inquiryID);
+                header('Location: agent_dashboard.php?claimed=1#agent-inquiries');
+                exit();
+            } catch (InvalidArgumentException $exception) {
+                $statusError = $exception->getMessage();
+            } catch (mysqli_sql_exception $exception) {
+                error_log('KingQuiry inquiry assignment failed: ' . $exception->getMessage());
+                $statusError = 'The inquiry could not be claimed. Refresh and try again.';
+            }
         }
     } elseif (isset($_POST['update_status'])) {
         $appointmentID = filter_var($_POST['appointmentID'] ?? null, FILTER_VALIDATE_INT);
@@ -137,7 +155,8 @@ $apptStmt = $conn->prepare(
      LEFT JOIN users ag ON a.agentID = ag.userID
      LEFT JOIN property_locations l ON l.locationID = p.locationID
      LEFT JOIN agent_dismissed_appointments ada ON ada.appointmentID = a.appointmentID AND ada.agentID = ?
-     WHERE (ada.appointmentID IS NULL OR a.agentID = ?)
+     WHERE a.agentID = ?
+        OR (a.agentID IS NULL AND a.status = 'Pending' AND ada.appointmentID IS NULL)
      ORDER BY a.appointmentDate DESC, a.appointmentTime DESC, a.appointmentID DESC
      LIMIT 300"
 );
@@ -145,7 +164,20 @@ $apptStmt->bind_param('ii', $currentAgentId, $currentAgentId);
 $apptStmt->execute();
 $appointments = $apptStmt->get_result();
 
-$inquiries = $conn->query("SELECT i.*, p.title, u.fullname as clientName, u.email as clientEmail FROM feedbackinquiries i JOIN properties p ON i.propertyID = p.propertyID JOIN users u ON i.clientID = u.userID ORDER BY i.createdAt DESC, i.inquiryID DESC LIMIT 300");
+$inquiriesStmt = $conn->prepare(
+    'SELECT i.*, p.title, u.fullname AS clientName, u.email AS clientEmail,
+            ia.agentID
+     FROM feedbackinquiries i
+     JOIN properties p ON i.propertyID = p.propertyID
+     JOIN users u ON i.clientID = u.userID
+     LEFT JOIN agent_inquiry_assignments ia ON ia.inquiryID = i.inquiryID
+     WHERE ia.agentID IS NULL OR ia.agentID = ?
+     ORDER BY i.createdAt DESC, i.inquiryID DESC
+     LIMIT 300'
+);
+$inquiriesStmt->bind_param('i', $currentAgentId);
+$inquiriesStmt->execute();
+$inquiries = $inquiriesStmt->get_result();
 
 $statsStmt = $conn->prepare(
     "SELECT
@@ -153,12 +185,16 @@ $statsStmt = $conn->prepare(
         SUM(CASE WHEN a.status = 'Pending' THEN 1 ELSE 0 END) AS pending_appointments,
         SUM(CASE WHEN a.status = 'Approved' THEN 1 ELSE 0 END) AS approved_appointments,
         SUM(CASE WHEN a.status = 'Cancelled' THEN 1 ELSE 0 END) AS cancelled_appointments,
-        (SELECT COUNT(*) FROM feedbackinquiries) AS total_inquiries
+        (SELECT COUNT(*)
+         FROM feedbackinquiries i
+         LEFT JOIN agent_inquiry_assignments ia ON ia.inquiryID = i.inquiryID
+         WHERE ia.agentID IS NULL OR ia.agentID = ?) AS total_inquiries
      FROM appointments a
      LEFT JOIN agent_dismissed_appointments ada ON ada.appointmentID = a.appointmentID AND ada.agentID = ?
-     WHERE (ada.appointmentID IS NULL OR a.agentID = ?)"
+     WHERE a.agentID = ?
+        OR (a.agentID IS NULL AND a.status = 'Pending' AND ada.appointmentID IS NULL)"
 );
-$statsStmt->bind_param('ii', $currentAgentId, $currentAgentId);
+$statsStmt->bind_param('iii', $currentAgentId, $currentAgentId, $currentAgentId);
 $statsStmt->execute();
 $stats = $statsStmt->get_result();
 $statsRow = $stats && $stats->num_rows > 0 ? $stats->fetch_assoc() : ['total_appointments' => 0, 'pending_appointments' => 0, 'approved_appointments' => 0, 'cancelled_appointments' => 0, 'total_inquiries' => 0];
@@ -270,6 +306,7 @@ include 'includes/header.php';
                 <a href="#agent-inquiries">Inquiries</a>
                 <a href="#add-property">Publish a listing</a>
                 <a href="transaction_tracking.php">Transaction tracking</a>
+                <a href="admin_chat.php">💬 Customer chat inbox</a>
             </nav>
         </aside>
         <div class="kq-portal-main">
@@ -280,7 +317,10 @@ include 'includes/header.php';
             <h1 class="page-title h2 mb-1">Agent dashboard</h1>
             <p class="text-muted mb-0">Welcome, <?= htmlspecialchars($_SESSION['user']['fullname'], ENT_QUOTES, 'UTF-8') ?>. Manage viewing requests and share transaction updates.</p>
         </div>
-        <a href="transaction_tracking.php" class="btn btn-primary flex-shrink-0">Transaction tracking</a>
+        <div class="d-flex gap-2 flex-wrap">
+            <a href="admin_chat.php" class="btn btn-outline-light flex-shrink-0">💬 Customer chat</a>
+            <a href="transaction_tracking.php" class="btn btn-primary flex-shrink-0">Transaction tracking</a>
+        </div>
     </header>
 
 <?php if ($statusMessage !== ''): ?><div class="alert alert-success" role="status"><?= htmlspecialchars($statusMessage, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
@@ -342,6 +382,7 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
                     <span class="badge bg-danger rounded-pill px-2 py-1 small"><?= $agentUnreadCount ?> unread</span>
                     <form method="POST" action="notifications_action.php" class="m-0">
                         <input type="hidden" name="action" value="mark_all_read">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                         <input type="hidden" name="redirect" value="agent_dashboard.php#viewing-alerts">
                         <button type="submit" class="btn btn-sm btn-outline-primary fw-semibold">Mark all as read</button>
                     </form>
@@ -354,37 +395,49 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
             <?php foreach ($agentNotifs as $aNotif):
                 $notifId = (int) $aNotif['notificationID'];
                 $isUnread = !(bool) $aNotif['isRead'];
-                $link = !empty($aNotif['link']) ? $aNotif['link'] : '#appointments';
+                $link = !empty($aNotif['link']) ? $aNotif['link'] : 'agent_dashboard.php#appointments';
                 $isTakenNotif = ($aNotif['type'] === 'viewing_taken' || stripos($aNotif['title'], 'taken') !== false);
             ?>
                 <div class="list-group-item p-3 d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 position-relative <?= $isUnread ? 'bg-primary-subtle border-start border-4 border-primary' : 'bg-white' ?>" id="agent-notif-<?= $notifId ?>">
                     <!-- Top-right X button to dismiss notification -->
-                    <button type="button" class="btn-close position-absolute top-0 end-0 m-2 kq-dismiss-notif-btn" data-notif-id="<?= $notifId ?>" title="Dismiss alert" aria-label="Dismiss"></button>
+                    <button type="button" class="btn-close position-absolute top-0 end-0 m-2 kq-dismiss-notif-btn" data-notif-id="<?= $notifId ?>" data-csrf-token="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>" title="Dismiss alert" aria-label="Dismiss"></button>
                     
-                    <a href="notifications_action.php?action=read_and_go&id=<?= $notifId ?>&to=<?= urlencode($link) ?>" class="text-decoration-none text-dark d-flex align-items-start gap-3 flex-grow-1 pe-4">
-                        <div class="rounded-circle p-2 d-flex align-items-center justify-content-center <?= $isTakenNotif ? 'bg-secondary text-white' : ($isUnread ? 'bg-primary text-white' : 'bg-light text-secondary border') ?>" style="width: 38px; height: 38px; flex-shrink: 0;">
+                    <form method="POST" action="notifications_action.php" class="m-0 flex-grow-1 pe-4">
+                        <input type="hidden" name="action" value="read_and_go">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                        <input type="hidden" name="id" value="<?= $notifId ?>">
+                        <input type="hidden" name="to" value="<?= htmlspecialchars($link, ENT_QUOTES, 'UTF-8') ?>">
+                        <button type="submit" class="btn p-0 border-0 bg-transparent text-start text-dark d-flex align-items-start gap-3 w-100">
+                        <span class="rounded-circle p-2 d-flex align-items-center justify-content-center <?= $isTakenNotif ? 'bg-secondary text-white' : ($isUnread ? 'bg-primary text-white' : 'bg-light text-secondary border') ?>" style="width: 38px; height: 38px; flex-shrink: 0;">
                             <?php if ($isTakenNotif): ?>
                                 <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
                             <?php else: ?>
                                 <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
                             <?php endif; ?>
-                        </div>
-                        <div>
-                            <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
+                        </span>
+                        <span>
+                            <span class="d-flex align-items-center gap-2 mb-1 flex-wrap">
                                 <span class="fw-bold <?= $isUnread ? 'text-primary' : 'text-dark' ?>" style="font-size: 0.95rem;"><?= htmlspecialchars($aNotif['title'], ENT_QUOTES, 'UTF-8') ?></span>
                                 <?php if ($isTakenNotif): ?>
                                     <span class="badge bg-secondary small" style="font-size: 0.65rem;">Taken by another agent</span>
                                 <?php elseif ($isUnread): ?>
                                     <span class="badge bg-danger small" style="font-size: 0.65rem;">New viewing request</span>
                                 <?php endif; ?>
-                            </div>
-                            <div class="small text-dark fw-medium mb-1"><?= htmlspecialchars($aNotif['message'], ENT_QUOTES, 'UTF-8') ?></div>
+                            </span>
+                            <span class="d-block small text-dark fw-medium mb-1"><?= htmlspecialchars($aNotif['message'], ENT_QUOTES, 'UTF-8') ?></span>
                             <time class="small text-muted" datetime="<?= htmlspecialchars(date('c', strtotime($aNotif['createdAt'])), ENT_QUOTES, 'UTF-8') ?>" style="font-size: 0.75rem;">
                                 <?= htmlspecialchars(date('M j, Y g:i A', strtotime($aNotif['createdAt'])), ENT_QUOTES, 'UTF-8') ?>
                             </time>
-                        </div>
-                    </a>
-                    <a href="notifications_action.php?action=read_and_go&id=<?= $notifId ?>&to=<?= urlencode($link) ?>" class="btn btn-sm btn-outline-primary align-self-start align-self-sm-center text-nowrap mt-2 mt-sm-0">View queue &rarr;</a>
+                        </span>
+                        </button>
+                    </form>
+                    <form method="POST" action="notifications_action.php" class="m-0">
+                        <input type="hidden" name="action" value="read_and_go">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                        <input type="hidden" name="id" value="<?= $notifId ?>">
+                        <input type="hidden" name="to" value="<?= htmlspecialchars($link, ENT_QUOTES, 'UTF-8') ?>">
+                        <button type="submit" class="btn btn-sm btn-outline-primary align-self-start align-self-sm-center text-nowrap mt-2 mt-sm-0">View queue &rarr;</button>
+                    </form>
                 </div>
             <?php endforeach; ?>
         </div>
@@ -489,7 +542,7 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
     </div>
     <div class="table-responsive">
         <table class="table align-middle">
-            <thead><tr><th>Client</th><th>Property</th><th>Message</th><th>Received</th><th>Status</th></tr></thead>
+            <thead><tr><th>Client</th><th>Property</th><th>Message</th><th>Received</th><th>Status</th><th>Assignment</th></tr></thead>
             <tbody>
             <?php if ($inquiries && $inquiries->num_rows > 0): ?>
                 <?php while ($inquiry = $inquiries->fetch_assoc()): ?>
@@ -499,10 +552,22 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
                         <td class="text-break"><?= htmlspecialchars($inquiry['message'], ENT_QUOTES, 'UTF-8') ?></td>
                         <td><?= htmlspecialchars($inquiry['createdAt'], ENT_QUOTES, 'UTF-8') ?></td>
                         <td><span class="badge rounded-pill text-bg-light"><?= htmlspecialchars($inquiry['status'], ENT_QUOTES, 'UTF-8') ?></span></td>
+                        <td>
+                            <?php if ((int) ($inquiry['agentID'] ?? 0) === $currentAgentId): ?>
+                                <span class="badge text-bg-success">Assigned to you</span>
+                            <?php else: ?>
+                                <form method="POST" class="m-0">
+                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                                    <input type="hidden" name="claim_inquiry" value="1">
+                                    <input type="hidden" name="inquiryID" value="<?= (int) $inquiry['inquiryID'] ?>">
+                                    <button type="submit" class="btn btn-sm btn-outline-primary">Claim inquiry</button>
+                                </form>
+                            <?php endif; ?>
+                        </td>
                     </tr>
                 <?php endwhile; ?>
             <?php else: ?>
-                <tr><td colspan="5" class="text-center text-muted py-4">No customer inquiries yet.</td></tr>
+                <tr><td colspan="6" class="text-center text-muted py-4">No unassigned or assigned inquiries.</td></tr>
             <?php endif; ?>
             </tbody>
         </table>
@@ -750,21 +815,31 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         const notifId = notifCloseBtn.getAttribute('data-notif-id');
         const notifCard = document.getElementById('agent-notif-' + notifId) || notifCloseBtn.closest('.list-group-item');
-        if (notifCard) {
-            notifCard.style.transition = 'all 0.35s ease';
-            notifCard.style.opacity = '0';
-            notifCard.style.transform = 'translateY(-15px)';
-            setTimeout(() => notifCard.remove(), 350);
-        }
 
         const formData = new FormData();
         formData.append('action', 'dismiss_notif');
         formData.append('id', notifId);
+        formData.append('csrf_token', notifCloseBtn.getAttribute('data-csrf-token'));
+        notifCloseBtn.disabled = true;
         fetch('notifications_action.php', {
             method: 'POST',
             body: formData,
             headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        }).catch(err => console.error(err));
+        }).then(response => {
+            if (!response.ok) throw new Error('Notification update failed.');
+            return response.json();
+        }).then(data => {
+            if (!data.success) throw new Error(data.error || 'Notification update failed.');
+            if (notifCard) {
+                notifCard.style.transition = 'all 0.35s ease';
+                notifCard.style.opacity = '0';
+                notifCard.style.transform = 'translateY(-15px)';
+                setTimeout(() => notifCard.remove(), 350);
+            }
+        }).catch(() => {
+            notifCloseBtn.disabled = false;
+            window.alert('The notification could not be dismissed. Please try again.');
+        });
     });
 });
 </script>

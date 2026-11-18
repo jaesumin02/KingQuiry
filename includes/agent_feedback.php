@@ -1,6 +1,10 @@
 <?php
 function ensure_agent_reviews_table(mysqli $conn): void
 {
+    if (strtolower((string) (getenv('KINGQUIRY_ENV') ?: 'development')) === 'production') {
+        return;
+    }
+
     $conn->query(
         "CREATE TABLE IF NOT EXISTS agent_reviews (
             reviewID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

@@ -80,7 +80,6 @@ if ($error === '') {
             $updateStmt->bind_param('si', $newHash, $userID);
             if ($updateStmt->execute()) {
                 if (isset($_SESSION['user'])) {
-                    $_SESSION['user']['passwordHash'] = $newHash;
                 }
                 $successMsg = 'Password updated successfully!';
                 if ($isAjax) {

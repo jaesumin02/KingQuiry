@@ -4,6 +4,7 @@ require_once 'includes/auth.php';
 require_once 'includes/location_directory.php';
 require_once 'includes/transaction_tracking.php';
 require_once 'includes/agent_feedback.php';
+require_once 'includes/rate_limit.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -11,6 +12,65 @@ if (session_status() === PHP_SESSION_NONE) {
 if (normalized_user_role($_SESSION['user'] ?? null) !== 'Client') {
     header('Location: client_login.php');
     exit();
+}
+
+$paymentSubmissionError = '';
+$clientID = (int) $_SESSION['user']['userID'];
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_client_payment'])) {
+    // ALGORITHM: Validate client session/CSRF/replay token, throttle submissions, then atomically record an offline payment report for staff review.
+    $transactionId = filter_var($_POST['transactionID'] ?? null, FILTER_VALIDATE_INT);
+    $paymentAmount = filter_var($_POST['paymentAmount'] ?? null, FILTER_VALIDATE_FLOAT);
+    $paymentMethod = is_string($_POST['paymentMethod'] ?? null) ? trim($_POST['paymentMethod']) : '';
+    $referenceNumber = is_string($_POST['referenceNumber'] ?? null) ? trim($_POST['referenceNumber']) : '';
+    $submittedToken = $_POST['payment_submission_token'] ?? null;
+    $storedToken = $transactionId !== false
+        ? ($_SESSION['client_payment_tokens'][$transactionId] ?? null)
+        : null;
+    $hasValidPaymentToken = is_string($submittedToken)
+        && is_string($storedToken)
+        && hash_equals($storedToken, $submittedToken);
+
+    if (!has_valid_csrf_token()) {
+        $paymentSubmissionError = 'Your session expired. Refresh the page and try again.';
+    } elseif ($transactionId === false || $transactionId <= 0) {
+        $paymentSubmissionError = 'Choose a valid transaction.';
+    } elseif (!$hasValidPaymentToken) {
+        $paymentSubmissionError = 'This payment form was already submitted or expired. Refresh the dashboard and try again.';
+    } else {
+        try {
+            $clientLimit = kq_rate_limit_consume($conn, 'client-payment', (string) $clientID, 10, 600);
+            $ipAddress = is_string($_SERVER['REMOTE_ADDR'] ?? null) && $_SERVER['REMOTE_ADDR'] !== ''
+                ? $_SERVER['REMOTE_ADDR']
+                : 'unknown';
+            $ipLimit = kq_rate_limit_consume($conn, 'client-payment-ip', $ipAddress, 30, 600);
+            if (!$clientLimit['allowed'] || !$ipLimit['allowed']) {
+                $retryAfter = max(1, $clientLimit['retry_after'], $ipLimit['retry_after']);
+                $paymentSubmissionError = 'Too many payment submissions. Please wait '
+                    . (int) ceil($retryAfter / 60)
+                    . ' minute(s) before trying again.';
+            } elseif ($paymentAmount === false) {
+                $paymentSubmissionError = 'Enter a valid payment amount.';
+            } else {
+                submit_property_transaction_payment(
+                    $conn,
+                    (int) $transactionId,
+                    $clientID,
+                    (float) $paymentAmount,
+                    $paymentMethod,
+                    $referenceNumber
+                );
+                unset($_SESSION['client_payment_tokens'][$transactionId]);
+                $_SESSION['flash_payment_success'] = 'Your payment record was submitted for staff verification.';
+                header('Location: client_dashboard.php#transaction-tracking');
+                exit();
+            }
+        } catch (InvalidArgumentException $exception) {
+            $paymentSubmissionError = $exception->getMessage();
+        } catch (Throwable $exception) {
+            error_log('KingQuiry client payment submission failed: ' . $exception->getMessage());
+            $paymentSubmissionError = 'We could not submit your payment record. Please try again.';
+        }
+    }
 }
 
 ensure_agent_reviews_table($conn);
@@ -153,7 +213,6 @@ include 'includes/header.php';
     }
 </style>
 <?php
-$clientID = (int) $_SESSION['user']['userID'];
 $appointmentStmt = $conn->prepare(
     "SELECT a.*, p.title, p.location, p.barangay, l.municipalityName, l.provinceName
      FROM appointments a
@@ -181,23 +240,47 @@ $trackingStmt = $conn->prepare(
             p.title, a.appointmentDate, a.appointmentTime,
             l.municipalityName, l.provinceName, p.location,
             ar.reviewID, ar.rating AS clientRating,
-            COALESCE(agent.fullname, (
-                SELECT u2.fullname FROM property_transaction_events e
-                JOIN users u2 ON u2.userID = e.changedBy
-                WHERE e.transactionID = t.transactionID AND e.changedBy IS NOT NULL
-                ORDER BY e.createdAt DESC, e.eventID DESC LIMIT 1
-            ), 'Assigned Agent') AS agentName,
-            COALESCE(ar.agentID, (
-                SELECT e.changedBy FROM property_transaction_events e
-                WHERE e.transactionID = t.transactionID AND e.changedBy IS NOT NULL
-                ORDER BY e.createdAt DESC, e.eventID DESC LIMIT 1
-            )) AS agentID
+            COALESCE(
+                apptAgent.fullname,
+                inqAgent.fullname,
+                reviewAgent.fullname,
+                (
+                    SELECT u2.fullname FROM property_transaction_events e
+                    JOIN users u2 ON u2.userID = e.changedBy
+                    WHERE e.transactionID = t.transactionID AND e.changedBy IS NOT NULL
+                    ORDER BY e.createdAt DESC, e.eventID DESC LIMIT 1
+                ),
+                'Kings Land Sales Representative'
+            ) AS agentName,
+            COALESCE(
+                apptAgent.phone,
+                inqAgent.phone,
+                '0965 803 0933'
+            ) AS agentPhone,
+            COALESCE(
+                apptAgent.email,
+                inqAgent.email,
+                'contact@kingsland.ph'
+            ) AS agentEmail,
+            COALESCE(
+                a.agentID,
+                ia.agentID,
+                ar.agentID,
+                (
+                    SELECT e.changedBy FROM property_transaction_events e
+                    WHERE e.transactionID = t.transactionID AND e.changedBy IS NOT NULL
+                    ORDER BY e.createdAt DESC, e.eventID DESC LIMIT 1
+                )
+            ) AS agentID
      FROM property_transactions t
      JOIN properties p ON p.propertyID = t.propertyID
      LEFT JOIN appointments a ON a.appointmentID = t.appointmentID
+     LEFT JOIN users apptAgent ON apptAgent.userID = a.agentID
+     LEFT JOIN agent_inquiry_assignments ia ON ia.inquiryID = t.inquiryID
+     LEFT JOIN users inqAgent ON inqAgent.userID = ia.agentID
      LEFT JOIN property_locations l ON l.locationID = p.locationID
      LEFT JOIN agent_reviews ar ON ar.transactionID = t.transactionID
-     LEFT JOIN users agent ON agent.userID = ar.agentID
+     LEFT JOIN users reviewAgent ON reviewAgent.userID = ar.agentID
      WHERE t.clientID = ?
      ORDER BY t.updatedAt DESC, t.transactionID DESC
      LIMIT 100"
@@ -312,6 +395,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_agent_review']
     }
 }
 
+$paymentSubmissionSuccess = isset($_SESSION['flash_payment_success'])
+    ? (string) $_SESSION['flash_payment_success']
+    : '';
+unset($_SESSION['flash_payment_success']);
+
 $completedReviewRows = $conn->query(
     "SELECT t.transactionID, t.updatedAt, p.title, p.location, l.municipalityName, l.provinceName,
             ar.reviewID, ar.rating, ar.comment, ar.createdAt AS reviewDate,
@@ -378,6 +466,12 @@ $progressStages = [
 <?php if (!empty($reviewMessage)): ?>
     <div class="alert alert-danger" role="alert"><?= htmlspecialchars($reviewMessage, ENT_QUOTES, 'UTF-8') ?></div>
 <?php endif; ?>
+<?php if ($paymentSubmissionError !== ''): ?>
+    <div class="alert alert-danger" role="alert"><?= htmlspecialchars($paymentSubmissionError, ENT_QUOTES, 'UTF-8') ?></div>
+<?php endif; ?>
+<?php if ($paymentSubmissionSuccess !== ''): ?>
+    <div class="alert alert-success" role="status"><?= htmlspecialchars($paymentSubmissionSuccess, ENT_QUOTES, 'UTF-8') ?></div>
+<?php endif; ?>
 <?php if (isset($_GET['review_submitted'])): ?>
     <div class="alert alert-success" role="status">Thank you for your feedback. Your agent rating has been recorded.</div>
 <?php endif; ?>
@@ -396,6 +490,23 @@ $progressStages = [
             <?php foreach ($trackingRows as $tracking):
                 $transactionId = (int) $tracking['transactionID'];
                 $stage = (string) $tracking['currentStage'];
+                $canSubmitPayment = in_array($stage, ['payment_in_process', 'document_verification', 'payment_confirmation'], true);
+                $paymentSubmissionToken = '';
+                if ($canSubmitPayment) {
+                    if (!isset($_SESSION['client_payment_tokens']) || !is_array($_SESSION['client_payment_tokens'])) {
+                        $_SESSION['client_payment_tokens'] = [];
+                    }
+                    if (!isset($_SESSION['client_payment_tokens'][$transactionId])) {
+                        if (count($_SESSION['client_payment_tokens']) >= 100) {
+                            $oldestTransactionId = array_key_first($_SESSION['client_payment_tokens']);
+                            if ($oldestTransactionId !== null) {
+                                unset($_SESSION['client_payment_tokens'][$oldestTransactionId]);
+                            }
+                        }
+                        $_SESSION['client_payment_tokens'][$transactionId] = bin2hex(random_bytes(32));
+                    }
+                    $paymentSubmissionToken = $_SESSION['client_payment_tokens'][$transactionId];
+                }
                 $isSpotCash = strcasecmp((string)($tracking['paymentMethod'] ?? ''), 'Spot Cash') === 0;
                 $txProgressStages = $progressStages;
                 if ($isSpotCash) {
@@ -484,6 +595,7 @@ $progressStages = [
                                         <?php if (!empty($tracking['appointmentDate'])): ?>
                                             <span>· <i class="bi bi-calendar-event me-1"></i>Viewing: <?= htmlspecialchars($tracking['appointmentDate'] . ' at ' . substr($tracking['appointmentTime'], 0, 5), ENT_QUOTES, 'UTF-8') ?></span>
                                         <?php endif; ?>
+                                        <span>· <i class="bi bi-person-badge me-1"></i>Agent: <strong><?= htmlspecialchars($tracking['agentName'], ENT_QUOTES, 'UTF-8') ?></strong></span>
                                     </div>
                                     <?php if ($stage === 'completed' && $tracking['salePrice'] !== null): ?>
                                         <div class="small fw-semibold text-success mt-1">
@@ -620,6 +732,33 @@ $progressStages = [
                                     <?php endif; ?>
                                 <?php endif; ?>
 
+                                <!-- Dedicated Assigned Sales Agent Card -->
+                                <div class="card p-3 mb-3 border rounded-3 bg-light">
+                                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                        <div class="d-flex align-items-center gap-3">
+                                            <div class="rounded-circle d-flex align-items-center justify-content-center bg-primary-subtle text-primary fw-bold fs-5" style="width: 44px; height: 44px;">
+                                                👨‍💼
+                                            </div>
+                                            <div>
+                                                <span class="badge bg-primary text-white mb-1" style="font-size: 0.68rem;">Assigned Sales Representative</span>
+                                                <h6 class="fw-bold mb-0 text-dark"><?= htmlspecialchars($tracking['agentName'], ENT_QUOTES, 'UTF-8') ?></h6>
+                                                <div class="small text-muted" style="font-size: 0.78rem;">
+                                                    <span><i class="bi bi-envelope me-1"></i><?= htmlspecialchars($tracking['agentEmail'], ENT_QUOTES, 'UTF-8') ?></span>
+                                                    <span class="ms-2"><i class="bi bi-telephone me-1"></i><?= htmlspecialchars($tracking['agentPhone'], ENT_QUOTES, 'UTF-8') ?></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="d-flex gap-2">
+                                            <a href="tel:<?= htmlspecialchars($tracking['agentPhone'], ENT_QUOTES, 'UTF-8') ?>" class="btn btn-sm btn-outline-success d-inline-flex align-items-center gap-1 shadow-sm">
+                                                <span>📞 Call / SMS</span>
+                                            </a>
+                                            <button type="button" class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 shadow-sm" onclick="if (typeof openChatWidget === 'function') openChatWidget(); else document.getElementById('chat-toggle')?.click();">
+                                                <span>💬 Message</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <!-- 1. Transaction Pipeline Stepper -->
                                 <?php if ($stage !== 'cancelled'): ?>
                                     <div class="border rounded-3 p-3 bg-light mb-3">
@@ -709,6 +848,35 @@ $progressStages = [
                                             <i class="bi bi-receipt fs-4 d-block mb-1 text-secondary"></i>
                                             No payment records yet. Verified paperwork and payments will appear here.
                                         </div>
+                                    <?php endif; ?>
+                                    <?php if ($canSubmitPayment): ?>
+                                        <form method="POST" class="mt-3 p-3 border rounded-3 bg-light">
+                                            <h5 class="h6 fw-bold mb-2">Report a payment made</h5>
+                                            <p class="small text-muted mb-3">This records an offline payment for staff verification; it does not transfer money or verify a bank transaction.</p>
+                                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                                            <input type="hidden" name="transactionID" value="<?= $transactionId ?>">
+                                            <input type="hidden" name="payment_submission_token" value="<?= htmlspecialchars($paymentSubmissionToken, ENT_QUOTES, 'UTF-8') ?>">
+                                            <div class="row g-2">
+                                                <div class="col-sm-6">
+                                                    <label class="form-label small fw-semibold mb-1" for="client-payment-amount-<?= $transactionId ?>">Amount paid (₱)</label>
+                                                    <input id="client-payment-amount-<?= $transactionId ?>" type="number" name="paymentAmount" class="form-control form-control-sm" min="0.01" max="9999999999.99" step="0.01" required>
+                                                </div>
+                                                <div class="col-sm-6">
+                                                    <label class="form-label small fw-semibold mb-1" for="client-payment-method-<?= $transactionId ?>">Payment method</label>
+                                                    <select id="client-payment-method-<?= $transactionId ?>" name="paymentMethod" class="form-select form-select-sm" required>
+                                                        <option value="">Choose method</option>
+                                                        <?php foreach (property_client_payment_methods() as $clientPaymentMethod): ?>
+                                                            <option value="<?= htmlspecialchars($clientPaymentMethod, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($clientPaymentMethod, ENT_QUOTES, 'UTF-8') ?></option>
+                                                        <?php endforeach; ?>
+                                                    </select>
+                                                </div>
+                                                <div class="col-12">
+                                                    <label class="form-label small fw-semibold mb-1" for="client-payment-reference-<?= $transactionId ?>">Reference / receipt number (optional)</label>
+                                                    <input id="client-payment-reference-<?= $transactionId ?>" type="text" name="referenceNumber" class="form-control form-control-sm" maxlength="100">
+                                                </div>
+                                            </div>
+                                            <button type="submit" name="submit_client_payment" value="1" class="btn btn-sm btn-primary mt-3">Submit for verification</button>
+                                        </form>
                                     <?php endif; ?>
                                 </div>
 

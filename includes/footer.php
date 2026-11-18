@@ -170,7 +170,8 @@ if (in_array($currentPage, $chatWidgetPages, true) && ($currentRole === null || 
                     <?php if ($modalUnreadCount > 0): ?>
                         <form method="POST" action="notifications_action.php" class="m-0">
                             <input type="hidden" name="action" value="mark_all_read">
-                            <input type="hidden" name="redirect" value="<?= htmlspecialchars($_SERVER['REQUEST_URI'] ?? 'index.php', ENT_QUOTES, 'UTF-8') ?>">
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                            <input type="hidden" name="redirect" value="<?= htmlspecialchars(basename($_SERVER['SCRIPT_NAME'] ?? 'index.php'), ENT_QUOTES, 'UTF-8') ?>">
                             <button type="submit" class="btn btn-sm btn-outline-primary fw-semibold" style="font-size: 0.78rem;">Mark all as read</button>
                         </form>
                     <?php else: ?>
@@ -184,28 +185,34 @@ if (in_array($currentPage, $chatWidgetPages, true) && ($currentRole === null || 
                         <div class="list-group list-group-flush">
                             <?php foreach ($modalNotifications as $notifItem):
                                 $isUnread = !(bool) $notifItem['isRead'];
-                                $itemLink = !empty($notifItem['link']) ? $notifItem['link'] : '#';
+                                $itemLink = !empty($notifItem['link']) ? $notifItem['link'] : 'index.php';
                             ?>
-                                <a href="notifications_action.php?action=read_and_go&id=<?= (int)$notifItem['notificationID'] ?>&to=<?= urlencode($itemLink) ?>" class="list-group-item list-group-item-action p-3 d-flex align-items-start gap-3 border-bottom <?= $isUnread ? 'bg-primary-subtle border-start border-4 border-primary' : 'bg-white' ?>" style="text-decoration: none;">
-                                    <div class="rounded-circle p-2 d-flex align-items-center justify-content-center flex-shrink-0 <?= $isUnread ? 'bg-primary text-white shadow-sm' : 'bg-light text-secondary border' ?>" style="width: 38px; height: 38px;">
+                                <form method="POST" action="notifications_action.php" class="m-0">
+                                    <input type="hidden" name="action" value="read_and_go">
+                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                                    <input type="hidden" name="id" value="<?= (int) $notifItem['notificationID'] ?>">
+                                    <input type="hidden" name="to" value="<?= htmlspecialchars($itemLink, ENT_QUOTES, 'UTF-8') ?>">
+                                    <button type="submit" class="list-group-item list-group-item-action p-3 d-flex align-items-start gap-3 border-bottom <?= $isUnread ? 'bg-primary-subtle border-start border-4 border-primary' : 'bg-white' ?>" style="text-decoration: none; width: 100%; text-align: left;">
+                                    <span class="rounded-circle p-2 d-flex align-items-center justify-content-center flex-shrink-0 <?= $isUnread ? 'bg-primary text-white shadow-sm' : 'bg-light text-secondary border' ?>" style="width: 38px; height: 38px;">
                                         <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
-                                    </div>
-                                    <div class="flex-grow-1">
-                                        <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
+                                    </span>
+                                    <span class="flex-grow-1">
+                                        <span class="d-flex align-items-center justify-content-between gap-2 mb-1">
                                             <span class="fw-bold <?= $isUnread ? 'text-primary' : 'text-dark' ?>" style="font-size: 0.92rem;"><?= htmlspecialchars($notifItem['title'], ENT_QUOTES, 'UTF-8') ?></span>
                                             <?php if ($isUnread): ?>
                                                 <span class="badge bg-primary small" style="font-size: 0.65rem;">New</span>
                                             <?php endif; ?>
-                                        </div>
-                                        <p class="mb-1 text-dark fw-normal" style="font-size: 0.82rem; line-height: 1.4;"><?= htmlspecialchars($notifItem['message'], ENT_QUOTES, 'UTF-8') ?></p>
-                                        <div class="d-flex align-items-center justify-content-between gap-2 mt-2">
+                                        </span>
+                                        <span class="d-block mb-1 text-dark fw-normal" style="font-size: 0.82rem; line-height: 1.4;"><?= htmlspecialchars($notifItem['message'], ENT_QUOTES, 'UTF-8') ?></span>
+                                        <span class="d-flex align-items-center justify-content-between gap-2 mt-2">
                                             <time class="small text-muted" datetime="<?= htmlspecialchars(date('c', strtotime($notifItem['createdAt'])), ENT_QUOTES, 'UTF-8') ?>" style="font-size: 0.73rem;">
                                                 <?= htmlspecialchars(date('M j, Y g:i A', strtotime($notifItem['createdAt'])), ENT_QUOTES, 'UTF-8') ?>
                                             </time>
                                             <span class="text-primary small fw-semibold" style="font-size: 0.75rem;">View details &rarr;</span>
-                                        </div>
-                                    </div>
-                                </a>
+                                        </span>
+                                    </span>
+                                    </button>
+                                </form>
                             <?php endforeach; ?>
                         </div>
                     <?php else: ?>
@@ -239,7 +246,10 @@ if (in_array($currentPage, $chatWidgetPages, true) && ($currentRole === null || 
                     <p class="text-muted small mb-4">Are you sure you want to log out of your account?</p>
                     <div class="d-flex gap-2">
                         <button type="button" class="btn btn-outline-secondary w-50 fw-semibold" data-bs-dismiss="modal">Cancel</button>
-                        <a href="logout.php" class="btn btn-danger w-50 fw-semibold">Yes, Log Out</a>
+                        <form method="POST" action="logout.php" class="w-50 m-0">
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                            <button type="submit" class="btn btn-danger w-100 fw-semibold">Yes, Log Out</button>
+                        </form>
                     </div>
                 </div>
             </div>

@@ -6,6 +6,8 @@ require_once 'includes/property_images.php';
 require_once 'includes/notifications.php';
 require_once 'includes/transaction_tracking.php';
 require_once 'includes/ml_recommender.php';
+require_once 'includes/appointment_management.php';
+require_once 'includes/rate_limit.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -24,6 +26,7 @@ $stmt->execute();
 $result = $stmt->get_result();
 
 if ($result->num_rows === 0) {
+    http_response_code(404);
     include 'includes/header.php';
     echo "<div class='alert alert-danger'>Property not found or invalid ID.</div>";
     include 'includes/footer.php';
@@ -32,8 +35,9 @@ if ($result->num_rows === 0) {
 
 $property = $result->fetch_assoc();
 if ((int) ($property['isDeleted'] ?? 0) === 1) {
+    http_response_code(404);
     include 'includes/header.php';
-    echo "<div class='alert alert-warning'>This property listing is currently archived or in the trash bin.</div>";
+    echo "<div class='alert alert-warning'>This property is not available.</div>";
     include 'includes/footer.php';
     exit();
 }
@@ -46,14 +50,23 @@ $categoryLabels = [
     'Commercial'  => 'Commercial Property',
 ];
 $propertyTitle = (string) $property['title'];
-$isSampleListing = str_starts_with($propertyTitle, '[SAMPLE] ');
+$isSampleListing = str_starts_with($propertyTitle, '[SAMPLE]');
 if ($isSampleListing) {
+    http_response_code(404);
     include 'includes/header.php';
-    echo "<div class='alert alert-warning'>This demo listing is not published and is unavailable for viewing or inquiries.</div>";
+    echo "<div class='alert alert-warning'>This property is not available.</div>";
     include 'includes/footer.php';
     exit();
 }
-$displayTitle = $isSampleListing ? substr($propertyTitle, 9) : $propertyTitle;
+$displayTitle = $propertyTitle;
+
+if (!in_array((string) $property['status'], ['Available', 'Sold'], true)) {
+    http_response_code(404);
+    include 'includes/header.php';
+    echo "<div class='alert alert-warning'>This property is not available.</div>";
+    include 'includes/footer.php';
+    exit();
+}
 
 $propertyMunicipality = (string) ($property['municipalityName'] ?? '');
 if ($propertyMunicipality === '' && !empty($property['location'])) {
@@ -89,135 +102,269 @@ if (!empty($_SESSION['flash_success'])) {
 $currentUserId = isset($_SESSION['user']['userID']) ? (int) $_SESSION['user']['userID'] : null;
 record_user_search_preference((string) $property['propertyType'], (int) ($property['locationID'] ?? 0), (float) $property['price']);
 $mlRecommendations = get_personalized_recommendations($conn, $currentUserId, $propertyID, 3);
+$businessTimeZone = new DateTimeZone('Asia/Manila');
+$businessNow = new DateTimeImmutable('now', $businessTimeZone);
+
+$submissionAction = isset($_POST['book_appointment'])
+    ? 'appointment'
+    : (isset($_POST['send_inquiry']) ? 'inquiry' : null);
+if (!isset($_SESSION['property_action_tokens']) || !is_array($_SESSION['property_action_tokens'])) {
+    $_SESSION['property_action_tokens'] = [];
+}
+if (!isset($_SESSION['property_action_tokens'][$propertyID])) {
+    if (count($_SESSION['property_action_tokens']) >= 10) {
+        $oldestPropertyId = array_key_first($_SESSION['property_action_tokens']);
+        if ($oldestPropertyId !== null) {
+            unset($_SESSION['property_action_tokens'][$oldestPropertyId]);
+        }
+    }
+    $_SESSION['property_action_tokens'][$propertyID] = [];
+}
+foreach (['appointment', 'inquiry'] as $actionTokenType) {
+    $existingToken = $_SESSION['property_action_tokens'][$propertyID][$actionTokenType] ?? null;
+    if (!is_string($existingToken) || strlen($existingToken) !== 64) {
+        $_SESSION['property_action_tokens'][$propertyID][$actionTokenType] = bin2hex(random_bytes(32));
+    }
+}
+$submittedActionToken = $_POST['submission_token'] ?? null;
+$hasValidSubmissionToken = $submissionAction !== null
+    && is_string($submittedActionToken)
+    && hash_equals(
+        $_SESSION['property_action_tokens'][$propertyID][$submissionAction],
+        $submittedActionToken
+    );
+
+$requestRateLimitMessage = null;
+if (
+    $_SERVER['REQUEST_METHOD'] === 'POST'
+    && $submissionAction !== null
+    && normalized_user_role($_SESSION['user'] ?? null) === 'Client'
+    && has_valid_csrf_token()
+    && $hasValidSubmissionToken
+    && $property['status'] === 'Available'
+) {
+    $clientId = (int) $_SESSION['user']['userID'];
+    $clientLimit = kq_rate_limit_consume($conn, 'property-request-client', (string) $clientId, 10, 600);
+    $ipAddress = is_string($_SERVER['REMOTE_ADDR'] ?? null) && $_SERVER['REMOTE_ADDR'] !== ''
+        ? $_SERVER['REMOTE_ADDR']
+        : 'unknown';
+    $ipLimit = kq_rate_limit_consume($conn, 'property-request-ip', $ipAddress, 30, 600);
+    if (!$clientLimit['allowed'] || !$ipLimit['allowed']) {
+        $retryAfter = max(1, $clientLimit['retry_after'], $ipLimit['retry_after']);
+        $requestRateLimitMessage = 'You have sent too many property requests. Please wait '
+            . (int) ceil($retryAfter / 60)
+            . ' minute(s) before trying again.';
+    }
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if ($isSampleListing) {
-        $errorMsg = 'Sample listings are for display only and cannot accept viewings or inquiries.';
-    } elseif (normalized_user_role($_SESSION['user'] ?? null) !== 'Client') {
+    if (normalized_user_role($_SESSION['user'] ?? null) !== 'Client') {
         header("Location: client_login.php");
         exit();
     } elseif (!has_valid_csrf_token()) {
         $errorMsg = 'Your session expired. Refresh the page and try again.';
+    } elseif ($submissionAction === null) {
+        $errorMsg = 'Choose a valid property request and try again.';
+    } elseif (!$hasValidSubmissionToken) {
+        $errorMsg = 'This request was already submitted or expired. Review the form and try again.';
     } elseif ($property['status'] !== 'Available') {
         $errorMsg = 'This property is not currently accepting new requests.';
-    } elseif (isset($_POST['book_appointment'])) {
+    } elseif ($requestRateLimitMessage !== null) {
+        $errorMsg = $requestRateLimitMessage;
+    } elseif ($submissionAction === 'appointment') {
         $date = is_string($_POST['appointmentDate'] ?? null) ? $_POST['appointmentDate'] : '';
         $time = is_string($_POST['appointmentTime'] ?? null) ? $_POST['appointmentTime'] : '';
-        $dateValue = DateTime::createFromFormat('!Y-m-d', $date);
-        $timeValue = DateTime::createFromFormat('!H:i', $time);
-        $today = new DateTimeImmutable('today');
 
-        if (!$dateValue || $dateValue->format('Y-m-d') !== $date || $dateValue < $today || !$timeValue || $timeValue->format('H:i') !== $time) {
+        if (!kq_is_future_appointment_datetime($date, $time, $businessNow)) {
             $errorMsg = 'Choose a valid future date and appointment time.';
         } else {
             $clientID = (int) $_SESSION['user']['userID'];
-            $duplicate = $conn->prepare(
-                "SELECT appointmentID FROM appointments
-                 WHERE propertyID = ? AND clientID = ? AND appointmentDate = ? AND appointmentTime = ?
-                   AND status IN ('Pending', 'Approved')
-                 LIMIT 1"
-            );
-            $duplicate->bind_param('iiss', $propertyID, $clientID, $date, $time);
-            $duplicate->execute();
-            if ($duplicate->get_result()->num_rows > 0) {
-                $errorMsg = 'You already have an active request for this property at that date and time.';
-            } else {
-                // ALGORITHM: Reject same-property appointments less than one hour apart.
-                $clashStmt = $conn->prepare(
-                    "SELECT appointmentID, appointmentTime FROM appointments
-                     WHERE propertyID = ?
-                       AND appointmentDate = ?
-                       AND status IN ('Pending', 'Approved')
-                       AND ABS(TIME_TO_SEC(TIMEDIFF(appointmentTime, ?))) < 3600
-                     LIMIT 1"
-                );
-                $clashStmt->bind_param('iss', $propertyID, $date, $time);
-                $clashStmt->execute();
-                $clashResult = $clashStmt->get_result()->fetch_assoc();
-                if ($clashResult) {
-                    $clashTime = substr($clashResult['appointmentTime'], 0, 5);
-                    $errorMsg = "Schedule conflict: This property already has a scheduled site visit at {$clashTime}. To ensure dedicated agent assistance and avoid overlapping trippings, please choose a time at least 1 hour before or after.";
-                } else {
-                    $bookStmt = $conn->prepare("INSERT INTO appointments (propertyID, clientID, appointmentDate, appointmentTime, status) VALUES (?, ?, ?, ?, 'Pending')");
-                    $bookStmt->bind_param('iiss', $propertyID, $clientID, $date, $time);
-                    $transactionStarted = false;
-                    try {
-                        $conn->begin_transaction();
-                        $transactionStarted = true;
-                        $bookStmt->execute();
-                        $appointmentId = (int) $conn->insert_id;
-                        create_property_transaction($conn, $propertyID, $clientID, 'appointment', $appointmentId, $clientID);
-                        $conn->commit();
-                        $transactionStarted = false;
-                        send_property_notification(
-                            $conn,
-                            $clientID,
-                            'Viewing request received',
-                            "Thank you for booking a site visit for '{$property['title']}'. Your viewing request has been received and is now being reviewed by our sales team. Please monitor your dashboard for updates.",
-                            'client_dashboard.php#transaction-tracking',
-                            'viewing_request'
-                        );
-                        notify_agents_new_viewing($conn, $appointmentId, $propertyID, $clientID, $date, $time);
-                        $_SESSION['flash_success'] = 'Your viewing request has been sent. Track its progress and updates from your dashboard.';
-                        header('Location: property_detail.php?id=' . $propertyID . '#appointment');
-                        exit();
-                    } catch (mysqli_sql_exception $exception) {
-                        if ($transactionStarted) {
-                            $conn->rollback();
-                        }
-                        error_log('KingQuiry appointment creation failed: ' . $exception->getMessage());
-                        $errorMsg = 'We could not submit your viewing request. Please try again.';
-                    } catch (Throwable $exception) {
-                        if ($transactionStarted) {
-                            $conn->rollback();
-                        }
-                        error_log('KingQuiry appointment tracking creation failed: ' . $exception->getMessage());
-                        $errorMsg = 'We could not submit the request and its tracking record. Please try again.';
-                    }
-                }
-            }
-        }
-    } elseif (isset($_POST['send_inquiry'])) {
-        $message = is_string($_POST['message'] ?? null) ? trim($_POST['message']) : '';
-        if (strlen($message) < 5 || strlen($message) > 3000) {
-            $errorMsg = 'Write an inquiry between 5 and 3,000 characters.';
-        } else {
-            $clientID = (int) $_SESSION['user']['userID'];
-            $inqStmt = $conn->prepare("INSERT INTO feedbackinquiries (propertyID, clientID, message, status) VALUES (?, ?, ?, 'Unread')");
-            $inqStmt->bind_param('iis', $propertyID, $clientID, $message);
             $transactionStarted = false;
             try {
                 $conn->begin_transaction();
                 $transactionStarted = true;
-                $inqStmt->execute();
-                $inquiryId = (int) $conn->insert_id;
-                create_property_transaction($conn, $propertyID, $clientID, 'inquiry', $inquiryId, $clientID);
-                $conn->commit();
-                $transactionStarted = false;
-                send_property_notification(
-                    $conn,
-                    $clientID,
-                    'Property inquiry received',
-                    "Thank you for reaching out about '{$property['title']}'. Your inquiry has been received and our team will review it shortly. Please check your dashboard for updates.",
-                    'client_dashboard.php#transaction-tracking',
-                    'inquiry_received'
+
+                $availableStmt = $conn->prepare(
+                    "SELECT propertyID FROM properties
+                     WHERE propertyID = ? AND status = 'Available' AND isDeleted = 0
+                     FOR UPDATE"
                 );
-                notify_agents_new_inquiry($conn, $inquiryId, $propertyID, $clientID, $message);
-                $_SESSION['flash_success'] = 'Your inquiry has been sent. Track the progress from your dashboard.';
-                header('Location: property_detail.php?id=' . $propertyID . '#inquiry');
-                exit();
-            } catch (mysqli_sql_exception $exception) {
-                if ($transactionStarted) {
+                $availableStmt->bind_param('i', $propertyID);
+                $availableStmt->execute();
+
+                if (!$availableStmt->get_result()->fetch_assoc()) {
                     $conn->rollback();
+                    $transactionStarted = false;
+                    $errorMsg = 'This property is no longer available for viewing requests.';
+                } else {
+                    $duplicate = $conn->prepare(
+                        "SELECT appointmentID FROM appointments
+                         WHERE propertyID = ? AND clientID = ? AND appointmentDate = ? AND appointmentTime = ?
+                           AND status IN ('Pending', 'Approved')
+                         LIMIT 1"
+                    );
+                    $duplicate->bind_param('iiss', $propertyID, $clientID, $date, $time);
+                    $duplicate->execute();
+
+                    if ($duplicate->get_result()->num_rows > 0) {
+                        $conn->rollback();
+                        $transactionStarted = false;
+                        $errorMsg = 'You already have an active request for this property at that date and time.';
+                    } else {
+                        // ALGORITHM: Lock the listing, reject duplicate or overlapping active visits, then save booking and tracking atomically.
+                        $clashStmt = $conn->prepare(
+                            "SELECT appointmentDate, appointmentTime FROM appointments
+                             WHERE propertyID = ?
+                               AND status IN ('Pending', 'Approved')
+                               AND ABS(TIMESTAMPDIFF(
+                                   SECOND,
+                                   TIMESTAMP(appointmentDate, appointmentTime),
+                                   TIMESTAMP(?, ?)
+                               )) < 3600
+                             LIMIT 1"
+                        );
+                        $clashStmt->bind_param('iss', $propertyID, $date, $time);
+                        $clashStmt->execute();
+                        $clashResult = $clashStmt->get_result()->fetch_assoc();
+
+                        if ($clashResult) {
+                            $conn->rollback();
+                            $transactionStarted = false;
+                            $clashTime = date('M j, Y', strtotime($clashResult['appointmentDate'])) . ' at ' . substr($clashResult['appointmentTime'], 0, 5);
+                            $errorMsg = "Schedule conflict: This property already has a scheduled site visit {$clashTime}. To ensure dedicated agent assistance and avoid overlapping viewings, please choose a time at least one hour before or after.";
+                        } else {
+                            $bookStmt = $conn->prepare(
+                                "INSERT INTO appointments
+                                    (propertyID, clientID, appointmentDate, appointmentTime, status)
+                                 VALUES (?, ?, ?, ?, 'Pending')"
+                            );
+                            $bookStmt->bind_param('iiss', $propertyID, $clientID, $date, $time);
+                            $bookStmt->execute();
+                            $appointmentId = (int) $conn->insert_id;
+                            create_property_transaction($conn, $propertyID, $clientID, 'appointment', $appointmentId, $clientID);
+                            $conn->commit();
+                            $transactionStarted = false;
+                            unset($_SESSION['property_action_tokens'][$propertyID]['appointment']);
+
+                            $notificationFailed = false;
+                            try {
+                                $clientNotified = send_property_notification(
+                                    $conn,
+                                    $clientID,
+                                    'Viewing request received',
+                                    "Thank you for booking a site visit for '{$property['title']}'. Your viewing request has been received and is now being reviewed by our sales team. Please monitor your dashboard for updates.",
+                                    'client_dashboard.php#transaction-tracking',
+                                    'viewing_request'
+                                );
+                                $agentsNotified = notify_agents_new_viewing($conn, $appointmentId, $propertyID, $clientID, $date, $time);
+                                $notificationFailed = !$clientNotified || !$agentsNotified;
+                                if ($notificationFailed) {
+                                    error_log('KingQuiry viewing request notifications were incomplete for appointment ' . $appointmentId . '.');
+                                }
+                            } catch (Throwable $exception) {
+                                error_log('KingQuiry appointment notification failed: ' . $exception->getMessage());
+                                $notificationFailed = true;
+                            }
+                            $_SESSION['flash_success'] = $notificationFailed
+                                ? 'Your viewing request was saved, but we could not send all notifications. You can track it from your dashboard.'
+                                : 'Your viewing request has been sent. Track its progress and updates from your dashboard.';
+                            header('Location: property_detail.php?id=' . $propertyID . '#appointment');
+                            exit();
+                        }
+                    }
                 }
-                error_log('KingQuiry inquiry creation failed: ' . $exception->getMessage());
-                $errorMsg = 'We could not send your inquiry. Please try again.';
             } catch (Throwable $exception) {
                 if ($transactionStarted) {
                     $conn->rollback();
                 }
-                error_log('KingQuiry inquiry tracking creation failed: ' . $exception->getMessage());
-                $errorMsg = 'We could not send the inquiry and its tracking record. Please try again.';
+                error_log('KingQuiry appointment creation failed: ' . $exception->getMessage());
+                $errorMsg = 'We could not submit your viewing request. Please try again.';
+            }
+        }
+    } elseif ($submissionAction === 'inquiry') {
+        $message = is_string($_POST['message'] ?? null) ? trim($_POST['message']) : '';
+        $messageLength = preg_match_all('/./us', $message);
+        if ($messageLength === false || $messageLength < 5 || $messageLength > 3000) {
+            $errorMsg = 'Write an inquiry between 5 and 3,000 characters.';
+        } else {
+            $clientID = (int) $_SESSION['user']['userID'];
+            $transactionStarted = false;
+            try {
+                $conn->begin_transaction();
+                $transactionStarted = true;
+                // ALGORITHM: Lock the listing and atomically save the inquiry plus tracking event before dispatching notifications.
+                $availableStmt = $conn->prepare(
+                    "SELECT propertyID FROM properties
+                     WHERE propertyID = ? AND status = 'Available' AND isDeleted = 0
+                     FOR UPDATE"
+                );
+                $availableStmt->bind_param('i', $propertyID);
+                $availableStmt->execute();
+
+                if (!$availableStmt->get_result()->fetch_assoc()) {
+                    $conn->rollback();
+                    $transactionStarted = false;
+                    $errorMsg = 'This property is no longer available for inquiries.';
+                } else {
+                    // Deduplication check: prevent submitting the exact same inquiry for this property within 120 seconds
+                    $dupCheckStmt = $conn->prepare(
+                        "SELECT inquiryID FROM feedbackinquiries
+                         WHERE propertyID = ? AND clientID = ? AND message = ?
+                           AND createdAt >= DATE_SUB(NOW(), INTERVAL 120 SECOND)
+                         LIMIT 1"
+                    );
+                    $dupCheckStmt->bind_param('iis', $propertyID, $clientID, $message);
+                    $dupCheckStmt->execute();
+                    if ($dupCheckStmt->get_result()->fetch_assoc()) {
+                        $conn->rollback();
+                        $transactionStarted = false;
+                        $errorMsg = 'You have recently submitted this exact inquiry message. Our sales team is already reviewing it.';
+                    } else {
+                        $inqStmt = $conn->prepare(
+                            "INSERT INTO feedbackinquiries (propertyID, clientID, message, status)
+                             VALUES (?, ?, ?, 'Unread')"
+                        );
+                        $inqStmt->bind_param('iis', $propertyID, $clientID, $message);
+                        $inqStmt->execute();
+                        $inquiryId = (int) $conn->insert_id;
+                        create_property_transaction($conn, $propertyID, $clientID, 'inquiry', $inquiryId, $clientID);
+                        $conn->commit();
+                        $transactionStarted = false;
+                        unset($_SESSION['property_action_tokens'][$propertyID]['inquiry']);
+
+                        $notificationFailed = false;
+                        try {
+                            $clientNotified = send_property_notification(
+                                $conn,
+                                $clientID,
+                                'Property inquiry received',
+                                "Thank you for reaching out about '{$property['title']}'. Your inquiry has been received and our team will review it shortly. Please check your dashboard for updates.",
+                                'client_dashboard.php#transaction-tracking',
+                                'inquiry_received'
+                            );
+                            $agentsNotified = notify_agents_new_inquiry($conn, $inquiryId, $propertyID, $clientID, $message);
+                            $notificationFailed = !$clientNotified || !$agentsNotified;
+                            if ($notificationFailed) {
+                                error_log('KingQuiry inquiry notifications were incomplete for inquiry ' . $inquiryId . '.');
+                            }
+                        } catch (Throwable $exception) {
+                            error_log('KingQuiry inquiry notification failed: ' . $exception->getMessage());
+                            $notificationFailed = true;
+                        }
+
+                        $_SESSION['flash_success'] = $notificationFailed
+                            ? 'Your inquiry was saved, but we could not create all notifications. You can track it from your dashboard.'
+                            : 'Your inquiry has been sent. Track the progress from your dashboard.';
+                        header('Location: property_detail.php?id=' . $propertyID . '#inquiry');
+                        exit();
+                    }
+                }
+            } catch (Throwable $exception) {
+                if ($transactionStarted) {
+                    $conn->rollback();
+                }
+                error_log('KingQuiry inquiry submission failed: ' . $exception->getMessage());
+                $errorMsg = 'We could not save your inquiry and tracking record. Please try again.';
             }
         }
     }
@@ -247,12 +394,8 @@ include 'includes/header.php';
                     </div>
                 </div>
             <?php endif; ?>
-            <?php if ($isSampleListing): ?>
-                <div class="alert alert-warning small" role="status">Sample listing only. This is not a real property offer; the details and representative photo must be replaced with verified information before publication.</div>
-            <?php endif; ?>
             <div class="d-flex align-items-center gap-2 mb-2">
                 <span class="badge rounded-pill text-bg-light"><?= htmlspecialchars($categoryLabels[$property['propertyType']] ?? $property['propertyType'], ENT_QUOTES, 'UTF-8') ?></span>
-                <?php if ($isSampleListing): ?><span class="badge rounded-pill text-bg-warning">Sample listing</span><?php endif; ?>
             </div>
             <h2 class="fw-bold mb-2"><?= htmlspecialchars($displayTitle, ENT_QUOTES, 'UTF-8') ?></h2>
             <p class="text-muted mb-3">Location: <strong><?= htmlspecialchars(property_location_label($property), ENT_QUOTES, 'UTF-8') ?><?php if (!empty($property['barangay'])): ?>, <?= htmlspecialchars($property['barangay'], ENT_QUOTES, 'UTF-8') ?><?php endif; ?></strong></p>
@@ -318,14 +461,7 @@ include 'includes/header.php';
             </div>
         </div>
 
-        <?php if ($isSampleListing): ?>
-            <div class="card p-4 text-center border-0 shadow-sm bg-light mb-4">
-                <span class="badge bg-warning text-dark px-3 py-1 mb-2 align-self-center">Sample listing</span>
-                <h4 class="h5 fw-bold mb-2">For display only</h4>
-                <p class="text-muted small mb-3">This sample property is not accepting site viewing requests or inquiries.</p>
-                <a href="index.php" class="btn btn-primary w-100">Browse Available Properties</a>
-            </div>
-        <?php elseif ($property['status'] === 'Sold'): ?>
+        <?php if ($property['status'] === 'Sold'): ?>
             <div class="card p-4 text-center border-0 shadow-sm bg-light mb-4">
                 <div class="rounded-circle bg-danger-subtle text-danger mx-auto d-flex align-items-center justify-content-center mb-3" style="width: 54px; height: 54px;">
                     <span class="fs-4">🏷️</span>
@@ -343,9 +479,10 @@ include 'includes/header.php';
                 <?php if(normalized_user_role($_SESSION['user'] ?? null) === 'Client'): ?>
                     <form method="POST">
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                        <input type="hidden" name="submission_token" value="<?= htmlspecialchars($_SESSION['property_action_tokens'][$propertyID]['appointment'], ENT_QUOTES, 'UTF-8') ?>">
                         <div class="mb-3">
                             <label class="form-label fw-semibold" for="appointment-date">Preferred date</label>
-                            <input type="date" id="appointment-date" name="appointmentDate" class="form-control" required min="<?= date('Y-m-d') ?>">
+                            <input type="date" id="appointment-date" name="appointmentDate" class="form-control" required min="<?= htmlspecialchars($businessNow->format('Y-m-d'), ENT_QUOTES, 'UTF-8') ?>">
                         </div>
                         <div class="mb-3">
                             <label class="form-label fw-semibold" for="appointment-time">Preferred time</label>
@@ -366,6 +503,7 @@ include 'includes/header.php';
                 <?php if(normalized_user_role($_SESSION['user'] ?? null) === 'Client'): ?>
                     <form method="POST">
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                        <input type="hidden" name="submission_token" value="<?= htmlspecialchars($_SESSION['property_action_tokens'][$propertyID]['inquiry'], ENT_QUOTES, 'UTF-8') ?>">
                         <div class="mb-3">
                             <label class="form-label fw-semibold" for="property-inquiry">Your message</label>
                             <textarea id="property-inquiry" name="message" class="form-control" rows="4" minlength="5" maxlength="3000" required placeholder="Ask about documents, terms, access, or other property details."></textarea>

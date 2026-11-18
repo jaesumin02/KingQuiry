@@ -8,9 +8,9 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-if (!user_has_role($_SESSION['user'] ?? null, 'Client')) {
+if (!isset($_SESSION['user']) || !in_array(normalized_user_role($_SESSION['user']), ['Client', 'Sales Agent', 'Admin'], true)) {
     http_response_code(403);
-    echo 'Access denied.';
+    echo 'Access denied. Please sign in to download property summaries.';
     exit();
 }
 

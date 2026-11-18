@@ -17,6 +17,24 @@ function property_transaction_stages(): array
     ];
 }
 
+function property_client_payment_methods(): array
+{
+    return ['Cash', 'Bank Transfer', 'Check'];
+}
+
+function property_staff_payment_methods(): array
+{
+    return ['Spot Cash', 'Bank Transfer', 'Check', 'Paperwork (Face-to-face)'];
+}
+
+function is_valid_transaction_currency_amount(float $amount): bool
+{
+    return is_finite($amount)
+        && $amount >= 0
+        && $amount <= 9999999999.99
+        && abs($amount - round($amount, 2)) <= 0.000001;
+}
+
 function property_transaction_next_stages(string $stage, ?string $paymentMethod = null): array
 {
     // ALGORITHM: State machine mapping each stage to allowed next stages; Spot Cash skips document verification.
@@ -29,9 +47,9 @@ function property_transaction_next_stages(string $stage, ?string $paymentMethod 
         'viewing_confirmed' => ['viewing_completed', 'payment_in_process', 'cancelled'],
         'viewing_completed' => ['payment_in_process', 'document_verification', 'cancelled'],
         'payment_in_process' => $isSpotCash
-            ? ['payment_confirmation', 'completed', 'cancelled']
-            : ['document_verification', 'payment_confirmation', 'completed', 'cancelled'],
-        'document_verification' => ['payment_confirmation', 'completed', 'cancelled'],
+            ? ['payment_confirmation', 'cancelled']
+            : ['document_verification', 'cancelled'],
+        'document_verification' => ['payment_confirmation', 'cancelled'],
         'payment_confirmation' => ['completed', 'cancelled'],
         'completed' => [],
         'cancelled' => [],
@@ -256,6 +274,142 @@ function add_property_transaction_event(
     $stmt->execute();
 }
 
+function get_verified_transaction_payment_total(mysqli $conn, int $transactionId): float
+{
+    // Retrieve verified payments from property_transaction_payments (operational tracker)
+    $trackerStmt = $conn->prepare(
+        "SELECT paymentID, amount, referenceNumber, submittedAt
+         FROM property_transaction_payments
+         WHERE transactionID = ? AND status = 'confirmed' AND amount > 0"
+    );
+    $trackerStmt->bind_param('i', $transactionId);
+    $trackerStmt->execute();
+    $trackerRows = $trackerStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+    // Retrieve verified payments from payments (admin register)
+    $registerStmt = $conn->prepare(
+        "SELECT paymentID, amount, referenceNo, paidAt
+         FROM payments
+         WHERE transactionID = ? AND status = 'Verified' AND amount > 0"
+    );
+    $registerStmt->bind_param('i', $transactionId);
+    $registerStmt->execute();
+    $registerRows = $registerStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+    // If only one ledger has records, return its sum directly
+    if (empty($registerRows)) {
+        return (float) array_sum(array_column($trackerRows, 'amount'));
+    }
+    if (empty($trackerRows)) {
+        return (float) array_sum(array_column($registerRows, 'amount'));
+    }
+
+    // Both ledgers have records: Reconcile to avoid double-counting counterpart entries
+    // while accurately accumulating distinct installment payments.
+    $reconciledTotal = 0.0;
+    $matchedRegisterIds = [];
+
+    foreach ($trackerRows as $tRow) {
+        $tAmount = (float) $tRow['amount'];
+        $tRef = trim((string) ($tRow['referenceNumber'] ?? ''));
+        $reconciledTotal += $tAmount;
+
+        // Try to find counterpart in admin register
+        foreach ($registerRows as $rRow) {
+            $rId = (int) $rRow['paymentID'];
+            if (isset($matchedRegisterIds[$rId])) {
+                continue;
+            }
+            $rAmount = (float) $rRow['amount'];
+            $rRef = trim((string) ($rRow['referenceNo'] ?? ''));
+
+            $isRefMatch = ($tRef !== '' && $rRef !== '' && strcasecmp($tRef, $rRef) === 0);
+            $isAmountMatch = (abs($tAmount - $rAmount) < 0.01 && ($tRef === '' || $rRef === ''));
+
+            if ($isRefMatch || $isAmountMatch) {
+                $matchedRegisterIds[$rId] = true;
+                break;
+            }
+        }
+    }
+
+    // Add remaining unmatched verified payments from admin register (distinct installments)
+    foreach ($registerRows as $rRow) {
+        $rId = (int) $rRow['paymentID'];
+        if (!isset($matchedRegisterIds[$rId])) {
+            $reconciledTotal += (float) $rRow['amount'];
+        }
+    }
+
+    return (float) $reconciledTotal;
+}
+
+function assert_staff_transaction_access(mysqli $conn, array $transaction, int $actorId): void
+{
+    $actorStmt = $conn->prepare('SELECT role, accountStatus FROM users WHERE userID = ? LIMIT 1');
+    $actorStmt->bind_param('i', $actorId);
+    $actorStmt->execute();
+    $actor = $actorStmt->get_result()->fetch_assoc();
+    if (!$actor || ($actor['accountStatus'] ?? 'Inactive') !== 'Active') {
+        throw new InvalidArgumentException('An active staff account is required to manage transactions.');
+    }
+
+    $role = strtolower(trim((string) $actor['role']));
+    if ($role === 'admin') {
+        return;
+    }
+    if (!in_array($role, ['agent', 'sales agent'], true)) {
+        throw new InvalidArgumentException('Only an administrator or assigned sales agent can manage this transaction.');
+    }
+
+    $appointmentId = (int) ($transaction['appointmentID'] ?? 0);
+    if ($appointmentId > 0) {
+        $appointmentStmt = $conn->prepare('SELECT agentID FROM appointments WHERE appointmentID = ? LIMIT 1');
+        $appointmentStmt->bind_param('i', $appointmentId);
+        $appointmentStmt->execute();
+        $appointment = $appointmentStmt->get_result()->fetch_assoc();
+        if ($appointment && (int) ($appointment['agentID'] ?? 0) === $actorId) {
+            return;
+        }
+    }
+
+    $inquiryId = (int) ($transaction['inquiryID'] ?? 0);
+    if ($inquiryId > 0) {
+        $inquiryStmt = $conn->prepare(
+            'SELECT agentID FROM agent_inquiry_assignments WHERE inquiryID = ? LIMIT 1'
+        );
+        $inquiryStmt->bind_param('i', $inquiryId);
+        $inquiryStmt->execute();
+        $inquiry = $inquiryStmt->get_result()->fetch_assoc();
+        if ($inquiry && (int) $inquiry['agentID'] === $actorId) {
+            return;
+        }
+    }
+
+    throw new InvalidArgumentException('You may only manage transactions assigned to your account.');
+}
+
+function dispatch_transaction_notification_after_commit(
+    mysqli $conn,
+    int $clientId,
+    array $notification,
+    string $context
+): void {
+    try {
+        $saved = send_property_notification(
+            $conn,
+            $clientId,
+            (string) ($notification['title'] ?? ''),
+            (string) ($notification['message'] ?? '')
+        );
+        if (!$saved) {
+            error_log('KingQuiry ' . $context . ' notification could not be saved.');
+        }
+    } catch (Throwable $exception) {
+        error_log('KingQuiry ' . $context . ' notification failed: ' . $exception->getMessage());
+    }
+}
+
 function advance_property_transaction(
     mysqli $conn,
     int $transactionId,
@@ -272,17 +426,27 @@ function advance_property_transaction(
         throw new InvalidArgumentException('Choose a valid transaction and status.');
     }
 
-    if ($newStage === 'completed' && ($salePrice === null || $salePrice <= 0 || $salePrice > 9999999999.99)) {
+    if ($newStage === 'completed' && ($salePrice === null || !is_valid_transaction_currency_amount($salePrice) || $salePrice <= 0)) {
         throw new InvalidArgumentException('Enter the verified sale price before marking this transaction successful.');
+    }
+    if ($paymentAmount !== null && !is_valid_transaction_currency_amount($paymentAmount)) {
+        throw new InvalidArgumentException('Enter a non-negative payment amount with no more than two decimal places.');
+    }
+    if ($paymentRef !== null && strlen($paymentRef) > 100) {
+        throw new InvalidArgumentException('The payment reference must be 100 characters or fewer.');
+    }
+    if ($paymentMethod !== null && $paymentMethod !== '' && !in_array($paymentMethod, property_staff_payment_methods(), true)) {
+        throw new InvalidArgumentException('Choose a supported payment method.');
     }
     if ($note !== '' && strlen($note) > 1000) {
         throw new InvalidArgumentException('Tracking notes must be 1,000 characters or fewer.');
     }
 
+    $notification = null;
     $conn->begin_transaction();
     try {
         $currentStmt = $conn->prepare(
-            'SELECT transactionID, propertyID, clientID, currentStage, paymentMethod FROM property_transactions
+            'SELECT transactionID, propertyID, clientID, appointmentID, inquiryID, currentStage, paymentMethod FROM property_transactions
              WHERE transactionID = ? FOR UPDATE'
         );
         $currentStmt->bind_param('i', $transactionId);
@@ -291,6 +455,7 @@ function advance_property_transaction(
         if (!$transaction) {
             throw new InvalidArgumentException('The selected transaction was not found.');
         }
+        assert_staff_transaction_access($conn, $transaction, $actorId);
 
         $currentStage = (string) $transaction['currentStage'];
         $effectivePaymentMethod = ($paymentMethod !== null && $paymentMethod !== '')
@@ -301,6 +466,25 @@ function advance_property_transaction(
         $fallbackStages = property_transaction_next_stages($currentStage, null);
         if (!in_array($newStage, $allowedStages, true) && !in_array($newStage, $fallbackStages, true)) {
             throw new InvalidArgumentException('That step cannot follow the current status. Update the transaction in order or cancel it.');
+        }
+
+        if ($newStage === 'viewing_confirmed') {
+            $appointmentId = (int) ($transaction['appointmentID'] ?? 0);
+            $assignedAgentStmt = $conn->prepare(
+                "SELECT a.agentID
+                 FROM appointments a
+                 JOIN users ag ON ag.userID = a.agentID
+                 WHERE a.appointmentID = ?
+                   AND a.status = 'Pending'
+                   AND ag.role IN ('Agent', 'Sales Agent')
+                   AND ag.accountStatus = 'Active'
+                 FOR UPDATE"
+            );
+            $assignedAgentStmt->bind_param('i', $appointmentId);
+            $assignedAgentStmt->execute();
+            if ($appointmentId <= 0 || !$assignedAgentStmt->get_result()->fetch_assoc()) {
+                throw new InvalidArgumentException('Assign an active sales agent to the pending viewing before confirming it.');
+            }
         }
 
         $defaultNotes = [
@@ -314,7 +498,47 @@ function advance_property_transaction(
         ];
         $effectiveNote = $note !== '' ? $note : ($defaultNotes[$newStage] ?? 'Transaction advanced to ' . str_replace('_', ' ', $newStage));
 
+        // Record payment if agent provided payment details in this submission so it counts toward verification
+        $clientId = (int) $transaction['clientID'];
+        if ($paymentAmount !== null && $paymentAmount > 0) {
+            if (
+                empty($effectivePaymentMethod)
+                || !in_array($effectivePaymentMethod, property_staff_payment_methods(), true)
+            ) {
+                throw new InvalidArgumentException('Choose a supported payment method before recording a payment.');
+            }
+            if (!in_array($newStage, ['payment_in_process', 'document_verification', 'payment_confirmation', 'completed'], true)) {
+                throw new InvalidArgumentException('Payment details can only be recorded during payment processing or finalization.');
+            }
+            $refNumber = !empty($paymentRef) ? $paymentRef : 'Paperwork verified';
+            $insPayment = $conn->prepare(
+                "INSERT INTO property_transaction_payments
+                    (transactionID, clientID, amount, paymentMethod, referenceNumber, status, reviewedAt, reviewedBy, reviewNote)
+                 VALUES (?, ?, ?, ?, ?, 'confirmed', CURRENT_TIMESTAMP, ?, ?)"
+            );
+            $insPayment->bind_param('iidssis', $transactionId, $clientId, $paymentAmount, $effectivePaymentMethod, $refNumber, $actorId, $effectiveNote);
+            $insPayment->execute();
+        }
+
         if ($newStage === 'completed') {
+            $propertyId = (int) $transaction['propertyID'];
+            $propertyStmt = $conn->prepare(
+                "SELECT status, isDeleted FROM properties WHERE propertyID = ? FOR UPDATE"
+            );
+            $propertyStmt->bind_param('i', $propertyId);
+            $propertyStmt->execute();
+            $property = $propertyStmt->get_result()->fetch_assoc();
+            if (!$property || (int) $property['isDeleted'] !== 0 || $property['status'] !== 'Available') {
+                throw new InvalidArgumentException('This property is no longer available for sale.');
+            }
+
+            $verifiedPaymentTotal = get_verified_transaction_payment_total($conn, $transactionId);
+            if ($verifiedPaymentTotal + 0.01 < (float) $salePrice) {
+                throw new InvalidArgumentException(
+                    'The verified payment total must cover the recorded sale price before completing this transaction.'
+                );
+            }
+
             $updateStmt = $conn->prepare(
                 'UPDATE property_transactions
                  SET currentStage = ?, salePrice = ?, paymentMethod = COALESCE(?, paymentMethod), updatedAt = CURRENT_TIMESTAMP
@@ -324,7 +548,6 @@ function advance_property_transaction(
             $updateStmt->execute();
 
             // Property officially sold & turned over: mark as 'Sold' so it disappears from public listings
-            $propertyId = (int) $transaction['propertyID'];
             $soldStmt = $conn->prepare("UPDATE properties SET status = 'Sold' WHERE propertyID = ?");
             $soldStmt->bind_param('i', $propertyId);
             $soldStmt->execute();
@@ -339,39 +562,11 @@ function advance_property_transaction(
         }
         add_property_transaction_event($conn, $transactionId, $newStage, $effectiveNote, $actorId);
 
-        // Record payment if agent provided payment details
-        $clientId = (int) $transaction['clientID'];
-        if ($paymentAmount !== null && $paymentAmount > 0 && !empty($effectivePaymentMethod)) {
-            $refNumber = !empty($paymentRef) ? $paymentRef : 'Paperwork verified';
-            $insPayment = $conn->prepare(
-                "INSERT INTO property_transaction_payments
-                    (transactionID, clientID, amount, paymentMethod, referenceNumber, status, reviewedAt, reviewedBy, reviewNote)
-                 VALUES (?, ?, ?, ?, ?, 'confirmed', CURRENT_TIMESTAMP, ?, ?)"
-            );
-            $insPayment->bind_param('iidssis', $transactionId, $clientId, $paymentAmount, $effectivePaymentMethod, $refNumber, $actorId, $effectiveNote);
-            $insPayment->execute();
-        }
-
-        // If moving to payment_confirmation, ensure at least one confirmed payment record exists
         if ($newStage === 'payment_confirmation') {
-            $checkPay = $conn->prepare(
-                "SELECT paymentID FROM property_transaction_payments
-                 WHERE transactionID = ? AND status = 'confirmed'
-                 LIMIT 1"
-            );
-            $checkPay->bind_param('i', $transactionId);
-            $checkPay->execute();
-            if (!$checkPay->get_result()->fetch_assoc()) {
-                $paperworkMethod = !empty($effectivePaymentMethod) ? $effectivePaymentMethod : 'Paperwork (Face-to-face)';
-                $ref = 'Paperwork confirmed';
-                $reviewNote = $effectiveNote !== '' ? $effectiveNote : 'Paperwork and payment verified face-to-face.';
-                $insPayment = $conn->prepare(
-                    "INSERT INTO property_transaction_payments
-                        (transactionID, clientID, amount, paymentMethod, referenceNumber, status, reviewedAt, reviewedBy, reviewNote)
-                     VALUES (?, ?, 0.00, ?, ?, 'confirmed', CURRENT_TIMESTAMP, ?, ?)"
+            if (get_verified_transaction_payment_total($conn, $transactionId) <= 0.0) {
+                throw new InvalidArgumentException(
+                    'Record and verify a payment greater than zero before moving this transaction to payment confirmation.'
                 );
-                $insPayment->bind_param('iissis', $transactionId, $clientId, $paperworkMethod, $ref, $actorId, $reviewNote);
-                $insPayment->execute();
             }
         }
 
@@ -400,7 +595,7 @@ function advance_property_transaction(
         $details = $detailsStmt->get_result()->fetch_assoc();
 
         if (is_array($details) && !empty($details['clientID'])) {
-            $notif = get_transaction_stage_notification(
+            $notification = get_transaction_stage_notification(
                 $currentStage,
                 $newStage,
                 (string) ($details['fullname'] ?? 'there'),
@@ -409,18 +604,22 @@ function advance_property_transaction(
                 $salePrice,
                 $effectivePaymentMethod
             );
-            send_property_notification(
-                $conn,
-                (int) $details['clientID'],
-                $notif['title'],
-                $notif['message']
-            );
+            $notification['clientId'] = (int) $details['clientID'];
         }
 
         $conn->commit();
     } catch (Throwable $exception) {
         $conn->rollback();
         throw $exception;
+    }
+
+    if ($notification !== null) {
+        dispatch_transaction_notification_after_commit(
+            $conn,
+            (int) $notification['clientId'],
+            $notification,
+            'transaction update'
+        );
     }
 }
 
@@ -434,11 +633,11 @@ function submit_property_transaction_payment(
 ): void {
     $paymentMethod = trim($paymentMethod);
     $referenceNumber = trim($referenceNumber);
-    if ($transactionId <= 0 || $clientId <= 0 || !is_finite($amount) || $amount <= 0 || $amount > 9999999999.99) {
+    if ($transactionId <= 0 || $clientId <= 0 || !is_valid_transaction_currency_amount($amount) || $amount <= 0) {
         throw new InvalidArgumentException('Enter a valid payment amount.');
     }
-    if ($paymentMethod === '' || strlen($paymentMethod) > 50) {
-        throw new InvalidArgumentException('Enter a payment method of 1 to 50 characters.');
+    if (!in_array($paymentMethod, property_client_payment_methods(), true)) {
+        throw new InvalidArgumentException('Choose Cash, Bank Transfer, or Check as the payment method.');
     }
     if (strlen($referenceNumber) > 100) {
         throw new InvalidArgumentException('The payment reference must be 100 characters or fewer.');
@@ -459,6 +658,32 @@ function submit_property_transaction_payment(
         }
         if (!in_array((string) $transaction['currentStage'], ['payment_in_process', 'document_verification', 'payment_confirmation'], true)) {
             throw new InvalidArgumentException('Payment details can be submitted during payment in process, document verification, or payment confirmation.');
+        }
+
+        // Deduplication check: prevent submitting the same payment reference or duplicate reporting within 120 seconds
+        if ($referenceNumber !== '') {
+            $dupPayStmt = $conn->prepare(
+                'SELECT paymentID FROM property_transaction_payments
+                 WHERE transactionID = ? AND clientID = ? AND referenceNumber = ?
+                 LIMIT 1'
+            );
+            $dupPayStmt->bind_param('iis', $transactionId, $clientId, $referenceNumber);
+            $dupPayStmt->execute();
+            if ($dupPayStmt->get_result()->fetch_assoc()) {
+                throw new InvalidArgumentException('You have already submitted a payment record with this reference number.');
+            }
+        } else {
+            $dupPayStmt = $conn->prepare(
+                'SELECT paymentID FROM property_transaction_payments
+                 WHERE transactionID = ? AND clientID = ? AND amount = ? AND paymentMethod = ?
+                   AND submittedAt >= DATE_SUB(NOW(), INTERVAL 120 SECOND)
+                 LIMIT 1'
+            );
+            $dupPayStmt->bind_param('iids', $transactionId, $clientId, $amount, $paymentMethod);
+            $dupPayStmt->execute();
+            if ($dupPayStmt->get_result()->fetch_assoc()) {
+                throw new InvalidArgumentException('You have recently submitted this payment details for staff review. Please allow our team time to process it.');
+            }
         }
 
         $paymentStmt = $conn->prepare(
@@ -511,10 +736,11 @@ function record_staff_face_to_face_payment(
         throw new InvalidArgumentException('The paperwork note must be 1,000 characters or fewer.');
     }
 
+    $notification = null;
     $conn->begin_transaction();
     try {
         $transactionStmt = $conn->prepare(
-            'SELECT t.transactionID, t.clientID, t.currentStage, p.title, u.fullname
+            'SELECT t.transactionID, t.clientID, t.appointmentID, t.inquiryID, t.currentStage, p.title, u.fullname
              FROM property_transactions t
              JOIN properties p ON p.propertyID = t.propertyID
              JOIN users u ON u.userID = t.clientID
@@ -527,6 +753,7 @@ function record_staff_face_to_face_payment(
         if (!$transaction) {
             throw new InvalidArgumentException('The selected transaction was not found.');
         }
+        assert_staff_transaction_access($conn, $transaction, $actorId);
 
         $currentStage = (string) $transaction['currentStage'];
         if (in_array($currentStage, ['completed', 'cancelled'], true)) {
@@ -536,25 +763,20 @@ function record_staff_face_to_face_payment(
         $clientId = (int) $transaction['clientID'];
         $isConfirmed = ($status === 'confirmed');
         $newStage = $isConfirmed ? 'payment_confirmation' : 'payment_in_process';
+        if ($newStage !== $currentStage && !in_array($newStage, property_transaction_next_stages($currentStage), true)) {
+            throw new InvalidArgumentException('Payment and paperwork cannot advance from the current transaction stage.');
+        }
+        if ($isConfirmed && get_verified_transaction_payment_total($conn, $transactionId) <= 0.0) {
+            throw new InvalidArgumentException(
+                'Record and verify a payment greater than zero before confirming payment and paperwork.'
+            );
+        }
 
         $updateStageStmt = $conn->prepare(
             'UPDATE property_transactions SET currentStage = ?, updatedAt = CURRENT_TIMESTAMP WHERE transactionID = ?'
         );
         $updateStageStmt->bind_param('si', $newStage, $transactionId);
         $updateStageStmt->execute();
-
-        if ($isConfirmed) {
-            $paperworkMethod = 'Paperwork (Face-to-face)';
-            $ref = 'Paperwork confirmed';
-            $reviewNote = $note !== '' ? $note : 'Paperwork and payment verified face-to-face.';
-            $paymentStmt = $conn->prepare(
-                "INSERT INTO property_transaction_payments
-                    (transactionID, clientID, amount, paymentMethod, referenceNumber, status, reviewedAt, reviewedBy, reviewNote)
-                 VALUES (?, ?, 0.00, ?, ?, 'confirmed', CURRENT_TIMESTAMP, ?, ?)"
-            );
-            $paymentStmt->bind_param('iissis', $transactionId, $clientId, $paperworkMethod, $ref, $actorId, $reviewNote);
-            $paymentStmt->execute();
-        }
 
         if ($isConfirmed) {
             $eventNote = sprintf(
@@ -584,12 +806,20 @@ function record_staff_face_to_face_payment(
             $isConfirmed ? 'Confirmed' : 'In process',
             $note !== '' ? "\nNote: " . $note : ''
         );
-        send_property_notification($conn, $clientId, $notificationSubject, $notificationMessage);
+        $notification = [
+            'clientId' => $clientId,
+            'title' => $notificationSubject,
+            'message' => $notificationMessage,
+        ];
 
         $conn->commit();
     } catch (Throwable $exception) {
         $conn->rollback();
         throw $exception;
+    }
+
+    if ($notification !== null) {
+        dispatch_transaction_notification_after_commit($conn, $notification['clientId'], $notification, 'face-to-face payment');
     }
 }
 
@@ -608,11 +838,11 @@ function record_staff_transaction_payment(
     $referenceNumber = trim($referenceNumber);
     $note = trim($note);
 
-    if ($transactionId <= 0 || $actorId <= 0 || !is_finite($amount) || $amount <= 0 || $amount > 9999999999.99) {
+    if ($transactionId <= 0 || $actorId <= 0 || !is_valid_transaction_currency_amount($amount) || $amount <= 0) {
         throw new InvalidArgumentException('Enter a valid payment amount.');
     }
-    if ($paymentMethod === '' || strlen($paymentMethod) > 50) {
-        throw new InvalidArgumentException('Enter a payment method of 1 to 50 characters.');
+    if (!in_array($paymentMethod, property_staff_payment_methods(), true)) {
+        throw new InvalidArgumentException('Choose a supported payment method.');
     }
     if (strlen($referenceNumber) > 100) {
         throw new InvalidArgumentException('The payment reference must be 100 characters or fewer.');
@@ -630,10 +860,11 @@ function record_staff_transaction_payment(
         $advanceToPaymentInProcess = true;
     }
 
+    $notification = null;
     $conn->begin_transaction();
     try {
         $transactionStmt = $conn->prepare(
-            'SELECT t.transactionID, t.clientID, t.currentStage, p.title, u.fullname
+            'SELECT t.transactionID, t.clientID, t.appointmentID, t.inquiryID, t.currentStage, p.title, u.fullname
              FROM property_transactions t
              JOIN properties p ON p.propertyID = t.propertyID
              JOIN users u ON u.userID = t.clientID
@@ -646,6 +877,7 @@ function record_staff_transaction_payment(
         if (!$transaction) {
             throw new InvalidArgumentException('The selected transaction was not found.');
         }
+        assert_staff_transaction_access($conn, $transaction, $actorId);
 
         $currentStage = (string) $transaction['currentStage'];
         if (in_array($currentStage, ['completed', 'cancelled'], true)) {
@@ -713,12 +945,20 @@ function record_staff_transaction_payment(
             ucfirst($paymentStatus),
             $note !== '' ? "\nNote: " . $note : ''
         );
-        send_property_notification($conn, $clientId, $notificationSubject, $notificationMessage);
+        $notification = [
+            'clientId' => $clientId,
+            'title' => $notificationSubject,
+            'message' => $notificationMessage,
+        ];
 
         $conn->commit();
     } catch (Throwable $exception) {
         $conn->rollback();
         throw $exception;
+    }
+
+    if ($notification !== null) {
+        dispatch_transaction_notification_after_commit($conn, $notification['clientId'], $notification, 'staff payment');
     }
 }
 
@@ -736,10 +976,12 @@ function review_property_transaction_payment(
         throw new InvalidArgumentException('The payment review note must be 1,000 characters or fewer.');
     }
 
+    $notification = null;
     $conn->begin_transaction();
     try {
         $paymentStmt = $conn->prepare(
             'SELECT p.transactionID, p.clientID, p.amount, p.paymentMethod, p.status,
+                    t.appointmentID, t.inquiryID,
                     t.currentStage, u.fullname, pr.title
              FROM property_transaction_payments p
              JOIN property_transactions t ON t.transactionID = p.transactionID
@@ -754,6 +996,7 @@ function review_property_transaction_payment(
         if (!$payment) {
             throw new InvalidArgumentException('The selected payment was not found.');
         }
+        assert_staff_transaction_access($conn, $payment, $actorId);
         if ($payment['status'] !== 'pending') {
             throw new InvalidArgumentException('This payment has already been reviewed.');
         }
@@ -797,12 +1040,20 @@ function review_property_transaction_payment(
             $status,
             $reviewNote === '' ? '' : "\n\nNote: " . $reviewNote
         );
-        send_property_notification($conn, (int) $payment['clientID'], $notificationSubject, $notificationMessage);
+        $notification = [
+            'clientId' => (int) $payment['clientID'],
+            'title' => $notificationSubject,
+            'message' => $notificationMessage,
+        ];
 
         $conn->commit();
     } catch (Throwable $exception) {
         $conn->rollback();
         throw $exception;
+    }
+
+    if ($notification !== null) {
+        dispatch_transaction_notification_after_commit($conn, $notification['clientId'], $notification, 'payment review');
     }
 }
 
@@ -819,10 +1070,23 @@ function update_appointment_tracking_status(
     require_once __DIR__ . '/appointment_management.php';
     ensure_appointment_management_schema($conn);
 
+    $clientNotification = null;
     $conn->begin_transaction();
     try {
+        $agentLockStmt = $conn->prepare(
+            "SELECT userID FROM users
+             WHERE userID = ? AND role IN ('Agent', 'Sales Agent') AND accountStatus = 'Active'
+             FOR UPDATE"
+        );
+        $agentLockStmt->bind_param('i', $actorId);
+        $agentLockStmt->execute();
+        if (!$agentLockStmt->get_result()->fetch_assoc()) {
+            throw new InvalidArgumentException('An active sales-agent account is required to update viewing assignments.');
+        }
+
         $stmt = $conn->prepare(
-            'SELECT a.status, a.agentID, t.transactionID, t.currentStage, ag.fullname AS agentName
+            'SELECT a.status, a.agentID, a.appointmentDate, a.appointmentTime,
+                    t.transactionID, t.currentStage, ag.fullname AS agentName
              FROM appointments a
              JOIN property_transactions t ON t.appointmentID = a.appointmentID
              LEFT JOIN users ag ON ag.userID = a.agentID
@@ -871,6 +1135,39 @@ function update_appointment_tracking_status(
             throw new InvalidArgumentException('The viewing request status cannot move back to pending.');
         }
 
+        if ($newStatus === 'Approved') {
+            $scheduleConflictStmt = $conn->prepare(
+                "SELECT appointmentDate, appointmentTime
+                 FROM appointments
+                 WHERE agentID = ?
+                   AND appointmentID <> ?
+                   AND status = 'Approved'
+                   AND ABS(TIMESTAMPDIFF(
+                       SECOND,
+                       TIMESTAMP(appointmentDate, appointmentTime),
+                       TIMESTAMP(?, ?)
+                   )) < 3600
+                 LIMIT 1
+                 FOR UPDATE"
+            );
+            $scheduleConflictStmt->bind_param(
+                'iiss',
+                $actorId,
+                $appointmentId,
+                $row['appointmentDate'],
+                $row['appointmentTime']
+            );
+            $scheduleConflictStmt->execute();
+            $scheduleConflict = $scheduleConflictStmt->get_result()->fetch_assoc();
+            if ($scheduleConflict) {
+                $conflictTime = date('M j, Y', strtotime($scheduleConflict['appointmentDate']))
+                    . ' at ' . substr($scheduleConflict['appointmentTime'], 0, 5);
+                throw new InvalidArgumentException(
+                    "You already have an approved viewing within one hour of {$conflictTime}."
+                );
+            }
+        }
+
         $updateTransaction = $conn->prepare(
             'UPDATE property_transactions SET currentStage = ? WHERE transactionID = ?'
         );
@@ -907,17 +1204,28 @@ function update_appointment_tracking_status(
                 (string) $details['appointmentTime'],
                 $statusLabel
             );
-            send_property_notification($conn, (int) $details['clientID'], $notificationSubject, $notificationMessage);
-        }
-
-        // Notify all other agents when a viewing is taken/confirmed
-        if ($newStatus === 'Approved') {
-            notify_agents_viewing_taken($conn, $appointmentId, $actorId);
+            $clientNotification = [
+                'clientId' => (int) $details['clientID'],
+                'title' => $notificationSubject,
+                'message' => $notificationMessage,
+            ];
         }
 
         $conn->commit();
     } catch (Throwable $exception) {
         $conn->rollback();
         throw $exception;
+    }
+
+    if ($clientNotification !== null) {
+        dispatch_transaction_notification_after_commit($conn, $clientNotification['clientId'], $clientNotification, 'viewing update');
+    }
+
+    if ($newStatus === 'Approved') {
+        try {
+            notify_agents_viewing_taken($conn, $appointmentId, $actorId);
+        } catch (Throwable $exception) {
+            error_log('KingQuiry agent viewing notification failed: ' . $exception->getMessage());
+        }
     }
 }

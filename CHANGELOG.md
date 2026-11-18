@@ -3,6 +3,79 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-18 — Public Navigation and Information Organization
+
+- Simplified the public navbar to Properties, Resources & Guides, About Us,
+  Contact Us, sign-in/registration, Help, and the theme toggle. The brand links
+  home, and the agent directory remains under About Us > Our Team.
+- Set desktop navigation text to 16px with 44px action targets; smaller screens
+  retain the scrollable three-line menu.
+- Kept a role-aware Dashboard link in the shared navbar across pages and aligned
+  Contact Us and utility controls as a separate group on the right.
+- Changed the brand label to a plain Home link with extra spacing from the
+  logo; both continue to open the home page.
+- Added a responsive active-agent directory and individual contact profiles
+  with validated email/telephone links; communication remains outside the app.
+- Added an information center for the buyer guide, property advice, pricing
+  inquiry, company overview, service scope, testimonials, and FAQs.
+- Withheld unconfirmed pricing figures until agents verify the current prices
+  and complete payment terms.
+- Kept the shared light/dark theme preference across public, client, agent, and
+  administrator pages and improved dark-theme contrast in both dashboards.
+- Added a featured-properties section backed by the existing recommendation
+  ranking; cold-start listings are shown without a fabricated match percentage.
+- Kept the supported listing categories and statuses consistent across entry
+  and management: Residential, Commercial, Farm Lot, Beach Lot, Condo; Available,
+  Reserved, and Sold.
+- Clearly noted missing verified market statistics, company-history details,
+  and testimonials rather than inventing business claims.
+- Did not add Top/Urgent property categories because the system has no curation
+  fields or agreed selection rules for them.
+
+## 2026-11-18 — Pre-Presentation Test Suite, Deduplication & Agent Assignment
+
+- **Idempotent Presentation Demo Seed Data** ([database/seed_demo_presentation_data.sql](file:///c:/xampp/htdocs/kingquiry/database/seed_demo_presentation_data.sql)):
+  - Added dedicated seed script generating three authorized demo accounts: Client (`client.demo@kingquiry.ph`), Sales Agent (`agent.demo@kingquiry.ph`), and Administrator (`admin.demo@kingquiry.ph`) with bcrypt hashes.
+  - Included sample Available and Sold listings without altering live customer records.
+- **Inquiry & Payment Deduplication**:
+  - Implemented a 120-second content deduplication window for inquiries on [property_detail.php](file:///c:/xampp/htdocs/kingquiry/property_detail.php), preventing intentional or accidental duplicate submissions of the same message to the same property.
+  - Implemented payment deduplication on [includes/transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/includes/transaction_tracking.php) checking for duplicate reference numbers or identical submissions within 120 seconds.
+- **Dual Payment Ledger Reconciliation Policy**:
+  - Reconciled operational tracking payments (`property_transaction_payments`) and accounting records (`payments`) by matching counterpart entries via reference number / amount while accumulating distinct installment records.
+- **Dedicated Assigned Agent Card on Client Dashboard** ([client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php)):
+  - Surfaced the assigned sales agent's name, verified contact number, email, and direct communication actions (Call/SMS and Chat) directly in the client's tracking card and modal window.
+- **Automated Comprehensive Test Suite** ([tests/comprehensive_system_test.php](file:///c:/xampp/htdocs/kingquiry/tests/comprehensive_system_test.php)):
+  - Created automated test runner verifying 1-hour anti-overlap scheduling conflicts, transaction pipeline state transitions, reconciliation calculations, RBAC security, and machine learning utility scoring.
+
+## 2026-11-18 — Property Request Reliability
+
+- Added strict future date/time validation for viewing requests using
+  `Asia/Manila`, including rejection of invalid calendar dates and past times.
+- Added one-time per-session property request tokens and client/IP throttling to
+  reduce accidental duplicate submissions and request spam.
+- Rechecked and locked listing availability inside both viewing and inquiry
+  transactions to prevent requests being recorded after a listing is removed or
+  sold.
+- Made inquiry and tracking-event persistence atomic, and separated
+  post-commit notification failures from the success status of saved requests.
+- Reported unsuccessful client/agent notification delivery without discarding a
+  committed inquiry or viewing request.
+- Removed the artificial minimum match score from recommendations and stopped
+  presenting a cold-start listing as a measured match.
+- Required document verification before payment confirmation for non-cash
+  methods; only Spot Cash can use the direct transition.
+- Moved transaction-stage, payment-review, and viewing-status notifications
+  after their database commits so notification/email failures cannot undo a
+  saved business update.
+- Connected the client dashboard's payment-reporting flow to staff review,
+  restricted reported methods to Cash, Bank Transfer, and Check, and added
+  CSRF, replay protection, and request throttling.
+- Validated transaction money precision and rejected payment entries submitted
+  for non-payment milestones.
+- Expanded the algorithm guide with the property-request validation, locking,
+  conflict, persistence, and notification rules; added edge-case tests for
+  same-day and malformed viewing times.
+
 ## 2026-11-18 — Algorithm Guide and Payment / Contact Cleanup
 
 - Added `ALGORITHM:` source markers and a README index for the system's main
@@ -14,6 +87,36 @@ Dates use `YYYY-MM-DD`.
   schema definitions; existing payment records were left unchanged.
 - Removed the duplicate Contact Us action from the shared footer; the navbar
   contact button and modal remain available.
+- Removed destructive database resets from request-time schema checks; an empty
+  database may be initialized, while a partial schema now fails without
+  dropping existing data.
+- Made viewing conflict checks transactional per property, added agent schedule
+  conflict checks, and separated notification failure from booking success.
+- Required positive verified payments before payment confirmation and full
+  verified payment coverage before a transaction can be completed.
+- Added CSRF checks and strict local-route redirects to notification actions;
+  failed dismissals now stay visible and report an error.
+- Added secure session-cookie defaults, idle session expiration, active-account
+  session refresh, session-ID/CSRF rotation at login, and stopped storing
+  password hashes in session data.
+- Added persistent hashed-key throttling for registration, sign-in, and chat
+  write requests, plus additive migrations for rate-limit storage and agent
+  inquiry ownership.
+- Restricted agent transaction access to assigned appointments/inquiries and
+  added a concurrency-safe inquiry-claim workflow.
+- Added production-mode database safety guards, Apache source/data-directory
+  protections, CSRF-protected logout and backup export, and baseline CI checks.
+- Added explicit coordinate and agent-assignment migrations; production now
+  validates required migration-created tables and columns without request-time
+  DDL.
+- Added the missing legacy notifications-table migration and corrected the
+  documented migration sequence.
+- Keyed request-throttling digests with a production-required secret to prevent
+  offline guessing of hashed email/IP identifiers.
+- Prevented production email notifications from leaking message contents into
+  local logs and made outbound-mail failures explicit.
+- Hardened Apache access rules for source, dependency, manifest, and backup
+  paths; blocked script-like image paths while keeping static assets accessible.
 
 ## 2026-11-17 — Inventory Editing and Portal Navigation
 

@@ -130,6 +130,10 @@ $result = $stmt->get_result();
 $visibleProperties = $result->fetch_all(MYSQLI_ASSOC);
 $result->data_seek(0);
 $locations = get_property_locations($conn);
+$currentClientId = isset($_SESSION['user']['userID']) && normalized_user_role($_SESSION['user'] ?? null) === 'Client'
+    ? (int) $_SESSION['user']['userID']
+    : null;
+$featuredProperties = get_personalized_recommendations($conn, $currentClientId, 0, 3);
 
 $startItem = $totalProperties > 0 ? ($perPage > 0 ? $offset + 1 : 1) : 0;
 $endItem = $totalProperties > 0 ? ($perPage > 0 ? min($totalProperties, $offset + count($visibleProperties)) : $totalProperties) : 0;
@@ -487,8 +491,51 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0 || $sor
 <!-- Content container for property collection -->
 <div class="container py-4 py-lg-5">
 
+<?php if ($featuredProperties !== []): ?>
+    <section class="mb-5" id="featured-properties" aria-labelledby="featured-properties-title">
+        <div class="d-flex flex-column flex-sm-row align-items-sm-end justify-content-between gap-2 mb-3">
+            <div>
+                <div class="page-eyebrow"><?= $currentClientId !== null ? 'Selected for you' : 'Recently added' ?></div>
+                <h2 class="page-title h3 mb-0" id="featured-properties-title">Featured properties</h2>
+                <p class="text-muted small mb-0">Suggestions are based on available listings and, when available, your recent activity.</p>
+            </div>
+            <a class="btn btn-sm btn-outline-primary" href="#all-properties">Browse all listings</a>
+        </div>
+        <div class="row g-3">
+            <?php foreach ($featuredProperties as $featuredProperty):
+                $featuredImage = basename((string) ($featuredProperty['image'] ?? ''));
+                $featuredImagePath = __DIR__ . '/assets/images/' . $featuredImage;
+                $hasFeaturedImage = $featuredImage !== '' && $featuredImage !== 'default.jpg' && is_file($featuredImagePath);
+            ?>
+                <div class="col-md-6 col-xl-4">
+                    <article class="card h-100 overflow-hidden">
+                        <?php if ($hasFeaturedImage): ?>
+                            <img src="assets/images/<?= rawurlencode($featuredImage) ?>" class="property-card-image" alt="<?= htmlspecialchars((string) $featuredProperty['title'], ENT_QUOTES, 'UTF-8') ?>" loading="lazy">
+                        <?php else: ?>
+                            <div class="property-placeholder property-card-image d-flex align-items-center justify-content-center" aria-label="No property image available"><span class="property-placeholder-mark" aria-hidden="true">KQ</span></div>
+                        <?php endif; ?>
+                        <div class="card-body d-flex flex-column">
+                            <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
+                                <span class="badge rounded-pill text-bg-light"><?= htmlspecialchars($categoryLabels[$featuredProperty['propertyType']] ?? $featuredProperty['propertyType'], ENT_QUOTES, 'UTF-8') ?></span>
+                                <?php if ($featuredProperty['match_percentage'] !== null): ?>
+                                    <span class="badge rounded-pill text-bg-primary"><?= (int) $featuredProperty['match_percentage'] ?>% match</span>
+                                <?php endif; ?>
+                            </div>
+                            <h3 class="h5 fw-bold"><?= htmlspecialchars((string) $featuredProperty['title'], ENT_QUOTES, 'UTF-8') ?></h3>
+                            <p class="small text-muted mb-2"><?= htmlspecialchars((string) ($featuredProperty['municipalityName'] ?? $featuredProperty['location'] ?? 'Location not specified'), ENT_QUOTES, 'UTF-8') ?></p>
+                            <div class="fw-bold fs-5 mb-3">₱<?= number_format((float) $featuredProperty['price'], 2) ?></div>
+                            <p class="small text-muted mt-auto"><?= htmlspecialchars((string) $featuredProperty['match_reason'], ENT_QUOTES, 'UTF-8') ?></p>
+                            <a class="btn btn-outline-primary w-100" href="property_detail.php?id=<?= (int) $featuredProperty['propertyID'] ?>">View property</a>
+                        </div>
+                    </article>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    </section>
+<?php endif; ?>
+
 <!-- ═══════════════════ PROPERTY COLLECTION HEADER ═══════════════════ -->
-<div class="d-flex flex-column flex-sm-row align-items-sm-end justify-content-between gap-2 mb-3">
+<div class="d-flex flex-column flex-sm-row align-items-sm-end justify-content-between gap-2 mb-3" id="all-properties">
     <div>
         <div class="page-eyebrow">Property collection</div>
         <h2 class="page-title h3 mb-0">Explore available listings</h2>

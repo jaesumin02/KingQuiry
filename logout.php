@@ -6,12 +6,29 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 apply_secure_headers();
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    header('Allow: POST');
+    http_response_code(405);
+    exit('Use the logout form.');
+}
+if (!has_valid_csrf_token()) {
+    http_response_code(403);
+    exit('Your session expired. Refresh and try again.');
+}
+
 $_SESSION = [];
 session_destroy();
 
 if (ini_get('session.use_cookies')) {
     $cookie = session_get_cookie_params();
-    setcookie(session_name(), '', time() - 42000, $cookie['path'], $cookie['domain'], $cookie['secure'], $cookie['httponly']);
+    setcookie(session_name(), '', [
+        'expires' => time() - 42000,
+        'path' => $cookie['path'],
+        'domain' => $cookie['domain'],
+        'secure' => $cookie['secure'],
+        'httponly' => $cookie['httponly'],
+        'samesite' => $cookie['samesite'] ?? 'Lax',
+    ]);
 }
 
 header('Location: client_login.php');

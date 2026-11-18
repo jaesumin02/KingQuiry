@@ -2,8 +2,8 @@
 /**
  * Shared helpers for the administrator client, payment, and sales modules.
  *
- * The schema helpers keep existing KingQuiry databases usable without a
- * manual migration. They are idempotent and only add missing objects.
+ * Development setup can add missing schema objects automatically. Production
+ * requires reviewed migrations and validates the expected payment schema.
  */
 
 function ensure_admin_management_schema(mysqli $conn): void
@@ -13,6 +13,7 @@ function ensure_admin_management_schema(mysqli $conn): void
         return;
     }
 
+    $productionMode = strtolower((string) (getenv('KINGQUIRY_ENV') ?: 'development')) === 'production';
     $columnDefinitions = [
         'phone' => 'VARCHAR(30) DEFAULT NULL',
         'address' => 'VARCHAR(255) DEFAULT NULL',
@@ -33,8 +34,47 @@ function ensure_admin_management_schema(mysqli $conn): void
         $columnExists = (int) ($stmt->get_result()->fetch_assoc()['columnCount'] ?? 0) > 0;
 
         if (!$columnExists) {
+            if ($productionMode) {
+                throw new RuntimeException("The production database is missing users.`$columnName`. Apply the documented migration.");
+            }
             $conn->query("ALTER TABLE users ADD COLUMN `$columnName` $columnDefinition");
         }
+    }
+
+    if ($productionMode) {
+        $requiredPaymentColumns = [
+            'paymentID',
+            'transactionID',
+            'clientID',
+            'amount',
+            'paymentType',
+            'paymentMethod',
+            'referenceNo',
+            'status',
+            'paidAt',
+            'note',
+            'recordedBy',
+            'createdAt',
+            'updatedAt',
+        ];
+        foreach ($requiredPaymentColumns as $columnName) {
+            $columnStmt = $conn->prepare(
+                'SELECT COUNT(*) AS columnCount
+                 FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE()
+                   AND TABLE_NAME = ?
+                   AND COLUMN_NAME = ?'
+            );
+            $tableName = 'payments';
+            $columnStmt->bind_param('ss', $tableName, $columnName);
+            $columnStmt->execute();
+            if ((int) ($columnStmt->get_result()->fetch_assoc()['columnCount'] ?? 0) === 0) {
+                throw new RuntimeException("The production database is missing payments.`$columnName`. Apply the documented migration.");
+            }
+        }
+
+        $ensured = true;
+        return;
     }
 
     $conn->query(

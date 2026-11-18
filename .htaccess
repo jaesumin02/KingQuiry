@@ -1,0 +1,16 @@
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule (^|/)\.(?!well-known/) - [F,L]
+    RewriteRule ^(?:config|database|includes|scratch|tests|logs|vendor|node_modules)(?:/|$) - [F,L,NC]
+    RewriteRule \.(?:sql|log|ini|env|bak|old|md)(?:\.|$) - [F,L,NC]
+    RewriteRule ^(?:composer\.(?:json|lock)|package(?:-lock)?\.json|phpunit\.xml(?:\.dist)?|yarn\.lock|pnpm-lock\.yaml)$ - [F,L,NC]
+    RewriteRule ^update_pass\.php$ - [F,L,NC]
+</IfModule>
+
+<IfModule mod_authz_core.c>
+    <FilesMatch "(?i)(^\.|(?:^|\.)(?:sql|log|ini|env|bak|old|md)(?:\.|$)|^(?:composer\.(?:json|lock)|package(?:-lock)?\.json|phpunit\.xml(?:\.dist)?|yarn\.lock|pnpm-lock\.yaml)$)">
+        Require all denied
+    </FilesMatch>
+</IfModule>

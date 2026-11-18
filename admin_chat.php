@@ -5,8 +5,8 @@ require_once 'includes/auth.php';
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
-if (!user_has_role($_SESSION['user'] ?? null, 'Admin')) {
-    header('Location: admin_login.php');
+if (!user_has_role($_SESSION['user'] ?? null, 'Admin', 'Sales Agent', 'Agent')) {
+    header('Location: login.php');
     exit();
 }
 

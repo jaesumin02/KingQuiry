@@ -2,6 +2,10 @@
 
 function ensure_notifications_table(mysqli $conn): void
 {
+    if (strtolower((string) (getenv('KINGQUIRY_ENV') ?: 'development')) === 'production') {
+        return;
+    }
+
     $conn->query(
         "CREATE TABLE IF NOT EXISTS user_notifications (
             notificationID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -35,32 +39,45 @@ function send_property_email_log(mysqli $conn, int $userId, string $subject, str
 
     $to = (string) $user['email'];
 
-    // Always log to file first for instant record keeping without blocking
-    $logDir = __DIR__ . '/../logs';
-    if (is_dir($logDir) || mkdir($logDir, 0775, true)) {
-        $logFile = $logDir . '/email_notifications.log';
-        $entry = sprintf(
-            "[%s] To: %s | Subject: %s | Message: %s\n",
-            date('c'),
-            $to,
-            $subject,
-            $message
-        );
-        @file_put_contents($logFile, $entry, FILE_APPEND | LOCK_EX);
-    }
+    if (strtolower((string) (getenv('KINGQUIRY_ENV') ?: 'development')) === 'production') {
+        $fromAddress = getenv('KINGQUIRY_MAIL_FROM');
+        if (
+            !function_exists('mail')
+            || filter_var($to, FILTER_VALIDATE_EMAIL) === false
+            || !is_string($fromAddress)
+            || filter_var($fromAddress, FILTER_VALIDATE_EMAIL) === false
+        ) {
+            error_log('KingQuiry outbound email is unavailable or has an invalid sender/recipient; the in-app notification was saved only.');
+            return false;
+        }
 
-    // Attempt mail only if sendmail is configured
-    $sendmailPath = ini_get('sendmail_path');
-    if (!empty($sendmailPath) && function_exists('mail')) {
-        $headers = "From: no-reply@kingquiry.local\r\n"
-            . "Reply-To: no-reply@kingquiry.local\r\n"
+        $headers = "From: KingQuiry <{$fromAddress}>\r\n"
+            . "Reply-To: {$fromAddress}\r\n"
             . "MIME-Version: 1.0\r\n"
             . "Content-Type: text/plain; charset=UTF-8\r\n";
-        try {
-            @mail($to, $subject, $message, $headers);
-        } catch (Throwable $exception) {
-            // Silently handled
+        $sent = mail($to, $subject, $message, $headers);
+        if (!$sent) {
+            error_log('KingQuiry outbound email could not be accepted by the configured mail transport.');
         }
+        return $sent;
+    }
+
+    $logDir = __DIR__ . '/../logs';
+    if (!is_dir($logDir) && !mkdir($logDir, 0775, true) && !is_dir($logDir)) {
+        error_log('KingQuiry development email log directory could not be created.');
+        return false;
+    }
+
+    $entry = sprintf(
+        "[%s] To: %s | Subject: %s | Message: %s\n",
+        date('c'),
+        $to,
+        $subject,
+        $message
+    );
+    if (file_put_contents($logDir . '/email_notifications.log', $entry, FILE_APPEND | LOCK_EX) === false) {
+        error_log('KingQuiry development email log could not be written.');
+        return false;
     }
 
     return true;
@@ -126,7 +143,7 @@ function notify_agents_new_viewing(
     int $clientId,
     string $date,
     string $time
-): void {
+): bool {
     ensure_notifications_table($conn);
 
     $infoStmt = $conn->prepare(
@@ -160,12 +177,21 @@ function notify_agents_new_viewing(
            AND accountStatus = 'Active'"
     );
 
-    if ($agentRes) {
-        while ($agent = $agentRes->fetch_assoc()) {
-            $agentId = (int) $agent['userID'];
-            create_user_notification($conn, $agentId, $notifTitle, $notifMessage, $link, 'viewing_requested');
+    if (!$agentRes) {
+        return false;
+    }
+
+    $agentCount = 0;
+    $allNotificationsSaved = true;
+    while ($agent = $agentRes->fetch_assoc()) {
+        $agentCount++;
+        $agentId = (int) $agent['userID'];
+        if (!create_user_notification($conn, $agentId, $notifTitle, $notifMessage, $link, 'viewing_requested')) {
+            $allNotificationsSaved = false;
         }
     }
+
+    return $agentCount > 0 && $allNotificationsSaved;
 }
 
 function notify_agents_new_inquiry(
@@ -174,7 +200,7 @@ function notify_agents_new_inquiry(
     int $propertyId,
     int $clientId,
     string $inquiryText
-): void {
+): bool {
     ensure_notifications_table($conn);
 
     $infoStmt = $conn->prepare(
@@ -206,12 +232,21 @@ function notify_agents_new_inquiry(
            AND accountStatus = 'Active'"
     );
 
-    if ($agentRes) {
-        while ($agent = $agentRes->fetch_assoc()) {
-            $agentId = (int) $agent['userID'];
-            create_user_notification($conn, $agentId, $notifTitle, $notifMessage, $link, 'inquiry_received');
+    if (!$agentRes) {
+        return false;
+    }
+
+    $agentCount = 0;
+    $allNotificationsSaved = true;
+    while ($agent = $agentRes->fetch_assoc()) {
+        $agentCount++;
+        $agentId = (int) $agent['userID'];
+        if (!create_user_notification($conn, $agentId, $notifTitle, $notifMessage, $link, 'inquiry_received')) {
+            $allNotificationsSaved = false;
         }
     }
+
+    return $agentCount > 0 && $allNotificationsSaved;
 }
 
 function get_user_notifications(mysqli $conn, int $userId, int $limit = 20): array

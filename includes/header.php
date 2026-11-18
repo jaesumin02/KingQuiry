@@ -1,8 +1,6 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
 require_once __DIR__ . '/auth.php';
+kq_start_session();
 require_once __DIR__ . '/admin_layout.php';
 require_once __DIR__ . '/notifications.php';
 
@@ -27,25 +25,9 @@ if (!empty($currentUser['userID'])) {
         @include_once __DIR__ . '/../config/db.php';
     }
     if (isset($conn) && $conn instanceof mysqli && !$conn->connect_error) {
-        $headerUserId = (int) $currentUser['userID'];
-        $syncStmt = $conn->prepare("SELECT * FROM users WHERE userID = ? LIMIT 1");
-        if ($syncStmt) {
-            $syncStmt->bind_param('i', $headerUserId);
-            $syncStmt->execute();
-            $syncRes = $syncStmt->get_result();
-            if ($syncRes && $syncRes->num_rows === 1) {
-                $freshUser = $syncRes->fetch_assoc();
-                if (($freshUser['accountStatus'] ?? 'Active') === 'Inactive') {
-                    unset($_SESSION['user']);
-                    $currentUser = null;
-                } else {
-                    $_SESSION['user'] = $freshUser;
-                    $currentUser = $freshUser;
-                }
-            }
-            $syncStmt->close();
-        }
+        $currentUser = kq_sync_session_user($conn);
         if ($currentUser) {
+            $headerUserId = (int) $currentUser['userID'];
             $unreadNotificationCount = get_user_unread_notification_count($conn, $headerUserId);
             $allUserNotifications = get_user_notifications($conn, $headerUserId, 60);
             $userNotifications = array_slice($allUserNotifications, 0, 10);
@@ -126,29 +108,50 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
         .kq-live-clock { text-align: right; font-variant-numeric: tabular-nums; }
         .kq-live-clock-date { display: block; color: rgba(255,255,255,.82); font-size: .82rem; }
         .kq-live-clock-time { display: block; font-size: 1.05rem; font-weight: 650; line-height: 1.2; }
-        .navbar .container { min-height: 68px; }
+        .navbar .container { min-height: 58px; }
         .navbar-brand {
             display: inline-flex;
             align-items: center;
-            gap: .7rem;
+            gap: 1.5rem;
             color: #fff !important;
         }
         .kq-navbar-wordmark {
+            display: inline-flex;
+            min-height: 44px;
+            align-items: center;
             color: #fff;
-            font-size: 1.2rem;
-            font-weight: 750;
-            letter-spacing: -.035em;
+            font-size: 1rem;
+            font-weight: 650;
+            letter-spacing: 0;
         }
-        .navbar-nav { align-items: center; gap: .25rem; }
+        .navbar-nav { align-items: stretch; gap: .2rem; }
         .navbar .nav-link {
-            padding: .55rem .8rem !important;
+            display: inline-flex;
+            min-height: 44px;
+            align-items: center;
+            padding: .5rem .65rem !important;
+            border: 1px solid transparent;
             border-radius: .6rem;
-            color: rgba(255,255,255,.78) !important;
-            transition: color .18s ease, background-color .18s ease;
+            background: transparent;
+            color: rgba(255,255,255,.9) !important;
+            font-size: .9rem;
+            font-weight: 600;
+            white-space: nowrap;
+            transition: color .18s ease, background-color .18s ease, border-color .18s ease;
         }
         .navbar .nav-link:hover, .navbar .nav-link:focus {
             color: #fff !important;
+            border-color: rgba(255,255,255,.4);
             background: rgba(255,255,255,.1);
+        }
+        .navbar .nav-link.btn-primary {
+            border-color: var(--kq-primary);
+            background: var(--kq-primary);
+        }
+        .navbar .nav-link.btn-primary:hover,
+        .navbar .nav-link.btn-primary:focus {
+            border-color: var(--kq-primary-dark);
+            background: var(--kq-primary-dark);
         }
         main { flex: 1; }
         main.container { max-width: var(--kq-content-width); }
@@ -377,9 +380,62 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
             background-color: #f0f7ff !important;
             border-left: 3px solid #174a70;
         }
+        .navbar-nav { align-items: stretch; padding: .5rem 0 1rem; }
+        .navbar .nav-link { width: 100%; }
+        .navbar-nav .ms-lg-1,
+        .navbar-nav .ms-lg-2 { margin-left: 0 !important; }
+        .navbar .navbar-collapse { max-height: calc(100vh - 9rem); overflow-y: auto; }
+        .navbar .navbar-collapse .dropdown-menu { position: static; margin-top: 0; }
+        .navbar .navbar-nav .nav-item > .btn,
+        .navbar .navbar-nav .kq-contact-btn,
+        .navbar .navbar-nav .kq-help-btn,
+        .navbar .navbar-nav .kq-theme-toggle-btn {
+            min-height: 44px;
+            border-radius: .55rem;
+            font-size: .875rem;
+        }
+        .navbar .navbar-nav .kq-contact-btn { justify-content: flex-start; }
+        @media (min-width: 1200px) {
+            .navbar .container { max-width: 1320px; }
+            .navbar .navbar-collapse {
+                max-height: none;
+                min-width: 0;
+                overflow: visible;
+            }
+            .navbar .navbar-nav {
+                width: 100%;
+                max-width: 100%;
+                flex-wrap: wrap;
+                align-items: center;
+                justify-content: flex-start;
+                gap: .1rem;
+                row-gap: .2rem;
+                padding: .35rem 0;
+            }
+            .navbar .navbar-nav .kq-nav-actions-start {
+                margin-left: auto !important;
+                padding-left: .5rem;
+            }
+            .navbar .nav-link {
+                width: auto;
+                padding: .4rem .42rem !important;
+                font-size: 1rem;
+            }
+            .navbar .navbar-collapse .dropdown-menu {
+                position: absolute;
+                margin-top: .35rem;
+            }
+            .navbar .navbar-nav .nav-item > .btn,
+            .navbar .navbar-nav .kq-contact-btn,
+            .navbar .navbar-nav .kq-help-btn,
+            .navbar .navbar-nav .kq-theme-toggle-btn {
+                min-height: 44px;
+                padding: .45rem .6rem !important;
+                font-size: .9rem;
+                white-space: nowrap;
+            }
+        }
         @media (max-width: 767.98px) {
-            .navbar-nav { align-items: stretch; padding: .5rem 0 1rem; }
-            .navbar .nav-link { padding: .7rem .8rem !important; }
             .property-card-image { height: 205px; }
             .kq-timebar .container { min-height: 48px; }
             .kq-timebar-brand { font-size: .82rem; }
@@ -402,44 +458,67 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
             </div>
         </div>
     </div>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
+    <nav class="navbar navbar-expand-xl navbar-dark bg-dark shadow-sm">
         <div class="container">
-            <a class="navbar-brand" href="index.php" aria-label="KingQuiry by 4 Kings Realty Services">
+            <a class="navbar-brand" href="index.php" aria-label="Home - KingQuiry by 4 Kings Realty Services">
                 <img class="kq-official-logo kq-logo-navbar kq-logo-on-dark" src="assets/images/kings-land-properties-logo-light.png" alt="4 Kings Realty Services">
-                <span class="kq-navbar-wordmark">KingQuiry</span>
+                <span class="kq-navbar-wordmark">Home</span>
             </a>
             <div class="d-flex align-items-center gap-2">
-                <?php if ($currentRole === null || $currentRole === 'Client'): ?>
-                    <button type="button" class="btn btn-warning btn-sm fw-bold text-dark d-lg-none d-inline-flex align-items-center gap-1 kq-contact-btn-mobile" data-bs-toggle="modal" data-bs-target="#contactUsModal" title="Contact Kings Land Properties">
-                        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-                        <span>Contact Us</span>
-                    </button>
-                <?php endif; ?>
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                     <span class="navbar-toggler-icon"></span>
                 </button>
             </div>
             <div class="collapse navbar-collapse justify-content-end" id="navbarNav">
                 <ul class="navbar-nav">
-                    <li class="nav-item"><a class="nav-link" href="index.php">Property Catalog</a></li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="propertiesNavDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">Properties</a>
+                        <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3" aria-labelledby="propertiesNavDropdown">
+                            <li><a class="dropdown-item py-2" href="index.php#all-properties">All Properties</a></li>
+                            <li><a class="dropdown-item py-2" href="index.php#featured-properties">Featured Properties</a></li>
+                        </ul>
+                    </li>
+                    <?php if ($currentRole !== 'Admin'): ?>
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="resourcesNavDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">Resources &amp; Guides</a>
+                            <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3" aria-labelledby="resourcesNavDropdown">
+                                <li><a class="dropdown-item py-2" href="resources.php#buyers-guide">Buyer&apos;s Guide</a></li>
+                                <li><a class="dropdown-item py-2" href="resources.php#market-trends">Market Trends</a></li>
+                                <li><a class="dropdown-item py-2" href="resources.php#expert-advice">Expert Advice</a></li>
+                            </ul>
+                        </li>
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="aboutNavDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">About Us</a>
+                            <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3" aria-labelledby="aboutNavDropdown">
+                                <li><a class="dropdown-item py-2" href="agents.php">Our Team</a></li>
+                                <li><a class="dropdown-item py-2" href="resources.php#company">Company Background</a></li>
+                                <li><a class="dropdown-item py-2" href="resources.php#service-history">Service History</a></li>
+                                <li><a class="dropdown-item py-2" href="resources.php#testimonials">Testimonials</a></li>
+                                <li><a class="dropdown-item py-2" href="resources.php#faqs">FAQs</a></li>
+                            </ul>
+                        </li>
+                    <?php endif; ?>
                     <?php if($currentRole !== null): ?>
+                        <?php if ($currentRole === 'Client'): ?>
+                            <li class="nav-item"><a class="nav-link" href="client_dashboard.php">Dashboard</a></li>
+                        <?php elseif ($currentRole === 'Sales Agent'): ?>
+                            <li class="nav-item"><a class="nav-link" href="agent_dashboard.php">Dashboard</a></li>
+                        <?php elseif ($currentRole === 'Admin'): ?>
+                            <li class="nav-item"><a class="nav-link" href="admin_dashboard.php">Dashboard</a></li>
+                        <?php endif; ?>
                         <?php if($currentRole === 'Client'): ?>
-                            <li class="nav-item"><a class="nav-link" href="client_dashboard.php">Client Dashboard</a></li>
                             <li class="nav-item"><a class="nav-link" href="client_dashboard.php#transaction-tracking">My Tracking</a></li>
-                            <li class="nav-item ms-lg-2">
+                            <li class="nav-item ms-lg-2 kq-nav-actions-start">
                                 <button type="button" class="btn btn-warning fw-bold text-dark px-3 d-inline-flex align-items-center gap-2 kq-contact-btn" data-bs-toggle="modal" data-bs-target="#contactUsModal">
                                     <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
                                     <span>Contact Us</span>
                                 </button>
                             </li>
                         <?php elseif($currentRole === 'Sales Agent'): ?>
-                            <?php if ($currentPageName !== 'agent_dashboard.php'): ?>
-                                <li class="nav-item"><a class="nav-link text-info fw-bold" href="agent_dashboard.php">Agent Portal</a></li>
-                            <?php endif; ?>
                             <li class="nav-item"><a class="nav-link" href="transaction_tracking.php">Transaction Tracking</a></li>
                         <?php endif; ?>
                         <!-- Notifications Bell Dropdown -->
-                        <li class="nav-item dropdown ms-lg-2">
+                        <li class="nav-item dropdown ms-lg-2 <?= $currentRole === 'Client' ? '' : 'kq-nav-actions-start' ?>">
                             <a class="nav-link position-relative d-inline-flex align-items-center justify-content-center kq-notif-bell-btn text-white" href="#" id="notifDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false" title="Notifications">
                                 <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true">
                                     <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
@@ -463,7 +542,8 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                                     <?php if ($unreadNotificationCount > 0): ?>
                                         <form method="POST" action="notifications_action.php" class="m-0">
                                             <input type="hidden" name="action" value="mark_all_read">
-                                            <input type="hidden" name="redirect" value="<?= htmlspecialchars($_SERVER['REQUEST_URI'] ?? 'index.php', ENT_QUOTES, 'UTF-8') ?>">
+                                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                                            <input type="hidden" name="redirect" value="<?= htmlspecialchars(basename($_SERVER['SCRIPT_NAME'] ?? 'index.php'), ENT_QUOTES, 'UTF-8') ?>">
                                             <button type="submit" class="btn btn-link p-0 text-decoration-none text-primary fw-semibold" style="font-size: 0.75rem;">Mark all as read</button>
                                         </form>
                                     <?php endif; ?>
@@ -472,18 +552,24 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                                     <?php if (!empty($userNotifications)): ?>
                                         <?php foreach ($userNotifications as $notif):
                                             $isUnread = !(bool) $notif['isRead'];
-                                            $targetLink = !empty($notif['link']) ? $notif['link'] : '#';
+                                            $targetLink = !empty($notif['link']) ? $notif['link'] : 'index.php';
                                         ?>
-                                            <a href="notifications_action.php?action=read_and_go&id=<?= (int)$notif['notificationID'] ?>&to=<?= urlencode($targetLink) ?>" class="dropdown-item px-3 py-2 border-bottom text-wrap kq-notif-item <?= $isUnread ? 'is-unread' : '' ?>" style="font-size: 0.82rem;">
-                                                <div class="d-flex justify-content-between align-items-start gap-1 mb-1">
+                                            <form method="POST" action="notifications_action.php" class="m-0">
+                                                <input type="hidden" name="action" value="read_and_go">
+                                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                                                <input type="hidden" name="id" value="<?= (int) $notif['notificationID'] ?>">
+                                                <input type="hidden" name="to" value="<?= htmlspecialchars($targetLink, ENT_QUOTES, 'UTF-8') ?>">
+                                                <button type="submit" class="dropdown-item px-3 py-2 border-bottom text-wrap kq-notif-item <?= $isUnread ? 'is-unread' : '' ?>" style="font-size: 0.82rem;">
+                                                <span class="d-flex justify-content-between align-items-start gap-1 mb-1">
                                                     <span class="fw-bold <?= $isUnread ? 'text-primary' : 'text-dark' ?>" style="font-size: 0.84rem;"><?= htmlspecialchars($notif['title'], ENT_QUOTES, 'UTF-8') ?></span>
                                                     <?php if ($isUnread): ?>
                                                         <span class="badge rounded-pill bg-primary" style="width: 7px; height: 7px; padding: 0; display: inline-block;"></span>
                                                     <?php endif; ?>
-                                                </div>
-                                                <p class="mb-1 text-dark text-break fw-normal" style="font-size: 0.77rem; line-height: 1.35;"><?= htmlspecialchars($notif['message'], ENT_QUOTES, 'UTF-8') ?></p>
+                                                </span>
+                                                <span class="d-block mb-1 text-dark text-break fw-normal" style="font-size: 0.77rem; line-height: 1.35;"><?= htmlspecialchars($notif['message'], ENT_QUOTES, 'UTF-8') ?></span>
                                                 <time class="text-secondary small" style="font-size: 0.7rem;"><?= htmlspecialchars(date('M j, g:i A', strtotime($notif['createdAt'])), ENT_QUOTES, 'UTF-8') ?></time>
-                                            </a>
+                                                </button>
+                                            </form>
                                         <?php endforeach; ?>
                                     <?php else: ?>
                                         <div class="px-3 py-4 text-center text-muted small">
@@ -534,7 +620,7 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                     <?php else: ?>
                         <li class="nav-item"><a class="nav-link" href="client_login.php">Sign in</a></li>
                         <li class="nav-item"><a class="nav-link btn btn-primary text-white ms-2 px-3" href="register.php">Register</a></li>
-                        <li class="nav-item ms-lg-2">
+                        <li class="nav-item ms-lg-2 kq-nav-actions-start">
                             <button type="button" class="btn btn-warning fw-bold text-dark px-3 d-inline-flex align-items-center gap-2 kq-contact-btn" data-bs-toggle="modal" data-bs-target="#contactUsModal">
                                 <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
                                 <span>Contact Us</span>

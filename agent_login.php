@@ -2,6 +2,7 @@
 include 'config/db.php';
 require_once 'includes/auth.php';
 require_once 'includes/login_human_check.php';
+require_once 'includes/rate_limit.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -27,6 +28,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $postedIdentifier = $_POST['identifier'] ?? $_POST['email'] ?? '';
     $identifier = is_string($postedIdentifier) ? trim(substr($postedIdentifier, 0, 100)) : '';
     $password = $_POST['password'] ?? '';
+    $loginIpAddress = is_string($_SERVER['REMOTE_ADDR'] ?? null) ? $_SERVER['REMOTE_ADDR'] : '';
+
+    if ($error === '') {
+        $retryAfter = kq_login_rate_limit($conn, $identifier, $loginIpAddress);
+        if ($retryAfter !== null) {
+            $error = 'Too many sign-in attempts. Please wait ' . (int) ceil($retryAfter / 60) . ' minute(s) and try again.';
+        }
+    }
 
     if ($error === '' && $identifier !== '' && is_string($password) && $password !== '') {
         $stmt = $conn->prepare("SELECT * FROM users WHERE email = ? OR SUBSTRING_INDEX(email, '@', 1) = ? LIMIT 2");
@@ -41,8 +50,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 if (($user['accountStatus'] ?? 'Active') === 'Inactive') {
                     $error = 'This account is inactive. Please contact the administrator.';
                 } else {
-                    session_regenerate_id(true);
-                    $_SESSION['user'] = $user;
+                    kq_clear_login_rate_limits($conn, $identifier, $loginIpAddress);
+                    kq_regenerate_session_after_login($user);
                     $destination = $normalizedRole === 'Admin'
                         ? 'admin_dashboard.php'
                         : ($normalizedRole === 'Sales Agent' ? 'agent_dashboard.php' : 'index.php');
@@ -93,11 +102,7 @@ include 'includes/header.php';
             <?php include 'includes/login_human_check_field.php'; ?>
 
             <div class="kq-form-options">
-                <label class="kq-check" for="remember-me">
-                    <input type="checkbox" id="remember-me" name="remember_me">
-                    <span>Remember me</span>
-                </label>
-                <a class="kq-link" href="update_pass.php">Forgot password?</a>
+                <a class="kq-link" href="#contactUsModal" data-bs-toggle="modal" data-bs-target="#contactUsModal">Need help signing in? Contact support</a>
             </div>
 
             <button type="submit" class="kq-auth-submit">Access agent portal</button>

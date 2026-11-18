@@ -30,12 +30,17 @@ required:
    `http://localhost/kingquiry/` to use the system.
 
 The fresh schema creates the tables, tracking and analytics fields, client
-profile fields, the payments register, chat storage, and initial Batangas
-locations. It intentionally contains no users, properties, messages,
-appointments, inquiries, payments, or sales; create or import only business data
-you are authorized to use. If the XAMPP folder or database credentials differ,
-update the settings in `config/db.php` or set the documented
-`KINGQUIRY_DB_*` environment variables.
+profile fields, the payments register, chat storage, authentication rate limits,
+agent inquiry assignments, and initial Batangas locations. It intentionally
+contains no users, properties, messages, appointments, inquiries, payments, or
+sales; create or import only business data you are authorized to use. If the
+XAMPP folder or database credentials differ, update the settings in
+`config/db.php` or set the documented `KINGQUIRY_DB_*` environment variables.
+
+In development, the application initializes the schema only when the selected
+database is empty. Production mode disables request-time database/schema
+creation. If an existing database is missing tables, the application fails
+safely without dropping data; apply a reviewed migration after taking a backup.
 
 ## Algorithm guide
 
@@ -44,21 +49,62 @@ calculation flows:
 
 | Algorithm | Location | What it does |
 | --- | --- | --- |
-| Property recommendations | [`includes/ml_recommender.php`](includes/ml_recommender.php) | Ranks available listings by weighted price, category, municipality, and area similarity. |
+| Property recommendations | [`includes/ml_recommender.php`](includes/ml_recommender.php) | Ranks available listings by weighted price (40%), category (25%), municipality (20%), and area (15%) similarity; cold-start results do not claim a match percentage. |
 | Property price estimation | [`includes/property_estimator.php`](includes/property_estimator.php) | Fits a normalized linear regression with batch gradient descent; falls back to a weighted median of comparable price-per-square-meter rates. |
-| Viewing schedule conflict check | [`property_detail.php`](property_detail.php) | Rejects an active same-property appointment if it is less than one hour from the requested time. |
-| Transaction stage flow | [`includes/transaction_tracking.php`](includes/transaction_tracking.php) | Defines allowed next transaction stages; Spot Cash can skip document verification. |
+| Property request intake | [`property_detail.php`](property_detail.php) | Validates client submissions, prevents replay, checks listing availability, and atomically records inquiries/viewings with their tracking event. |
+| Viewing schedule conflict check | [`property_detail.php`](property_detail.php) | Rejects duplicate active requests and same-property pending/approved viewings less than one hour apart. |
+| Transaction stage flow | [`includes/transaction_tracking.php`](includes/transaction_tracking.php) | Defines allowed next transaction stages; non-cash payments require document verification, while Spot Cash may skip it. |
 | Inventory insights | [`admin_dashboard.php`](admin_dashboard.php) | Uses fixed inquiry/listing thresholds to suggest an inventory or marketing review. |
 | Chatbot responses | [`chat_api.php`](chat_api.php) | Checks ordered keyword rules and selects a matching preset response; it does not call an external AI service. |
 
 These are the system's main algorithms and rule-based decision flows; ordinary
 form validation and database CRUD operations are not listed as algorithms.
 
+### Property inquiry and viewing request algorithm
+
+1. A direct property-detail request returns 404 for deleted listings, sample
+   listings, and statuses other than `Available` or `Sold`. Sold listings remain
+   viewable as archived details but cannot accept new requests.
+2. Only a signed-in client may submit a request. Each form submission must carry
+   the session CSRF token and a per-property, per-action one-time token. A valid
+   token is consumed only after the database transaction commits, so validation
+   or database errors can be corrected and retried without accepting a replay.
+3. Valid client submissions are rate limited to 10 requests per client and 30
+   requests per IP address in a fixed 10-minute window. These checks occur
+   before field validation, so a validly authenticated but malformed submission
+   also counts toward the limit.
+4. A viewing request must use a real `YYYY-MM-DD` date and `HH:MM` time in
+   `Asia/Manila`, and the combined appointment must be in the future. The app
+   starts a database transaction, locks the property row, and rechecks that the
+   listing is still available. It rejects an existing pending/approved request
+   from the same client at the exact same time and any pending/approved viewing
+   for that property less than 60 minutes from the requested time. It then
+   inserts the appointment and its transaction-tracking event in the same
+   transaction.
+5. An inquiry must contain 5–3,000 valid UTF-8 code points. The app also locks
+   and rechecks the property row, then inserts the inquiry and its tracking event
+   in the same transaction. Both request paths roll back if either business
+   record or tracking record cannot be saved.
+6. Client and agent notifications are attempted only after commit. A notification
+   failure does not report the already-saved inquiry/viewing as failed; the
+   client is told that the request was saved and can be tracked, while the
+   failure is logged. Successful submissions use a redirect-after-POST flow.
+
 ## Features
 
 ### Public catalog
 
 - Browse property listings and filter by keyword, category, or location.
+- Use the simplified shared navigation on desktop, or its three-line menu on
+  narrower screens. The Home link beside the logo opens Home; Agents is under About Us > Our Team.
+  Public links and account actions remain available without crowding the row.
+- Signed-in users have a Dashboard link across shared pages; Contact Us and
+  utility controls are separated toward the right on desktop.
+- Switch between light and dark themes from the shared menu; the preference is
+  saved and reused across the public, client, agent, and administrator pages.
+- View featured suggestions ranked by the existing weighted recommendation
+  algorithm. With no client profile or search activity, the newest listings are
+  shown without claiming a match score.
 - Sort properties by price (ascending or descending), alphabetical title (A to Z or Z to A), or newest listings.
 - Configurable per-page viewing limits (10 properties by default, 6, 15, 24, or all) with responsive numbered pagination and next/previous page navigation.
 - Open a property's details, price, price per square meter, land characteristics,
@@ -68,6 +114,16 @@ form validation and database CRUD operations are not listed as algorithms.
   in as a client.
 - Search properties by a safe, prepared keyword query, category, and the active
   locations configured by an administrator.
+- Property categories are Residential, Commercial, Farm Lot, Beach Lot, and
+  Condo. Listing statuses are Available, Reserved, and Sold; only Available
+  listings appear in the public catalog.
+- Browse active sales-agent contacts and open an individual profile with email
+  and telephone links when valid contact details are available. Direct
+  communication opens the user's email or phone app and is not stored in
+  KingQuiry.
+- Read the buyer checklist, safe property guidance, FAQs, and system/service
+  scope from the information center. Market statistics, company milestones,
+  testimonials, and unconfirmed listing prices are not published as facts.
 
 ### Accounts and sessions
 
@@ -93,6 +149,8 @@ form validation and database CRUD operations are not listed as algorithms.
 
 - Request a property viewing appointment with a preferred date and time.
 - Send an inquiry about a property.
+- Report an offline Cash, Bank Transfer, or Check payment for staff verification;
+  the dashboard does not process or verify transfers.
 - Track appointment status from the catalog or the client dashboard.
 - Follow a dated property-request/sale timeline from inquiry or viewing request
   through contact, confirmed viewing, negotiation, reservation, document review,
@@ -179,6 +237,8 @@ form validation and database CRUD operations are not listed as algorithms.
 | Path | Purpose |
 | --- | --- |
 | `index.php` | Public property catalog, filters, and client appointment tracking |
+| `agents.php` | Public active-agent directory and contact profiles |
+| `resources.php` | Buyer guide, market-data notice, advice, pricing information, company/service scope, testimonials notice, and FAQs |
 | `property_detail.php` | Property details, appointment booking, and inquiries |
 | `register.php` | Client account registration |
 | `login.php` | Login form, authentication, role-based redirects, and login-page cache handling |
@@ -200,8 +260,12 @@ form validation and database CRUD operations are not listed as algorithms.
 | `includes/property_images.php` | Validated property image upload and storage |
 | `includes/admin_management.php` | Shared client, payment, and sales helpers, including idempotent schema setup |
 | `database/chat_schema.sql` | Tables required for client conversations, chat messages, and admin presence |
+| `database/notifications_schema.sql` | In-app notifications table for existing installations |
 | `database/location_schema.sql` | Batangas seed data and one-time nullable structured property location and area migration for existing installations |
+| `database/coordinate_columns_schema.sql` | Idempotent latitude/longitude migration for legacy property tables |
 | `database/transaction_tracking_schema.sql` | Additive transaction timeline tables and safe starting-state backfill for existing appointments and inquiries |
+| `database/agent_inquiry_assignments_schema.sql` | Appointment-agent assignment support, dismissed appointments, and inquiry ownership |
+| `database/security_rate_limits_schema.sql` | HMAC-keyed request-throttling buckets for authentication and customer chat |
 | `database/schema.sql` | Complete fresh-install schema for all application tables plus the initial Batangas location seed data; no live user or transaction records |
 | `update_pass.php` | CLI-only administrator password reset utility |
 | `CHANGELOG.md` | Dated record of project changes |
@@ -225,22 +289,31 @@ form validation and database CRUD operations are not listed as algorithms.
    Bootstrap styling and navigation scripts are currently loaded from a CDN,
    so the UI needs internet access unless those assets are later self-hosted.
 6. For a **legacy database that already has the original application tables**,
-   back it up first, then import `database/chat_schema.sql`, run
-   `database/location_schema.sql` once, import
-   `database/transaction_tracking_schema.sql`, and import
-   `database/admin_management_schema.sql`. The location migration adds
+   back it up first, then import `database/chat_schema.sql` and
+   `database/notifications_schema.sql`, run `database/location_schema.sql`
+   once, then import `database/coordinate_columns_schema.sql` and
+   `database/transaction_tracking_schema.sql`, import
+   `database/admin_management_schema.sql`,
+   `database/agent_inquiry_assignments_schema.sql`, then import
+   `database/security_rate_limits_schema.sql`. The location migration adds
    columns to `properties`, so do not run it more than once. It repeats the
    location table and seed definitions from `schema.sql` so it can independently
    upgrade an older database; it is not needed for a fresh install. The tracking
-   migration creates its tables (including payment records), adds the sale-price column if missing, and
-   creates an initial state for existing appointments and inquiries; it does
-   not invent past step-by-step history or sales amounts. The client/payments
-   migration adds the `phone`, `address`, and `accountStatus` columns to `users`
-   and creates the `payments` table; it is safe to re-run because it only adds
-   missing objects. After migration, the same codebase powers client chat,
-   tracking, analytics, client management, and payments.
+   migration creates its tables (including payment records), adds the sale-price
+   column if missing, and creates an initial state for existing appointments
+   and inquiries; it does not invent past step-by-step history or sales amounts.
+   The client/payments migration adds the `phone`, `address`, and `accountStatus`
+   columns to `users` and creates the `payments` table. The coordinate migration
+   adds nullable latitude and longitude fields. The agent-assignment migration
+   adds `appointments.agentID`, creates the dismissed-appointment table, and
+   creates ownership storage for claimed inquiries. The notification migration
+   creates the in-app notifications table. The security migration creates the
+   HMAC-keyed request-throttling table used by registration, login, and
+   customer-chat endpoints. After migration, the same codebase powers client
+   chat, tracking, analytics, client management, and payments.
    Existing free-text locations are retained and left unmapped; only verified
    location data should be assigned to a standardized municipality.
+
 7. Create the first administrator securely: register that account through the
    site first (registration creates only a `Client`), then in phpMyAdmin select
    the new account and change its role to `Admin` with a narrowly scoped query:
@@ -278,6 +351,51 @@ form validation and database CRUD operations are not listed as algorithms.
    remain attached to existing listings. To reproduce custom directory entries
    on another installation, transfer only the approved location rows through a
    reviewed SQL export; do not export personal records into the source repo.
+
+## Production deployment requirements
+
+The XAMPP instructions above are for local coursework use, not a production
+deployment. Before exposing this application publicly:
+
+- Serve it only over HTTPS. Set `KINGQUIRY_COOKIE_SECURE=true` when TLS is
+  terminated by a trusted reverse proxy and use a certificate for the public
+  hostname. If traffic passes through a proxy, configure the web server to set
+  `REMOTE_ADDR` from an explicit trusted-proxy allowlist; the app deliberately
+  ignores arbitrary forwarded headers.
+- Set `KINGQUIRY_ENV=production`, `KINGQUIRY_COOKIE_SECURE=true` when needed,
+  all `KINGQUIRY_DB_*` variables, and a securely generated
+  `KINGQUIRY_RATE_LIMIT_SECRET` of at least 32 characters. Production mode
+  refuses the default `root`/blank-password database account and refuses to
+  create a missing database or initialize an empty schema at request time.
+- Use a dedicated least-privilege MySQL account. Do not deploy with XAMPP's
+  default `root` account, and store database credentials in the hosting
+  environment rather than source control.
+- Apply all documented migrations to an existing database after a verified
+  backup, including the notifications, coordinate, agent-assignment, and
+  rate-limit migrations.
+  Production checks required migration-created tables and columns at connection
+  time and never applies schema changes from web requests.
+- On Apache 2.4, enable `mod_rewrite` and `mod_authz_core` and configure
+  `AllowOverride` so the
+  repository's `.htaccess` protection is applied. On other web servers, deny
+  direct HTTP access to `config`, `database`, `includes`, `scratch`, `tests`,
+  `logs`, hidden files, and SQL/log/backup files in the server configuration.
+  Also prevent script execution inside `assets/images`, where uploaded property
+  images are stored.
+- Set up encrypted, off-site scheduled backups and test restoration. The
+  browser-accessible SQL export is not a substitute for protected operational
+  backups.
+- Configure and test an approved outbound mail transport and set
+  `KINGQUIRY_MAIL_FROM` to a verified sender address. Without it, in-app
+  notifications still work, but email is not sent; production does not write
+  message content or recipient addresses into a local email log.
+- Configure error logs, monitoring, alerting, retention, privacy notices, and
+  incident-response ownership with the hosting team. Test the deployment and
+  restoration procedure with non-production data first.
+- The application has inline scripts/styles and currently cannot enforce a
+  strict Content Security Policy without a broader template migration. Do not
+  treat the existing response headers as a complete substitute for a security
+  review and deployment-specific hardening.
 
 ### Database tables used by the application
 
@@ -326,18 +444,31 @@ match the database that is used for the project.
 Clients can track an inquiry or viewing from their dashboard. If a client sends
 an inquiry and books a viewing for the same property while its case is open,
 the app adds both to the same tracking reference. Admins and sales agents update
-the case in **Transaction Tracking**. The normal progression is:
+the case in **Transaction Tracking**. The implemented state machine allows:
 
-1. Inquiry received or viewing requested
-2. Contacting client (inquiry cases)
-3. Viewing requested and confirmed
-4. Viewing completed
-5. Offer / negotiation
-6. Reservation processing
-7. Document verification
-8. Client records a payment made through any method; staff verifies it and
-   confirms payment
-9. Successful / completed
+- `inquiry_received` → `contacting_client`, `viewing_requested`, or `cancelled`
+- `contacting_client` → `viewing_requested` or `cancelled`
+- `viewing_requested` → `viewing_confirmed` or `cancelled`
+- `viewing_confirmed` → `viewing_completed`, `payment_in_process`, or `cancelled`
+- `viewing_completed` → `payment_in_process`, `document_verification`, or
+  `cancelled`
+- `payment_in_process` → `document_verification` or `cancelled`; Spot Cash may
+  advance directly to `payment_confirmation`
+- `document_verification` → `payment_confirmation` or `cancelled`
+- `payment_confirmation` → `completed` or `cancelled`
+- `completed` and `cancelled` are terminal states
+
+Offer/negotiation and reservation discussions are not separate enforced stages;
+staff can record those details in client-visible notes.
+
+The transition rules reject out-of-order stage changes. Payment confirmation
+requires a positive verified payment; completion requires a positive sale price,
+an available non-deleted property, and verified payment coverage of that price.
+Client payment reports are pending until reviewed by staff. When calculating
+coverage, the tracker compares its verified payment ledger with the admin
+payment register and uses the higher total rather than adding potentially
+mirrored payments. Transaction updates commit before notifications are sent, so
+a mail or notification failure does not roll back a recorded stage or payment.
 
 A case may be cancelled before completion. Staff updates are manual and each
 step/note is time-stamped and linked to the staff account. Marking a case
@@ -345,11 +476,21 @@ successful also requires the actual agreed sale price, which is then included
 in the revenue analytics. The app does not
 process payments, verify escrow/bank transfers, send receipts, or track a
 physical parcel with GPS. Staff must verify the sale and its documents outside
-the app before recording the successful step; its required note is visible to
-the client. Payment confirmation and successful completion both require staff
-notes. Existing records only receive a migration-time starting status because
-their previous transition history was not stored; no old sale prices are
-invented.
+the app before recording successful completion. If a staff note is omitted, the
+tracker records a generated milestone note; any supplied note is visible to the
+client. Because admin payments and tracker payments are stored in separate
+ledgers, completion compares the higher verified total instead of adding both
+ledgers and risking duplicate mirrored entries. Reconcile payments before
+completion if they were split between the ledgers. Existing records only receive
+a migration-time starting status because their previous transition history was
+not stored; no old sale prices are invented.
+
+Clients may report a payment from the transaction tracker while a case is in
+payment processing, document verification, or payment confirmation. A report is
+saved as pending for staff review and is protected by CSRF, a one-time session
+token, and limits of 10 submissions per client and 30 per IP address in a
+10-minute window. The page records an offline payment only; it does not initiate
+or verify a transfer.
 
 ### Price estimator limitations
 
@@ -397,6 +538,29 @@ near-real-time, not push notifications.
 - Do not publish real database credentials or passwords in the repository.
 - Configure production database credentials securely and use HTTPS in
   production.
+
+## Capstone Presentation Demo Data & Test Suite
+
+### 1. Presentation Demo Accounts (Idempotent Seed Script)
+To prepare clean test data on local databases without modifying real customer records, import:
+`database/seed_demo_presentation_data.sql`
+
+This creates three pre-configured accounts:
+- **Client Account:** `client.demo@kingquiry.ph` / `Client123!` (Jasmine Ramos - Demo Client)
+- **Sales Agent Account:** `agent.demo@kingquiry.ph` / `Agent123!` (Brent Marc Alcover - Demo Agent)
+- **Administrator Account:** `admin.demo@kingquiry.ph` / `Admin123!` (Zydryx Policarpio - Demo Admin)
+
+### 2. Automated Test Execution
+Run the comprehensive test suite from PowerShell / Terminal:
+```bash
+php -d session.save_path="$env:TEMP" tests/comprehensive_system_test.php
+```
+This automatically verifies:
+- Anti-overlap 1-hour scheduling conflicts.
+- Transaction state machine (Spot Cash bypass vs. Non-cash document verification).
+- Dual payment ledger reconciliation math (counterpart deduplication & distinct installment sums).
+- RBAC permissions and currency validations.
+- Content-based machine learning recommendation scoring.
 
 ## Documentation updates
 
