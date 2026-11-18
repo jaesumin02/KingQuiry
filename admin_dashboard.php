@@ -663,19 +663,22 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
     }
 
     .card {
-        border: 1px solid rgba(20, 34, 41, 0.08) !important;
         border-radius: 1.2rem !important;
-        background: rgba(255, 255, 255, 0.98);
-        color: var(--kq-ink);
         box-shadow: 0 18px 40px rgba(0, 0, 0, 0.12);
     }
 
-    .kq-admin-shell .card .text-muted,
-    .kq-admin-shell .kq-stat-card .text-muted {
+    html[data-bs-theme="light"] .card {
+        border: 1px solid rgba(20, 34, 41, 0.08) !important;
+        background: rgba(255, 255, 255, 0.98);
+        color: var(--kq-ink);
+    }
+
+    html[data-bs-theme="light"] .kq-admin-shell .card .text-muted,
+    html[data-bs-theme="light"] .kq-admin-shell .kq-stat-card .text-muted {
         color: #536579 !important;
     }
 
-    .kq-admin-shell .card .page-eyebrow {
+    html[data-bs-theme="light"] .kq-admin-shell .card .page-eyebrow {
         color: #805a20;
     }
 
@@ -688,36 +691,39 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
         color: var(--admin-title);
     }
 
-    .kq-badge-soft {
-        background: rgba(255, 255, 255, 0.12);
-        color: #f7f5f0;
+    html[data-bs-theme="light"] .kq-badge-soft {
+        background: rgba(17, 53, 71, 0.08);
+        color: #123b5a;
     }
 
     .kq-stat-card {
-        background: linear-gradient(180deg, rgba(255,255,255,1), rgba(243,247,250,1));
-        border: 1px solid rgba(19, 45, 66, 0.08);
         border-radius: 1rem;
         box-shadow: 0 12px 26px rgba(17, 43, 69, 0.07);
     }
 
-    .btn-primary {
+    html[data-bs-theme="light"] .kq-stat-card {
+        background: linear-gradient(180deg, rgba(255,255,255,1), rgba(243,247,250,1));
+        border: 1px solid rgba(19, 45, 66, 0.08);
+    }
+
+    html[data-bs-theme="light"] .btn-primary {
         background: linear-gradient(180deg, #173d56, #102334);
         border-color: #173d56;
     }
 
-    .btn-primary:hover,
-    .btn-primary:focus {
+    html[data-bs-theme="light"] .btn-primary:hover,
+    html[data-bs-theme="light"] .btn-primary:focus {
         background: linear-gradient(180deg, #1d486b, #132a3f);
         border-color: #1d486b;
     }
 
-    .btn-outline-primary {
+    html[data-bs-theme="light"] .btn-outline-primary {
         border-color: rgba(17, 53, 71, 0.3);
         color: #123b5a;
     }
 
-    .btn-outline-primary:hover,
-    .btn-outline-primary:focus {
+    html[data-bs-theme="light"] .btn-outline-primary:hover,
+    html[data-bs-theme="light"] .btn-outline-primary:focus {
         background: rgba(17, 53, 71, 0.05);
         color: #123b5a;
     }

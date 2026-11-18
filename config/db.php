@@ -28,13 +28,15 @@ if (
     exit('The service is temporarily unavailable. Please try again later.');
 }
 
-function flush_multi_query_results(mysqli $connection): void
-{
-    do {
-        if ($result = $connection->store_result()) {
-            $result->free();
-        }
-    } while ($connection->more_results() && $connection->next_result());
+if (!function_exists('flush_multi_query_results')) {
+    function flush_multi_query_results(mysqli $connection): void
+    {
+        do {
+            if ($result = $connection->store_result()) {
+                $result->free();
+            }
+        } while ($connection->more_results() && $connection->next_result());
+    }
 }
 
 function initialize_kingquiry_schema(mysqli $connection): void
@@ -92,9 +94,127 @@ function ensure_required_database_tables(mysqli $connection, bool $allowSchemaCh
         return;
     }
 
+    $missingTables = [];
     foreach ($requiredTables as $table) {
         if (!isset($tableNames[$table])) {
-            throw new RuntimeException("Required database table `$table` is missing. Apply the documented database migration; no data was changed.");
+            $missingTables[] = $table;
+        }
+    }
+
+    if ($missingTables !== []) {
+        if (!$allowSchemaChanges) {
+            throw new RuntimeException("Required database table `" . implode('`, `', $missingTables) . "` is missing. Apply the documented database migration; no data was changed.");
+        }
+
+        // In non-production environments, automatically create missing tables
+        try {
+            initialize_kingquiry_schema($connection);
+        } catch (Throwable $e) {
+            error_log('KingQuiry auto-schema import warning: ' . $e->getMessage());
+        }
+
+        // Verify and apply individual DDL fallbacks for any still-missing tables
+        $existingTables = $connection->query('SHOW TABLES');
+        $tableNames = [];
+        while ($tableRow = $existingTables->fetch_row()) {
+            $tableNames[(string) $tableRow[0]] = true;
+        }
+
+        $fallbacks = [
+            'security_rate_limits' => "CREATE TABLE IF NOT EXISTS `security_rate_limits` (
+                `key_hash` BINARY(32) NOT NULL,
+                `window_started_at` DATETIME NOT NULL,
+                `attempts` INT UNSIGNED NOT NULL DEFAULT 0,
+                `expires_at` DATETIME NOT NULL,
+                PRIMARY KEY (`key_hash`),
+                KEY `idx_security_rate_limits_expiry` (`expires_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+            'agent_dismissed_appointments' => "CREATE TABLE IF NOT EXISTS `agent_dismissed_appointments` (
+                `agentID` INT NOT NULL,
+                `appointmentID` INT NOT NULL,
+                `dismissedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`agentID`, `appointmentID`),
+                KEY `idx_dismissed_appointment` (`appointmentID`),
+                CONSTRAINT `fk_dismissed_agent` FOREIGN KEY (`agentID`) REFERENCES `users` (`userID`) ON DELETE CASCADE,
+                CONSTRAINT `fk_dismissed_appointment` FOREIGN KEY (`appointmentID`) REFERENCES `appointments` (`appointmentID`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+            'agent_inquiry_assignments' => "CREATE TABLE IF NOT EXISTS `agent_inquiry_assignments` (
+                `inquiryID` INT NOT NULL,
+                `agentID` INT NOT NULL,
+                `assignedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`inquiryID`),
+                KEY `idx_agent_inquiry_assignments_agent` (`agentID`, `assignedAt`),
+                CONSTRAINT `fk_agent_inquiry_assignments_inquiry` FOREIGN KEY (`inquiryID`) REFERENCES `feedbackinquiries` (`inquiryID`) ON DELETE CASCADE,
+                CONSTRAINT `fk_agent_inquiry_assignments_agent` FOREIGN KEY (`agentID`) REFERENCES `users` (`userID`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+            'user_notifications' => "CREATE TABLE IF NOT EXISTS `user_notifications` (
+                `notificationID` INT NOT NULL AUTO_INCREMENT,
+                `userID` INT NOT NULL,
+                `title` VARCHAR(150) NOT NULL,
+                `message` TEXT NOT NULL,
+                `link` VARCHAR(255) DEFAULT NULL,
+                `type` VARCHAR(50) DEFAULT 'general',
+                `isRead` TINYINT(1) NOT NULL DEFAULT 0,
+                `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`notificationID`),
+                KEY `idx_user_notifications_user_unread` (`userID`, `isRead`),
+                KEY `idx_user_notifications_created` (`createdAt`),
+                CONSTRAINT `fk_user_notifications_user` FOREIGN KEY (`userID`) REFERENCES `users` (`userID`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+            'agent_reviews' => "CREATE TABLE IF NOT EXISTS `agent_reviews` (
+                `reviewID` INT NOT NULL AUTO_INCREMENT,
+                `transactionID` INT NOT NULL,
+                `clientID` INT NOT NULL,
+                `agentID` INT NOT NULL,
+                `rating` TINYINT NOT NULL,
+                `comment` TEXT DEFAULT NULL,
+                `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`reviewID`),
+                UNIQUE KEY `uq_review_transaction` (`transactionID`),
+                KEY `idx_agent_reviews_agent` (`agentID`),
+                KEY `idx_agent_reviews_client` (`clientID`),
+                CONSTRAINT `fk_agent_reviews_transaction` FOREIGN KEY (`transactionID`) REFERENCES `property_transactions` (`transactionID`) ON DELETE CASCADE,
+                CONSTRAINT `fk_agent_reviews_client` FOREIGN KEY (`clientID`) REFERENCES `users` (`userID`) ON DELETE CASCADE,
+                CONSTRAINT `fk_agent_reviews_agent` FOREIGN KEY (`agentID`) REFERENCES `users` (`userID`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+            'payments' => "CREATE TABLE IF NOT EXISTS `payments` (
+                `paymentID` INT NOT NULL AUTO_INCREMENT,
+                `transactionID` INT NOT NULL,
+                `clientID` INT NOT NULL,
+                `amount` DECIMAL(12,2) NOT NULL,
+                `paymentType` VARCHAR(50) NOT NULL,
+                `paymentMethod` VARCHAR(50) NOT NULL,
+                `referenceNo` VARCHAR(100) DEFAULT NULL,
+                `status` ENUM('Pending', 'Verified', 'Rejected') NOT NULL DEFAULT 'Pending',
+                `paidAt` DATETIME NOT NULL,
+                `note` TEXT DEFAULT NULL,
+                `recordedBy` INT DEFAULT NULL,
+                `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `updatedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (`paymentID`),
+                KEY `idx_payments_transaction` (`transactionID`),
+                KEY `idx_payments_client` (`clientID`),
+                KEY `idx_payments_status` (`status`),
+                KEY `idx_payments_paid_at` (`paidAt`),
+                CONSTRAINT `fk_payments_transaction` FOREIGN KEY (`transactionID`) REFERENCES `property_transactions` (`transactionID`) ON DELETE CASCADE,
+                CONSTRAINT `fk_payments_client` FOREIGN KEY (`clientID`) REFERENCES `users` (`userID`) ON DELETE CASCADE,
+                CONSTRAINT `fk_payments_recorded_by` FOREIGN KEY (`recordedBy`) REFERENCES `users` (`userID`) ON DELETE SET NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+        ];
+
+        foreach ($fallbacks as $tbl => $sql) {
+            if (!isset($tableNames[$tbl])) {
+                try {
+                    $connection->query($sql);
+                } catch (Throwable $e) {
+                    error_log("KingQuiry fallback table creation for $tbl failed: " . $e->getMessage());
+                }
+            }
         }
     }
 
@@ -111,6 +231,92 @@ function ensure_required_database_tables(mysqli $connection, bool $allowSchemaCh
 
     ensure_appointment_agent_column($connection, $allowSchemaChanges);
     ensure_property_coordinates_columns($connection, $allowSchemaChanges);
+    ensure_property_trashbin_columns($connection, $allowSchemaChanges);
+    ensure_user_management_columns($connection, $allowSchemaChanges);
+    ensure_transaction_extended_columns($connection, $allowSchemaChanges);
+}
+
+function ensure_property_trashbin_columns(mysqli $connection, bool $allowSchemaChanges): void
+{
+    static $ensured = false;
+    if ($ensured) {
+        return;
+    }
+    try {
+        $check = $connection->query("SHOW COLUMNS FROM `properties` LIKE 'isDeleted'");
+        if ($check && $check->num_rows === 0) {
+            if (!$allowSchemaChanges) {
+                throw new RuntimeException("The production database is missing properties.isDeleted. Apply the reviewed migration.");
+            }
+            $connection->query("ALTER TABLE `properties` ADD COLUMN `isDeleted` TINYINT(1) NOT NULL DEFAULT 0 AFTER `image`, ADD COLUMN `deletedAt` TIMESTAMP NULL DEFAULT NULL AFTER `isDeleted`");
+        }
+        $checkLoc = $connection->query("SHOW COLUMNS FROM `property_locations` LIKE 'isDeleted'");
+        if ($checkLoc && $checkLoc->num_rows === 0) {
+            if (!$allowSchemaChanges) {
+                throw new RuntimeException("The production database is missing property_locations.isDeleted. Apply the reviewed migration.");
+            }
+            $connection->query("ALTER TABLE `property_locations` ADD COLUMN `isDeleted` TINYINT(1) NOT NULL DEFAULT 0 AFTER `isActive`, ADD COLUMN `deletedAt` TIMESTAMP NULL DEFAULT NULL AFTER `isDeleted`");
+        }
+        $ensured = true;
+    } catch (mysqli_sql_exception $exception) {
+        error_log('KingQuiry trashbin column check failed: ' . $exception->getMessage());
+        if (!$allowSchemaChanges) {
+            throw new RuntimeException('Unable to verify the trashbin schema.', 0, $exception);
+        }
+    }
+}
+
+function ensure_user_management_columns(mysqli $connection, bool $allowSchemaChanges): void
+{
+    static $ensured = false;
+    if ($ensured) {
+        return;
+    }
+    try {
+        $cols = [
+            'phone' => 'VARCHAR(30) DEFAULT NULL',
+            'address' => 'VARCHAR(255) DEFAULT NULL',
+            'accountStatus' => "ENUM('Active', 'Inactive') NOT NULL DEFAULT 'Active'",
+        ];
+        foreach ($cols as $col => $def) {
+            $check = $connection->query("SHOW COLUMNS FROM `users` LIKE '{$col}'");
+            if ($check && $check->num_rows === 0) {
+                if (!$allowSchemaChanges) {
+                    throw new RuntimeException("The production database is missing users.{$col}. Apply the reviewed migration.");
+                }
+                $connection->query("ALTER TABLE `users` ADD COLUMN `{$col}` {$def}");
+            }
+        }
+        $ensured = true;
+    } catch (mysqli_sql_exception $exception) {
+        error_log('KingQuiry user management column check failed: ' . $exception->getMessage());
+        if (!$allowSchemaChanges) {
+            throw new RuntimeException('Unable to verify user management schema.', 0, $exception);
+        }
+    }
+}
+
+function ensure_transaction_extended_columns(mysqli $connection, bool $allowSchemaChanges): void
+{
+    static $ensured = false;
+    if ($ensured) {
+        return;
+    }
+    try {
+        $check = $connection->query("SHOW COLUMNS FROM `property_transactions` LIKE 'paymentMethod'");
+        if ($check && $check->num_rows === 0) {
+            if (!$allowSchemaChanges) {
+                throw new RuntimeException("The production database is missing property_transactions.paymentMethod. Apply the reviewed migration.");
+            }
+            $connection->query("ALTER TABLE `property_transactions` ADD COLUMN `paymentMethod` VARCHAR(50) DEFAULT NULL AFTER `currentStage`");
+        }
+        $ensured = true;
+    } catch (mysqli_sql_exception $exception) {
+        error_log('KingQuiry transaction extended column check failed: ' . $exception->getMessage());
+        if (!$allowSchemaChanges) {
+            throw new RuntimeException('Unable to verify transaction extended schema.', 0, $exception);
+        }
+    }
 }
 
 function ensure_required_database_columns(mysqli $connection, array $requiredColumns): void

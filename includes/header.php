@@ -66,7 +66,7 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
     <link rel="stylesheet" href="assets/css/style.css?v=<?= (int) filemtime(__DIR__ . '/../assets/css/style.css') ?>">
     <style>
         :root {
-            --kq-content-width: 1360px;
+            --kq-content-width: 1480px;
             --kq-auth-width: 460px;
             --kq-control-height: 44px;
             --kq-ink: #18304c;
@@ -79,6 +79,19 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
             --kq-canvas: #f5f7fa;
             --kq-radius: 1rem;
             --kq-shadow: 0 12px 32px rgba(22, 48, 76, .07);
+        }
+
+        :root[data-bs-theme="dark"],
+        [data-bs-theme="dark"] {
+            --kq-ink: #f1f5f9;
+            --kq-muted: #94a3b8;
+            --kq-primary: #60a5fa;
+            --kq-primary-dark: #3b82f6;
+            --kq-accent: #f59e0b;
+            --kq-line: #1e3a4e;
+            --kq-surface: #0f1f2b;
+            --kq-canvas: #09131a;
+            --kq-shadow: 0 12px 32px rgba(0, 0, 0, .45);
         }
 
         html { scroll-behavior: smooth; }
@@ -99,16 +112,30 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
             background: #102a43 !important;
             backdrop-filter: blur(12px);
         }
-        .kq-timebar {
-            color: #fff;
-            background: #343a40;
+        .kq-live-clock {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            line-height: 1.2;
+            padding-left: 0.95rem;
+            border-left: 1px solid rgba(255, 255, 255, 0.2);
         }
-        .kq-timebar .container { min-height: 56px; }
-        .kq-timebar-brand { font-size: .98rem; font-weight: 650; }
-        .kq-live-clock { text-align: right; font-variant-numeric: tabular-nums; }
-        .kq-live-clock-date { display: block; color: rgba(255,255,255,.82); font-size: .82rem; }
-        .kq-live-clock-time { display: block; font-size: 1.05rem; font-weight: 650; line-height: 1.2; }
-        .navbar .container { min-height: 58px; }
+        .kq-live-clock-date {
+            display: block;
+            color: rgba(255, 255, 255, .82);
+            font-size: .82rem;
+            white-space: nowrap;
+        }
+        .kq-live-clock-time {
+            display: block;
+            color: #ffffff;
+            font-size: 1.12rem;
+            font-weight: 700;
+            line-height: 1.2;
+            letter-spacing: .02em;
+            white-space: nowrap;
+        }
+        .navbar .container,
+        .navbar .container-fluid { min-height: 68px; }
         .navbar-brand {
             display: inline-flex;
             align-items: center;
@@ -120,21 +147,21 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
             min-height: 44px;
             align-items: center;
             color: #fff;
-            font-size: 1rem;
+            font-size: 1.15rem;
             font-weight: 650;
             letter-spacing: 0;
         }
-        .navbar-nav { align-items: stretch; gap: .2rem; }
+        .navbar-nav { align-items: stretch; gap: .25rem; }
         .navbar .nav-link {
             display: inline-flex;
             min-height: 44px;
             align-items: center;
-            padding: .5rem .65rem !important;
+            padding: .52rem .8rem !important;
             border: 1px solid transparent;
             border-radius: .6rem;
             background: transparent;
             color: rgba(255,255,255,.9) !important;
-            font-size: .9rem;
+            font-size: .95rem;
             font-weight: 600;
             white-space: nowrap;
             transition: color .18s ease, background-color .18s ease, border-color .18s ease;
@@ -341,14 +368,70 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
             background: #f0f8f4;
             box-shadow: inset 3px 0 #17865b;
         }
+        :root[data-bs-theme="dark"] .kq-tracking-event,
+        [data-bs-theme="dark"] .kq-tracking-event {
+            border-left-color: #1e3a4e !important;
+        }
+        :root[data-bs-theme="dark"] .kq-tracking-event::before,
+        [data-bs-theme="dark"] .kq-tracking-event::before {
+            background: #162838 !important;
+            box-shadow: 0 0 0 1px #24415c !important;
+        }
+        :root[data-bs-theme="dark"] .kq-tracking-event.is-latest::before,
+        [data-bs-theme="dark"] .kq-tracking-event.is-latest::before,
+        :root[data-bs-theme="dark"] .kq-tracking-event.is-completed::before,
+        [data-bs-theme="dark"] .kq-tracking-event.is-completed::before {
+            background: #10b981 !important;
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25) !important;
+        }
+        :root[data-bs-theme="dark"] .kq-tracking-event-content,
+        [data-bs-theme="dark"] .kq-tracking-event-content {
+            background: #09141d !important;
+            border: 1px solid #1e3a4e !important;
+            color: #f1f5f9 !important;
+        }
+        :root[data-bs-theme="dark"] .kq-tracking-event.is-latest .kq-tracking-event-content,
+        [data-bs-theme="dark"] .kq-tracking-event.is-latest .kq-tracking-event-content {
+            background: #092019 !important;
+            border: 1px solid #17543e !important;
+            box-shadow: inset 4px 0 0 #10b981 !important;
+        }
+        [data-bs-theme="dark"] .kq-tracking-updates-box {
+            background: #0d1b26 !important;
+            border-color: #1e3a4e !important;
+        }
+        [data-bs-theme="dark"] .kq-tracking-updates-title { color: #f1f5f9 !important; }
+        [data-bs-theme="dark"] .kq-tracking-event-title { color: #f8fafc !important; }
+        [data-bs-theme="dark"] .kq-tracking-event-time { color: #94a3b8 !important; }
+        [data-bs-theme="dark"] .kq-tracking-event-author { color: #cbd5e1 !important; }
+        [data-bs-theme="dark"] .kq-tracking-event-note { color: #e2e8f0 !important; }
+        [data-bs-theme="dark"] .kq-tracking-empty-note { color: #94a3b8 !important; }
+        [data-bs-theme="dark"] .kq-tracking-event-latest { color: #34d399 !important; }
         .kq-tracking-card { scroll-margin-top: 6rem; }
         .app-footer {
-            margin-top: 3rem;
-            padding: 2rem 0;
-            color: rgba(255,255,255,.74);
-            background: var(--kq-ink);
+            margin-top: auto;
+            padding: 2.2rem 0;
+            color: rgba(255, 255, 255, .78);
+            background: #102a43 !important;
+            border-top: 1px solid rgba(255, 255, 255, .08);
         }
         .app-footer a { color: #fff; }
+        .app-footer a:hover,
+        .app-footer a:focus { color: var(--kq-accent, #d8ad63); }
+        :root[data-bs-theme="dark"] .app-footer,
+        [data-bs-theme="dark"] .app-footer {
+            background: #081522 !important;
+            border-top: 1px solid rgba(255, 255, 255, .1) !important;
+            color: rgba(241, 245, 249, .78) !important;
+        }
+        :root[data-bs-theme="dark"] .app-footer .text-white,
+        [data-bs-theme="dark"] .app-footer .text-white {
+            color: #f1f5f9 !important;
+        }
+        :root[data-bs-theme="dark"] .app-footer .text-white-50,
+        [data-bs-theme="dark"] .app-footer .text-white-50 {
+            color: rgba(241, 245, 249, .65) !important;
+        }
         .kq-notif-bell-btn {
             border-radius: 50%;
             width: 38px;
@@ -395,8 +478,9 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
             font-size: .875rem;
         }
         .navbar .navbar-nav .kq-contact-btn { justify-content: flex-start; }
+        .navbar .navbar-nav .kq-help-btn { justify-content: flex-start; width: 100%; }
+        .navbar .navbar-nav .kq-theme-toggle-btn { justify-content: center; width: 100%; }
         @media (min-width: 1200px) {
-            .navbar .container { max-width: 1320px; }
             .navbar .navbar-collapse {
                 max-height: none;
                 min-width: 0;
@@ -405,10 +489,10 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
             .navbar .navbar-nav {
                 width: 100%;
                 max-width: 100%;
-                flex-wrap: wrap;
+                flex-wrap: nowrap;
                 align-items: center;
                 justify-content: flex-start;
-                gap: .1rem;
+                gap: .45rem;
                 row-gap: .2rem;
                 padding: .35rem 0;
             }
@@ -418,8 +502,8 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
             }
             .navbar .nav-link {
                 width: auto;
-                padding: .4rem .42rem !important;
-                font-size: 1rem;
+                padding: .48rem .65rem !important;
+                font-size: .95rem;
             }
             .navbar .navbar-collapse .dropdown-menu {
                 position: absolute;
@@ -430,17 +514,28 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
             .navbar .navbar-nav .kq-help-btn,
             .navbar .navbar-nav .kq-theme-toggle-btn {
                 min-height: 44px;
-                padding: .45rem .6rem !important;
-                font-size: .9rem;
+                padding: .48rem .85rem !important;
+                font-size: .92rem;
                 white-space: nowrap;
+            }
+            .navbar .navbar-nav .kq-help-btn { width: auto; justify-content: center; }
+            .navbar .navbar-nav .kq-theme-toggle-btn {
+                width: 44px;
+                padding: .48rem 0 !important;
             }
         }
         @media (max-width: 767.98px) {
             .property-card-image { height: 205px; }
-            .kq-timebar .container { min-height: 48px; }
-            .kq-timebar-brand { font-size: .82rem; }
-            .kq-live-clock-date { font-size: .7rem; }
-            .kq-live-clock-time { font-size: .92rem; }
+            .kq-live-clock {
+                border-left: none;
+                padding-left: 0;
+            }
+            .kq-live-clock-date { font-size: .68rem; }
+            .kq-live-clock-time { font-size: .88rem; }
+        }
+        @media (max-width: 480px) {
+            .kq-live-clock-date { display: none; }
+            .kq-live-clock-time { font-size: .84rem; }
         }
         @media (prefers-reduced-motion: reduce) {
             html { scroll-behavior: auto; }
@@ -449,27 +544,22 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
     </style>
 </head>
 <body<?= $isAdminControlRoom || $isAuthPage ? ' class="' . ($isAdminControlRoom ? 'admin-control-room ' : '') . ($isAuthPage ? 'kq-auth-body' : '') . '"' : '' ?>>
-    <div class="kq-timebar">
-        <div class="container d-flex justify-content-between align-items-center gap-3 py-1">
-            <strong class="kq-timebar-brand">Kings Land Properties</strong>
-            <div class="kq-live-clock" id="kq-live-clock" data-server-epoch-ms="<?= (int) $clockEpochMs ?>" aria-label="Current time in the Philippines">
-                <time class="kq-live-clock-date" id="kq-live-clock-date" datetime="<?= htmlspecialchars($clockNow->format(DateTimeInterface::ATOM), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($clockNow->format('l, F j, Y'), ENT_QUOTES, 'UTF-8') ?></time>
-                <time class="kq-live-clock-time" id="kq-live-clock-time" datetime="<?= htmlspecialchars($clockNow->format(DateTimeInterface::ATOM), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($clockNow->format('h:i:s A'), ENT_QUOTES, 'UTF-8') ?></time>
-            </div>
-        </div>
-    </div>
     <nav class="navbar navbar-expand-xl navbar-dark bg-dark shadow-sm">
-        <div class="container">
+        <div class="container-fluid px-3 px-sm-4 px-xl-5">
             <a class="navbar-brand" href="index.php" aria-label="Home - KingQuiry by 4 Kings Realty Services">
                 <img class="kq-official-logo kq-logo-navbar kq-logo-on-dark" src="assets/images/kings-land-properties-logo-light.png" alt="4 Kings Realty Services">
                 <span class="kq-navbar-wordmark">Home</span>
             </a>
-            <div class="d-flex align-items-center gap-2">
+            <div class="d-flex align-items-center gap-2 order-xl-3 ms-xl-3">
+                <div class="kq-live-clock" id="kq-live-clock" data-server-epoch-ms="<?= (int) $clockEpochMs ?>" aria-label="Current time in the Philippines">
+                    <time class="kq-live-clock-date" id="kq-live-clock-date" datetime="<?= htmlspecialchars($clockNow->format(DateTimeInterface::ATOM), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($clockNow->format('l, F j, Y'), ENT_QUOTES, 'UTF-8') ?></time>
+                    <time class="kq-live-clock-time" id="kq-live-clock-time" datetime="<?= htmlspecialchars($clockNow->format(DateTimeInterface::ATOM), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($clockNow->format('h:i:s A'), ENT_QUOTES, 'UTF-8') ?></time>
+                </div>
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
                     <span class="navbar-toggler-icon"></span>
                 </button>
             </div>
-            <div class="collapse navbar-collapse justify-content-end" id="navbarNav">
+            <div class="collapse navbar-collapse justify-content-end order-xl-2" id="navbarNav">
                 <ul class="navbar-nav">
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" id="propertiesNavDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">Properties</a>
@@ -490,11 +580,8 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                         <li class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle" href="#" id="aboutNavDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">About Us</a>
                             <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3" aria-labelledby="aboutNavDropdown">
+                                <li><a class="dropdown-item py-2" href="about.php">About Us</a></li>
                                 <li><a class="dropdown-item py-2" href="agents.php">Our Team</a></li>
-                                <li><a class="dropdown-item py-2" href="resources.php#company">Company Background</a></li>
-                                <li><a class="dropdown-item py-2" href="resources.php#service-history">Service History</a></li>
-                                <li><a class="dropdown-item py-2" href="resources.php#testimonials">Testimonials</a></li>
-                                <li><a class="dropdown-item py-2" href="resources.php#faqs">FAQs</a></li>
                             </ul>
                         </li>
                     <?php endif; ?>
@@ -507,7 +594,6 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                             <li class="nav-item"><a class="nav-link" href="admin_dashboard.php">Dashboard</a></li>
                         <?php endif; ?>
                         <?php if($currentRole === 'Client'): ?>
-                            <li class="nav-item"><a class="nav-link" href="client_dashboard.php#transaction-tracking">My Tracking</a></li>
                             <li class="nav-item ms-lg-2 kq-nav-actions-start">
                                 <button type="button" class="btn btn-warning fw-bold text-dark px-3 d-inline-flex align-items-center gap-2 kq-contact-btn" data-bs-toggle="modal" data-bs-target="#contactUsModal">
                                     <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
@@ -629,15 +715,17 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                     <?php endif; ?>
                     <!-- Help & Guidelines / User Manual -->
                     <li class="nav-item ms-lg-2">
-                        <button type="button" class="btn btn-outline-light btn-sm px-2 d-inline-flex align-items-center gap-1 kq-help-btn" data-bs-toggle="modal" data-bs-target="#userManualModal" title="KingQuiry User Manual & Guidelines">
-                            <span class="fs-6">❓</span>
-                            <span class="d-none d-xl-inline small">Help</span>
+                        <button type="button" class="btn kq-help-btn d-inline-flex align-items-center gap-1.5" data-bs-toggle="modal" data-bs-target="#userManualModal" title="KingQuiry User Manual & Guidelines">
+                            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            <span>Help</span>
                         </button>
                     </li>
                     <!-- Theme Toggle Switcher -->
                     <li class="nav-item ms-lg-1">
-                        <button type="button" class="btn btn-outline-light btn-sm px-2 d-inline-flex align-items-center justify-content-center kq-theme-toggle-btn" id="kqThemeToggle" aria-label="Toggle theme" title="Toggle dark/light theme">
-                            <span id="themeToggleIcon" style="font-size: 0.95rem;">🌙</span>
+                        <button type="button" class="btn kq-theme-toggle-btn d-inline-flex align-items-center justify-content-center" id="kqThemeToggle" aria-label="Toggle theme" title="Toggle dark/light theme">
+                            <span id="themeToggleIcon" class="d-inline-flex align-items-center justify-content-center">
+                                <svg width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                            </span>
                         </button>
                     </li>
                 </ul>

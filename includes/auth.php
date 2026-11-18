@@ -234,11 +234,78 @@ function csrf_token(): string
     return $_SESSION['csrf_token'];
 }
 
+if (!function_exists('chat_csrf_token')) {
+    function chat_csrf_token(): string
+    {
+        if (!isset($_SESSION['chat_csrf'])) {
+            $_SESSION['chat_csrf'] = bin2hex(random_bytes(32));
+        }
+
+        return $_SESSION['chat_csrf'];
+    }
+}
+
 function has_valid_csrf_token(): bool
 {
     return is_string($_POST['csrf_token'] ?? null)
         && isset($_SESSION['csrf_token'])
         && hash_equals($_SESSION['csrf_token'], $_POST['csrf_token']);
+}
+
+function kq_process_user_login(mysqli $conn): string
+{
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        return '';
+    }
+
+    if (!has_valid_csrf_token()) {
+        return 'Your session expired. Refresh the page and try again.';
+    }
+
+    if (function_exists('verify_login_human_challenge') && !verify_login_human_challenge($_POST)) {
+        return 'Complete the human check before signing in.';
+    }
+
+    $postedIdentifier = $_POST['identifier'] ?? $_POST['email'] ?? '';
+    $identifier = is_string($postedIdentifier) ? trim(substr($postedIdentifier, 0, 100)) : '';
+    $password = $_POST['password'] ?? '';
+    $loginIpAddress = is_string($_SERVER['REMOTE_ADDR'] ?? null) ? $_SERVER['REMOTE_ADDR'] : '';
+
+    if (function_exists('kq_login_rate_limit')) {
+        $retryAfter = kq_login_rate_limit($conn, $identifier, $loginIpAddress);
+        if ($retryAfter !== null) {
+            return 'Too many sign-in attempts. Please wait ' . (int) ceil($retryAfter / 60) . ' minute(s) and try again.';
+        }
+    }
+
+    if ($identifier !== '' && is_string($password) && $password !== '') {
+        $stmt = $conn->prepare("SELECT * FROM users WHERE email = ? OR SUBSTRING_INDEX(email, '@', 1) = ? LIMIT 2");
+        $stmt->bind_param('ss', $identifier, $identifier);
+        $stmt->execute();
+        $result = $stmt->get_result();
+
+        if ($result->num_rows === 1) {
+            $user = $result->fetch_assoc();
+            $normalizedRole = normalized_user_role($user);
+            if (password_verify($password, $user['passwordHash'])) {
+                if (($user['accountStatus'] ?? 'Active') === 'Inactive') {
+                    return 'This account is inactive. Please contact the KingQuiry administrator.';
+                }
+
+                if (function_exists('kq_clear_login_rate_limits')) {
+                    kq_clear_login_rate_limits($conn, $identifier, $loginIpAddress);
+                }
+                kq_regenerate_session_after_login($user);
+                $destination = $normalizedRole === 'Admin'
+                    ? 'admin_dashboard.php'
+                    : ($normalizedRole === 'Sales Agent' ? 'agent_dashboard.php' : 'index.php');
+                header('Location: ' . $destination);
+                exit();
+            }
+        }
+    }
+
+    return 'Invalid email or password. Please try again.';
 }
 
 kq_start_session();

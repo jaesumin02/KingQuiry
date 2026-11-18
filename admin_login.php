@@ -18,54 +18,7 @@ if (isset($_SESSION['user'])) {
     exit();
 }
 
-$error = '';
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    if (!has_valid_csrf_token()) {
-        $error = 'Your session expired. Refresh the page and try again.';
-    } elseif (!verify_login_human_challenge($_POST)) {
-        $error = 'Complete the human check before signing in.';
-    }
-    $postedIdentifier = $_POST['identifier'] ?? $_POST['email'] ?? '';
-    $identifier = is_string($postedIdentifier) ? trim(substr($postedIdentifier, 0, 100)) : '';
-    $password = $_POST['password'] ?? '';
-    $loginIpAddress = is_string($_SERVER['REMOTE_ADDR'] ?? null) ? $_SERVER['REMOTE_ADDR'] : '';
-
-    if ($error === '') {
-        $retryAfter = kq_login_rate_limit($conn, $identifier, $loginIpAddress);
-        if ($retryAfter !== null) {
-            $error = 'Too many sign-in attempts. Please wait ' . (int) ceil($retryAfter / 60) . ' minute(s) and try again.';
-        }
-    }
-
-    if ($error === '' && $identifier !== '' && is_string($password) && $password !== '') {
-        $stmt = $conn->prepare("SELECT * FROM users WHERE email = ? OR SUBSTRING_INDEX(email, '@', 1) = ? LIMIT 2");
-        $stmt->bind_param('ss', $identifier, $identifier);
-        $stmt->execute();
-        $result = $stmt->get_result();
-
-        if ($result->num_rows === 1) {
-            $user = $result->fetch_assoc();
-            $normalizedRole = normalized_user_role($user);
-            if (password_verify($password, $user['passwordHash'])) {
-                if (($user['accountStatus'] ?? 'Active') === 'Inactive') {
-                    $error = 'This account is inactive. Please contact the administrator.';
-                } else {
-                    kq_clear_login_rate_limits($conn, $identifier, $loginIpAddress);
-                    kq_regenerate_session_after_login($user);
-                    $destination = $normalizedRole === 'Admin'
-                        ? 'admin_dashboard.php'
-                        : ($normalizedRole === 'Sales Agent' ? 'agent_dashboard.php' : 'index.php');
-                    header('Location: ' . $destination);
-                    exit();
-                }
-            }
-        }
-    }
-
-    if ($error === '') {
-        $error = 'Invalid email or password for the admin portal.';
-    }
-}
+$error = kq_process_user_login($conn);
 include 'includes/header.php';
 ?>
 

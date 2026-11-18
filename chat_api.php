@@ -44,18 +44,21 @@ function chat_conversation(mysqli $conn): int
     $sessionKey = hash('sha256', session_id());
     $userId = isset($_SESSION['user']['userID']) ? (int) $_SESSION['user']['userID'] : null;
 
-    $stmt = $conn->prepare("SELECT conversation_id FROM chat_conversations WHERE session_key = ? AND status = 'open' ORDER BY conversation_id DESC LIMIT 1");
-    $stmt->bind_param('s', $sessionKey);
+    if ($userId !== null) {
+        $stmt = $conn->prepare("SELECT conversation_id FROM chat_conversations WHERE user_id = ? AND status = 'open' ORDER BY conversation_id DESC LIMIT 1");
+        $stmt->bind_param('i', $userId);
+    } else {
+        $stmt = $conn->prepare("SELECT conversation_id FROM chat_conversations WHERE session_key = ? AND status = 'open' ORDER BY conversation_id DESC LIMIT 1");
+        $stmt->bind_param('s', $sessionKey);
+    }
     $stmt->execute();
     $conversation = $stmt->get_result()->fetch_assoc();
 
     if ($conversation) {
         $conversationId = (int) $conversation['conversation_id'];
-        if ($userId !== null) {
-            $update = $conn->prepare("UPDATE chat_conversations SET user_id = ? WHERE conversation_id = ?");
-            $update->bind_param('ii', $userId, $conversationId);
-            $update->execute();
-        }
+        $update = $conn->prepare("UPDATE chat_conversations SET session_key = ?, user_id = ? WHERE conversation_id = ?");
+        $update->bind_param('sii', $sessionKey, $userId, $conversationId);
+        $update->execute();
         return $conversationId;
     }
 
@@ -65,11 +68,30 @@ function chat_conversation(mysqli $conn): int
     $conversationId = (int) $conn->insert_id;
 
     $welcome = $conn->prepare("INSERT INTO chat_messages (conversation_id, sender, body) VALUES (?, 'bot', ?)");
-    $welcomeText = "Hello! Welcome to KingQuiry. I can help with property questions and land estimates. Use the estimate calculator below or send us a message.";
+    $clientName = trim($_SESSION['user']['fullname'] ?? '');
+    if ($clientName !== '') {
+        $welcomeText = "Hello " . $clientName . "! Welcome to Kings Land Properties. Your assigned sales representative and support staff are here to assist you. Send us a message below and we will be happy to help!";
+    } else {
+        $welcomeText = "Hello! Welcome to Kings Land Properties. I can help with property questions and land estimates. Use the estimate calculator below or send us a message.";
+    }
     $welcome->bind_param('is', $conversationId, $welcomeText);
     $welcome->execute();
 
     return $conversationId;
+}
+
+function chat_validate_csrf(?string $token): bool
+{
+    if (!is_string($token) || $token === '') {
+        return false;
+    }
+    if (hash_equals(chat_csrf_token(), $token)) {
+        return true;
+    }
+    if (isset($_SESSION['csrf_token']) && is_string($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token)) {
+        return true;
+    }
+    return false;
 }
 
 function chat_add_message(mysqli $conn, int $conversationId, string $sender, string $body): int
@@ -77,7 +99,13 @@ function chat_add_message(mysqli $conn, int $conversationId, string $sender, str
     $stmt = $conn->prepare("INSERT INTO chat_messages (conversation_id, sender, body) VALUES (?, ?, ?)");
     $stmt->bind_param('iss', $conversationId, $sender, $body);
     $stmt->execute();
-    return (int) $conn->insert_id;
+    $insertId = (int) $conn->insert_id;
+
+    $touch = $conn->prepare("UPDATE chat_conversations SET updated_at = CURRENT_TIMESTAMP WHERE conversation_id = ?");
+    $touch->bind_param('i', $conversationId);
+    $touch->execute();
+
+    return $insertId;
 }
 
 function chat_messages(mysqli $conn, int $conversationId, int $afterId = 0): array
@@ -121,12 +149,14 @@ function chat_admin_summary(mysqli $conn): array
     ];
 }
 
-function chat_csrf_token(): string
-{
-    if (!isset($_SESSION['chat_csrf'])) {
-        $_SESSION['chat_csrf'] = bin2hex(random_bytes(32));
+if (!function_exists('chat_csrf_token')) {
+    function chat_csrf_token(): string
+    {
+        if (!isset($_SESSION['chat_csrf'])) {
+            $_SESSION['chat_csrf'] = bin2hex(random_bytes(32));
+        }
+        return $_SESSION['chat_csrf'];
     }
-    return $_SESSION['chat_csrf'];
 }
 
 try {
@@ -134,6 +164,10 @@ try {
         if (kq_sync_session_user($conn) === null) {
             chat_respond(['error' => 'Your account is no longer active. Sign in again.'], 401);
         }
+    }
+
+    if (!empty($_FILES)) {
+        chat_respond(['error' => 'File uploads are not supported. Text messages only.'], 400);
     }
 
     $action = $_SERVER['REQUEST_METHOD'] === 'GET'
@@ -146,7 +180,7 @@ try {
             chat_respond(['error' => 'Invalid request body.'], 400);
         }
         $action = $payload['action'] ?? '';
-        if (!is_string($payload['csrf'] ?? null) || !hash_equals(chat_csrf_token(), $payload['csrf'])) {
+        if (!chat_validate_csrf($payload['csrf'] ?? null)) {
             chat_respond(['error' => 'Your session has expired. Refresh the page and try again.'], 403);
         }
     } else {
@@ -164,6 +198,49 @@ try {
             'csrf' => chat_csrf_token(),
             'conversation_id' => $conversationId,
             'messages' => chat_messages($conn, $conversationId, $action === 'bootstrap' ? 0 : $afterId),
+            'admin_online' => chat_admin_is_online($conn),
+        ]);
+    }
+
+    if ($action === 'agent_greeting') {
+        $role = normalized_user_role($_SESSION['user'] ?? null);
+        if ($role !== null && $role !== 'Client') {
+            chat_respond(['error' => 'Customer chat is available to guests and client accounts.'], 403);
+        }
+
+        $conversationId = chat_conversation($conn);
+
+        $agentName = is_string($payload['agent_name'] ?? null) ? trim($payload['agent_name']) : '';
+        $propertyTitle = is_string($payload['property_title'] ?? null) ? trim($payload['property_title']) : '';
+        $transactionId = filter_var($payload['transaction_id'] ?? null, FILTER_VALIDATE_INT);
+
+        $safeAgent = $agentName !== '' ? $agentName : 'Assigned Sales Representative';
+        $safeProperty = $propertyTitle !== '' ? $propertyTitle : 'your selected property';
+        $txRef = ($transactionId !== false && $transactionId > 0) ? "Transaction #KQT-{$transactionId}" : "your transaction";
+
+        // Check if an automated greeting for this transaction has already been sent
+        $alreadySent = false;
+        if ($transactionId !== false && $transactionId > 0) {
+            $checkStmt = $conn->prepare("SELECT message_id FROM chat_messages WHERE conversation_id = ? AND body LIKE ? LIMIT 1");
+            $likePattern = "%#KQT-{$transactionId}%";
+            $checkStmt->bind_param('is', $conversationId, $likePattern);
+            $checkStmt->execute();
+            if ($checkStmt->get_result()->fetch_assoc()) {
+                $alreadySent = true;
+            }
+        }
+
+        if (!$alreadySent) {
+            $clientName = trim($_SESSION['user']['fullname'] ?? '');
+            $greetingPrefix = $clientName !== '' ? "Hello {$clientName}!" : "Hello!";
+            $greetingBody = "{$greetingPrefix} I am {$safeAgent}, your assigned sales representative for {$safeProperty} ({$txRef}). How can I assist you with your inquiry or transaction today?";
+            chat_add_message($conn, $conversationId, 'admin', $greetingBody);
+        }
+
+        chat_respond([
+            'csrf' => chat_csrf_token(),
+            'conversation_id' => $conversationId,
+            'messages' => chat_messages($conn, $conversationId, 0),
             'admin_online' => chat_admin_is_online($conn),
         ]);
     }
@@ -225,14 +302,36 @@ try {
             $adminId = chat_require_admin();
             chat_enforce_rate_limit($conn, 'chat-admin', (string) $adminId, 60, 60);
             $conversationId = max(0, (int) ($payload['conversation_id'] ?? 0));
-            $check = $conn->prepare("SELECT conversation_id FROM chat_conversations WHERE conversation_id = ? AND status = 'open'");
+            $check = $conn->prepare("SELECT conversation_id, user_id FROM chat_conversations WHERE conversation_id = ? AND status = 'open'");
             $check->bind_param('i', $conversationId);
             $check->execute();
-            if (!$check->get_result()->fetch_assoc()) {
+            $convData = $check->get_result()->fetch_assoc();
+            if (!$convData) {
                 chat_respond(['error' => 'Conversation not found.'], 404);
             }
-            chat_add_message($conn, $conversationId, 'admin', trim($payload['message']));
-            chat_respond(['messages' => chat_messages($conn, $conversationId, max(0, (int) ($payload['after'] ?? 0)))]);
+            $cleanMessage = trim($payload['message']);
+            chat_add_message($conn, $conversationId, 'admin', $cleanMessage);
+
+            // Notify client if conversation is linked to a registered user
+            if (!empty($convData['user_id'])) {
+                require_once __DIR__ . '/includes/notifications.php';
+                $clientUserId = (int) $convData['user_id'];
+                $agentName = trim($_SESSION['user']['fullname'] ?? 'Sales Agent');
+                $replyExcerpt = mb_strlen($cleanMessage) > 80 ? mb_substr($cleanMessage, 0, 77) . '...' : $cleanMessage;
+                create_user_notification(
+                    $conn,
+                    $clientUserId,
+                    'New Message from ' . $agentName,
+                    $replyExcerpt,
+                    'client_dashboard.php',
+                    'chat'
+                );
+            }
+
+            chat_respond([
+                'csrf' => chat_csrf_token(),
+                'messages' => chat_messages($conn, $conversationId, max(0, (int) ($payload['after'] ?? 0)))
+            ]);
         }
 
         if (isset($_SESSION['user']) && normalized_user_role($_SESSION['user']) !== 'Client') {
@@ -279,36 +378,115 @@ try {
         } else {
             $message = trim($payload['message']);
             chat_add_message($conn, $conversationId, 'client', $message);
-            $lowerMessage = mb_strtolower($message);
-            // ALGORITHM: Check keyword rules in order and return the first matching canned response.
-            if (preg_match('/hello|hi\b|good morning|good afternoon|good evening|kamusta|kumusta|magandang umaga|magandang hapon|magandang gabi/', $lowerMessage)) {
-                $reply = 'Hello! Welcome to KingQuiry. I can help with property listings, viewing appointments, contact details, and land estimates. What would you like to know?';
-            } elseif (preg_match('/estimate|estimation|presyo|price|halaga|how much|magkano|sqm|square meter/', $lowerMessage)) {
-                $reply = 'For an indicative land estimate, use the calculator below and enter the area in square meters, property category, and location. The estimate is not an appraisal or a confirmed sale price.';
-            } elseif (preg_match('/thank|salamat/', $lowerMessage)) {
-                $reply = 'You’re welcome! Thank you for contacting KingQuiry.';
-            } elseif (preg_match('/reservation|reserve|7.?day|grace period|down.?payment|dp\b/', $lowerMessage)) {
-                $reply = 'Under Kings Land Properties policy, placing a reservation deposit initiates a strict 7-day grace period to complete your down payment and submit compliance documents. Once completed, your transaction advances to Contract to Sell (CTS) or Deed of Absolute Sale (DOAS).';
-            } elseif (preg_match('/contract|cts|contract to sell|deed of absolute sale|doas|title transfer|transfer of title|taxes|tax\b|transfer fee/', $lowerMessage)) {
-                $reply = 'For installment purchases, a notarized Contract to Sell (CTS) is issued. For Spot Cash or fully paid purchases, a Deed of Absolute Sale (DOAS) is executed. Please note that title transfer, registration, and Documentary Stamp Taxes (DST) are shouldered by the buyer as standard practice.';
-            } elseif (preg_match('/agent|live agent|human|speak with|talk to|kausap|staff/', $lowerMessage)) {
-                $reply = 'Your inquiry has been flagged for our live sales agents. An agent will review your questions and follow up directly here or via your registered client dashboard.';
-            } elseif (preg_match('/appointment|book|schedule|viewing|site visit|tripping|mag.?book|pasyal/', $lowerMessage)) {
-                $reply = 'To schedule a property tripping, sign in with a client account, open the property listing, and submit the “Book Viewing Appointment” form. Site visits require at least 1-hour spacing to avoid overlapping bookings and give you dedicated agent support.';
-            } elseif (preg_match('/contact|phone|call|location|address|hours|open|oras|numero|tawag|saan|lokasyon|bukas/', $lowerMessage)) {
-                $reply = 'You can contact Kings Land Properties at 0965 803 0933 or visit Munting Indang, Nasugbu, Batangas. The contact listing says Always Open; staff reply times may vary.';
-            } elseif (preg_match('/property|listing|available|bahay|condo|farm|commercial|beach lot|lupa|land|lote|bibili|buy|purchase|order/', $lowerMessage)) {
-                $reply = 'Browse the published listings in the Property Catalog. For confirmed availability, title, boundaries, price, or sale terms, send the listing title and our team will verify the details before you proceed.';
-            } else {
-                $adminOnline = chat_admin_is_online($conn);
-                $reply = $adminOnline
-                    ? 'Thanks for your message! The KingQuiry team has received it. An admin will reply here as soon as they are available.'
-                    : 'Thanks for your message! Our admin is currently away. Your message is saved, and the team can follow up when they are available.';
+
+            // Determine if this is a direct agent conversation or transaction chat
+            $isDirectAgentChat = false;
+            $targetAgentId = filter_var($payload['agent_id'] ?? null, FILTER_VALIDATE_INT);
+            $transactionId = filter_var($payload['transaction_id'] ?? null, FILTER_VALIDATE_INT);
+            $clientUserId = isset($_SESSION['user']['userID']) ? (int) $_SESSION['user']['userID'] : 0;
+            $clientName = trim($_SESSION['user']['fullname'] ?? 'Client');
+            $messageExcerpt = mb_strlen($message) > 80 ? mb_substr($message, 0, 77) . '...' : $message;
+
+            $assignedAgentId = null;
+            if ($targetAgentId !== false && $targetAgentId > 0) {
+                $assignedAgentId = (int) $targetAgentId;
+                $isDirectAgentChat = true;
+            } elseif ($transactionId !== false && $transactionId > 0) {
+                $txStmt = $conn->prepare("SELECT COALESCE(
+                        a.agentID,
+                        ia.agentID,
+                        (SELECT e.changedBy FROM property_transaction_events e WHERE e.transactionID = t.transactionID AND e.changedBy IS NOT NULL ORDER BY e.createdAt DESC LIMIT 1)
+                    ) AS assignedAgentID
+                    FROM property_transactions t
+                    LEFT JOIN appointments a ON a.appointmentID = t.appointmentID
+                    LEFT JOIN agent_inquiry_assignments ia ON ia.inquiryID = t.inquiryID
+                    WHERE t.transactionID = ?");
+                $txStmt->bind_param('i', $transactionId);
+                $txStmt->execute();
+                $txRow = $txStmt->get_result()->fetch_assoc();
+                if (!empty($txRow['assignedAgentID'])) {
+                    $assignedAgentId = (int) $txRow['assignedAgentID'];
+                    $isDirectAgentChat = true;
+                }
+            } elseif ($clientUserId > 0) {
+                // If client is logged in, find active assigned agent from latest transaction
+                $cStmt = $conn->prepare("SELECT COALESCE(a.agentID, ia.agentID) AS assignedAgentID
+                    FROM property_transactions t
+                    LEFT JOIN appointments a ON a.appointmentID = t.appointmentID
+                    LEFT JOIN agent_inquiry_assignments ia ON ia.inquiryID = t.inquiryID
+                    WHERE t.clientID = ? AND t.currentStage != 'cancelled'
+                    ORDER BY t.updatedAt DESC LIMIT 1");
+                $cStmt->bind_param('i', $clientUserId);
+                $cStmt->execute();
+                $cRow = $cStmt->get_result()->fetch_assoc();
+                if (!empty($cRow['assignedAgentID'])) {
+                    $assignedAgentId = (int) $cRow['assignedAgentID'];
+                    $isDirectAgentChat = true;
+                }
             }
-            chat_add_message($conn, $conversationId, 'bot', $reply);
+
+            // Create notification for assigned agent or staff
+            require_once __DIR__ . '/includes/notifications.php';
+            if ($assignedAgentId !== null && $assignedAgentId > 0) {
+                create_user_notification(
+                    $conn,
+                    $assignedAgentId,
+                    'New Message from ' . $clientName,
+                    $messageExcerpt,
+                    'admin_chat.php',
+                    'chat'
+                );
+            } else {
+                // Notify active staff/admins
+                $staffResult = $conn->query("SELECT userID FROM users WHERE role IN ('Admin', 'Sales Agent') AND (accountStatus = 'Active' OR accountStatus IS NULL) LIMIT 5");
+                if ($staffResult) {
+                    while ($staffRow = $staffResult->fetch_assoc()) {
+                        create_user_notification(
+                            $conn,
+                            (int) $staffRow['userID'],
+                            'New Customer Message (' . $clientName . ')',
+                            $messageExcerpt,
+                            'admin_chat.php',
+                            'chat'
+                        );
+                    }
+                }
+            }
+
+            // Only generate bot replies if this is not a direct client-to-agent chat
+            if (!$isDirectAgentChat) {
+                $lowerMessage = mb_strtolower($message);
+                // ALGORITHM: Check keyword rules in order and return the first matching canned response.
+                if (preg_match('/hello|hi\b|good morning|good afternoon|good evening|kamusta|kumusta|magandang umaga|magandang hapon|magandang gabi/', $lowerMessage)) {
+                    $reply = 'Hello! Welcome to KingQuiry. I can help with property listings, viewing appointments, contact details, and land estimates. What would you like to know?';
+                } elseif (preg_match('/estimate|estimation|presyo|price|halaga|how much|magkano|sqm|square meter/', $lowerMessage)) {
+                    $reply = 'For an indicative land estimate, use the calculator below and enter the area in square meters, property category, and location. The estimate is not an appraisal or a confirmed sale price.';
+                } elseif (preg_match('/thank|salamat/', $lowerMessage)) {
+                    $reply = 'You’re welcome! Thank you for contacting KingQuiry.';
+                } elseif (preg_match('/reservation|reserve|7.?day|grace period|down.?payment|dp\b/', $lowerMessage)) {
+                    $reply = 'Under Kings Land Properties policy, placing a reservation deposit initiates a strict 7-day grace period to complete your down payment and submit compliance documents. Once completed, your transaction advances to Contract to Sell (CTS) or Deed of Absolute Sale (DOAS).';
+                } elseif (preg_match('/contract|cts|contract to sell|deed of absolute sale|doas|title transfer|transfer of title|taxes|tax\b|transfer fee/', $lowerMessage)) {
+                    $reply = 'For installment purchases, a notarized Contract to Sell (CTS) is issued. For Spot Cash or fully paid purchases, a Deed of Absolute Sale (DOAS) is executed. Please note that title transfer, registration, and Documentary Stamp Taxes (DST) are shouldered by the buyer as standard practice.';
+                } elseif (preg_match('/agent|live agent|human|speak with|talk to|kausap|staff/', $lowerMessage)) {
+                    $reply = 'Your inquiry has been flagged for our live sales agents. An agent will review your questions and follow up directly here or via your registered client dashboard.';
+                } elseif (preg_match('/appointment|book|schedule|viewing|site visit|tripping|mag.?book|pasyal/', $lowerMessage)) {
+                    $reply = 'To schedule a property tripping, sign in with a client account, open the property listing, and submit the “Book Viewing Appointment” form. Site visits require at least 1-hour spacing to avoid overlapping bookings and give you dedicated agent support.';
+                } elseif (preg_match('/contact|phone|call|location|address|hours|open|oras|numero|tawag|saan|lokasyon|bukas/', $lowerMessage)) {
+                    $reply = 'You can contact Kings Land Properties at 0965 803 0933 or visit Munting Indang, Nasugbu, Batangas. The contact listing says Always Open; staff reply times may vary.';
+                } elseif (preg_match('/property|listing|available|bahay|condo|farm|commercial|beach lot|lupa|land|lote|bibili|buy|purchase|order/', $lowerMessage)) {
+                    $reply = 'Browse the published listings in the Property Catalog. For confirmed availability, title, boundaries, price, or sale terms, send the listing title and our team will verify the details before you proceed.';
+                } else {
+                    $adminOnline = chat_admin_is_online($conn);
+                    $reply = $adminOnline
+                        ? 'Thanks for your message! The KingQuiry team has received it. An admin will reply here as soon as they are available.'
+                        : 'Thanks for your message! Our admin is currently away. Your message is saved, and the team can follow up when they are available.';
+                }
+                chat_add_message($conn, $conversationId, 'bot', $reply);
+            }
         }
 
         chat_respond([
+            'csrf' => chat_csrf_token(),
             'messages' => chat_messages($conn, $conversationId, max(0, (int) ($payload['after'] ?? 0))),
             'admin_online' => chat_admin_is_online($conn),
         ]);

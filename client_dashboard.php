@@ -120,28 +120,31 @@ include 'includes/header.php';
         color: #b8c7ce !important;
     }
 
-    .card .text-muted,
-    .kq-tracking-card .text-muted,
-    .kq-tracking-event-content .text-muted,
-    .kq-tracking-timeline .text-muted,
-    .kq-tracking-timeline time.text-muted,
-    .kq-tracking-event time.text-muted {
-        color: #536579 !important;
+    .card {
+        border-radius: 1rem !important;
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14);
     }
 
-    .card {
+    html[data-bs-theme="light"] .card {
         border: 1px solid #dfe7ed !important;
-        border-radius: 1rem !important;
         background: #ffffff;
-        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14);
         color: #0f2942;
     }
 
-    .card .page-eyebrow {
+    html[data-bs-theme="light"] .card .text-muted,
+    html[data-bs-theme="light"] .kq-tracking-card .text-muted,
+    html[data-bs-theme="light"] .kq-tracking-event-content .text-muted,
+    html[data-bs-theme="light"] .kq-tracking-timeline .text-muted,
+    html[data-bs-theme="light"] .kq-tracking-timeline time.text-muted,
+    html[data-bs-theme="light"] .kq-tracking-event time.text-muted {
+        color: #536579 !important;
+    }
+
+    html[data-bs-theme="light"] .card .page-eyebrow {
         color: #805a20;
     }
 
-    .kq-tracking-card {
+    html[data-bs-theme="light"] .kq-tracking-card {
         color: #132d42;
     }
 
@@ -150,53 +153,53 @@ include 'includes/header.php';
         padding-bottom: .75rem;
     }
 
-    .kq-badge-soft {
+    html[data-bs-theme="light"] .kq-badge-soft {
         background: rgba(17, 53, 71, 0.08);
         color: #123b5a;
     }
 
-    .kq-tracking-card,
-    article.border.rounded-3,
-    .table-responsive {
+    html[data-bs-theme="light"] .kq-tracking-card,
+    html[data-bs-theme="light"] article.border.rounded-3,
+    html[data-bs-theme="light"] .table-responsive {
         border-color: rgba(19, 45, 66, 0.08) !important;
         border-radius: 1rem !important;
     }
 
-    .btn-primary {
+    html[data-bs-theme="light"] .btn-primary {
         background: linear-gradient(180deg, #173d56, #102334);
         border-color: #173d56;
     }
 
-    .btn-primary:hover,
-    .btn-primary:focus {
+    html[data-bs-theme="light"] .btn-primary:hover,
+    html[data-bs-theme="light"] .btn-primary:focus {
         background: linear-gradient(180deg, #1d486b, #132a3f);
         border-color: #1d486b;
     }
 
-    .btn-outline-primary {
+    html[data-bs-theme="light"] .btn-outline-primary {
         border-color: rgba(17, 53, 71, 0.3);
         color: #123b5a;
     }
 
-    .btn-outline-primary:hover,
-    .btn-outline-primary:focus {
+    html[data-bs-theme="light"] .btn-outline-primary:hover,
+    html[data-bs-theme="light"] .btn-outline-primary:focus {
         background: rgba(17, 53, 71, 0.05);
         color: #123b5a;
     }
 
-    .alert-info {
+    html[data-bs-theme="light"] .alert-info {
         background: rgba(17, 53, 71, 0.06);
         border-color: rgba(17, 53, 71, 0.12);
         color: #1b3f58;
     }
 
-    .alert-success {
+    html[data-bs-theme="light"] .alert-success {
         background: rgba(25, 98, 73, 0.08);
         border-color: rgba(25, 98, 73, 0.18);
         color: #164b3b;
     }
 
-    .alert-danger {
+    html[data-bs-theme="light"] .alert-danger {
         background: rgba(166, 52, 52, 0.08);
         border-color: rgba(166, 52, 52, 0.18);
         color: #8f2f2f;
@@ -204,6 +207,198 @@ include 'includes/header.php';
 
     html[data-bs-theme="light"] body {
         background: #f4f7fb;
+    }
+
+    /* ══════════ TRANSACTION UPDATES & TIMELINE (LIGHT & DARK THEMES) ══════════ */
+    .kq-tracking-updates-box {
+        background: #ffffff;
+        border-color: #e2e8f0 !important;
+    }
+    .kq-tracking-updates-title { color: #0f2942; }
+    .kq-tracking-event-title { color: #0f2942; }
+    .kq-tracking-event-time { color: #64748b; }
+    .kq-tracking-event-author { color: #334155; }
+    .kq-tracking-event-note { color: #1e293b; }
+    .kq-tracking-empty-note { color: #64748b; }
+    .kq-tracking-event-latest { color: #059669; }
+
+    html[data-bs-theme="light"] .kq-tracking-event-content {
+        background: #f8fafc !important;
+        border: 1px solid #e2e8f0 !important;
+    }
+    html[data-bs-theme="light"] .kq-tracking-event.is-latest .kq-tracking-event-content {
+        background: #f0fdf4 !important;
+        border: 1px solid #bbf7d0 !important;
+        box-shadow: inset 4px 0 0 #10b981 !important;
+    }
+
+    /* Dark Mode fix for Transaction Updates (Screenshot 1 issue) */
+    html[data-bs-theme="dark"] .kq-tracking-updates-box {
+        background: #0d1b26 !important;
+        border-color: #1e3a4e !important;
+    }
+    html[data-bs-theme="dark"] .kq-tracking-updates-title { color: #f1f5f9 !important; }
+    html[data-bs-theme="dark"] .kq-tracking-event-content {
+        background: #09141d !important;
+        border: 1px solid #1e3a4e !important;
+    }
+    html[data-bs-theme="dark"] .kq-tracking-event.is-latest .kq-tracking-event-content {
+        background: #092019 !important;
+        border: 1px solid #17543e !important;
+        box-shadow: inset 4px 0 0 #10b981 !important;
+    }
+    html[data-bs-theme="dark"] .kq-tracking-event-title { color: #f8fafc !important; }
+    html[data-bs-theme="dark"] .kq-tracking-event-time { color: #94a3b8 !important; }
+    html[data-bs-theme="dark"] .kq-tracking-event-author { color: #cbd5e1 !important; }
+    html[data-bs-theme="dark"] .kq-tracking-event-note { color: #e2e8f0 !important; }
+    html[data-bs-theme="dark"] .kq-tracking-empty-note { color: #94a3b8 !important; }
+    html[data-bs-theme="dark"] .kq-tracking-event-latest { color: #34d399 !important; }
+
+    /* Dark mode support for modals */
+    html[data-bs-theme="dark"] .modal .bg-light,
+    html[data-bs-theme="dark"] .modal .card.bg-light,
+    html[data-bs-theme="dark"] .modal .modal-footer.bg-light {
+        background: #0f1f2b !important;
+        border-color: #1e3a4e !important;
+        color: #f1f5f9 !important;
+    }
+    html[data-bs-theme="dark"] .modal-content {
+        background-color: #0d1a24;
+        border-color: #1e3a4e;
+        color: #f1f5f9;
+    }
+
+    /* ══════════ CLIENT CHAT POPUP WINDOW & CONVERSATIONS ══════════ */
+    .kq-chat-window-card {
+        border-radius: 1.1rem !important;
+        overflow: hidden;
+    }
+    .kq-chat-modal-body {
+        background: #f8fafc;
+    }
+    .kq-chat-conversations-card {
+        background: #ffffff;
+        border-color: #e2e8f0 !important;
+    }
+    .kq-chat-section-label {
+        color: #1e293b;
+    }
+    .kq-chat-active-bar {
+        background: #ffffff;
+        border-color: #e2e8f0 !important;
+    }
+    .kq-chat-messages-container {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+    }
+    .kq-chat-conv-btn {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: flex-start;
+        border: 1.5px solid #e2e8f0;
+        background: #ffffff;
+        color: #1e293b;
+        border-radius: 0.75rem;
+        padding: 0.45rem 0.85rem;
+        transition: all 0.16s ease;
+        white-space: nowrap;
+        cursor: pointer;
+        min-width: 170px;
+    }
+    .kq-chat-conv-btn:hover {
+        border-color: #174a70;
+        background: #f1f5f9;
+        transform: translateY(-1px);
+    }
+    .kq-chat-conv-btn.is-active {
+        background: linear-gradient(135deg, #174a70, #0f324e) !important;
+        color: #ffffff !important;
+        border-color: #174a70 !important;
+        box-shadow: 0 4px 14px rgba(23, 74, 112, 0.25);
+    }
+    .kq-chat-conv-btn.is-active .text-muted,
+    .kq-chat-conv-btn.is-active .kq-conv-sub {
+        color: rgba(255, 255, 255, 0.8) !important;
+    }
+    .kq-chat-conv-btn.is-active .badge {
+        background-color: rgba(255, 255, 255, 0.25) !important;
+        color: #ffffff !important;
+    }
+    .kq-chat-bubble-agent {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        color: #0f172a;
+        border-radius: 14px 14px 14px 3px;
+        box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+    }
+    .kq-chat-bubble-client {
+        background: linear-gradient(135deg, #174a70 0%, #0f324e 100%);
+        color: #ffffff;
+        border-radius: 14px 14px 3px 14px;
+        box-shadow: 0 2px 8px rgba(23, 74, 112, 0.18);
+    }
+    .kq-chat-input {
+        background: #ffffff;
+        border-color: #cbd5e1;
+        color: #0f172a;
+        border-radius: 0.65rem 0 0 0.65rem;
+    }
+    .kq-chat-input:focus {
+        border-color: #174a70;
+        box-shadow: 0 0 0 0.2rem rgba(23, 74, 112, 0.15);
+    }
+    .kq-chat-send-btn {
+        border-radius: 0 0.65rem 0.65rem 0;
+        font-weight: 600;
+    }
+
+    /* Dark theme for Client Chat */
+    [data-bs-theme="dark"] .kq-chat-modal-body {
+        background: #09131a !important;
+    }
+    [data-bs-theme="dark"] .kq-chat-conversations-card {
+        background: #0f1f2b !important;
+        border-color: #1e3a4e !important;
+    }
+    [data-bs-theme="dark"] .kq-chat-section-label {
+        color: #f1f5f9 !important;
+    }
+    [data-bs-theme="dark"] .kq-chat-active-bar {
+        background: #0f1f2b !important;
+        border-color: #1e3a4e !important;
+        color: #f1f5f9 !important;
+    }
+    [data-bs-theme="dark"] .kq-chat-messages-container {
+        background: #0b1720 !important;
+        border-color: #1e3a4e !important;
+    }
+    [data-bs-theme="dark"] .kq-chat-conv-btn {
+        border-color: #1e3a4e;
+        background: #0f1f2b;
+        color: #f1f5f9;
+    }
+    [data-bs-theme="dark"] .kq-chat-conv-btn:hover {
+        border-color: #3b82f6;
+        background: #162838;
+    }
+    [data-bs-theme="dark"] .kq-chat-conv-btn.is-active {
+        background: linear-gradient(135deg, #1d4e73, #13334d) !important;
+        color: #ffffff !important;
+        border-color: #38bdf8 !important;
+        box-shadow: 0 4px 14px rgba(56, 189, 248, 0.25);
+    }
+    [data-bs-theme="dark"] .kq-chat-bubble-agent {
+        background: #132537 !important;
+        border-color: #1e3a4e !important;
+        color: #f1f5f9 !important;
+    }
+    [data-bs-theme="dark"] .kq-chat-input {
+        background: #132537 !important;
+        border-color: #1e3a4e !important;
+        color: #f1f5f9 !important;
+    }
+    [data-bs-theme="dark"] .kq-chat-input::placeholder {
+        color: #94a3b8 !important;
     }
 
     @media (max-width: 767.98px) {
@@ -752,7 +947,7 @@ $progressStages = [
                                             <a href="tel:<?= htmlspecialchars($tracking['agentPhone'], ENT_QUOTES, 'UTF-8') ?>" class="btn btn-sm btn-outline-success d-inline-flex align-items-center gap-1 shadow-sm">
                                                 <span>📞 Call / SMS</span>
                                             </a>
-                                            <button type="button" class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 shadow-sm" onclick="if (typeof openChatWidget === 'function') openChatWidget(); else document.getElementById('chat-toggle')?.click();">
+                                            <button type="button" class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 shadow-sm" onclick="openClientAgentChat(<?= $transactionId ?>)" title="Direct message with <?= htmlspecialchars($tracking['agentName'], ENT_QUOTES, 'UTF-8') ?>">
                                                 <span>💬 Message</span>
                                             </button>
                                         </div>
@@ -881,8 +1076,8 @@ $progressStages = [
                                 </div>
 
                                 <!-- 4. Transaction Updates -->
-                                <div class="border rounded-3 p-3 bg-white mb-2 shadow-none">
-                                    <h4 class="h6 fw-bold mb-3 text-dark"><i class="bi bi-clock-history me-1"></i> Transaction Updates</h4>
+                                <div class="border rounded-3 p-3 kq-tracking-updates-box mb-2 shadow-none">
+                                    <h4 class="h6 fw-bold mb-3 kq-tracking-updates-title"><i class="bi bi-clock-history me-1"></i> Transaction Updates</h4>
                                     <?php if (!empty($trackingEvents[$transactionId])): ?>
                                         <ol class="list-unstyled kq-tracking-timeline mb-0" aria-label="Transaction update history">
                                             <?php foreach ($trackingEvents[$transactionId] as $eventIndex => $event): ?>
@@ -899,18 +1094,18 @@ $progressStages = [
                                                                 }
                                                             }
                                                             ?>
-                                                            <span class="fw-bold text-dark" style="font-size: 0.95rem;"><?= htmlspecialchars($eventTitle, ENT_QUOTES, 'UTF-8') ?></span>
-                                                            <time class="small fw-semibold text-dark" datetime="<?= htmlspecialchars(date('c', strtotime($event['createdAt'])), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars(date('M j, Y g:i A', strtotime($event['createdAt'])), ENT_QUOTES, 'UTF-8') ?></time>
+                                                            <span class="fw-bold kq-tracking-event-title" style="font-size: 0.95rem;"><?= htmlspecialchars($eventTitle, ENT_QUOTES, 'UTF-8') ?></span>
+                                                            <time class="small fw-semibold kq-tracking-event-time" datetime="<?= htmlspecialchars(date('c', strtotime($event['createdAt'])), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars(date('M j, Y g:i A', strtotime($event['createdAt'])), ENT_QUOTES, 'UTF-8') ?></time>
                                                         </div>
-                                                        <?php if ($eventIndex === 0): ?><div class="small text-primary fw-semibold mt-1">Latest update</div><?php endif; ?>
-                                                        <?php if (!empty($event['changedByName'])): ?><div class="small fw-semibold text-dark mt-1">Updated by <?= htmlspecialchars($event['changedByName'], ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
-                                                        <?php if (!empty($event['note'])): ?><p class="small text-dark text-break mb-0 mt-1 fw-normal"><?= htmlspecialchars($event['note'], ENT_QUOTES, 'UTF-8') ?></p><?php endif; ?>
+                                                        <?php if ($eventIndex === 0): ?><div class="small kq-tracking-event-latest fw-semibold mt-1">Latest update</div><?php endif; ?>
+                                                        <?php if (!empty($event['changedByName'])): ?><div class="small fw-semibold kq-tracking-event-author mt-1">Updated by <?= htmlspecialchars($event['changedByName'], ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
+                                                        <?php if (!empty($event['note'])): ?><p class="small kq-tracking-event-note text-break mb-0 mt-1 fw-normal"><?= htmlspecialchars($event['note'], ENT_QUOTES, 'UTF-8') ?></p><?php endif; ?>
                                                     </div>
                                                 </li>
                                             <?php endforeach; ?>
                                         </ol>
                                     <?php else: ?>
-                                        <p class="small text-dark mb-0">No tracking updates have been recorded yet.</p>
+                                        <p class="small kq-tracking-empty-note mb-0">No tracking updates have been recorded yet.</p>
                                     <?php endif; ?>
                                 </div>
                             </div>
@@ -1286,6 +1481,23 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 });
+
+// ══════════ CLIENT-SIDE AGENT & SUPPORT CHAT TRIGGER ══════════
+function openClientAgentChat(transactionId) {
+    // Hide tracking modal if currently open
+    if (transactionId) {
+        const trackingModalEl = document.getElementById('trackingModal' + transactionId);
+        if (trackingModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+            bootstrap.Modal.getInstance(trackingModalEl)?.hide();
+        }
+    }
+    // Open Facebook Messenger-style corner bottom chat bubble
+    if (typeof window.openKingQuiryChatWithTransaction === 'function') {
+        window.openKingQuiryChatWithTransaction(transactionId || 0);
+    } else if (typeof window.openChatWithAgent === 'function') {
+        window.openChatWithAgent('', '', transactionId || 0);
+    }
+}
 </script>
 
 <?php include 'includes/footer.php'; ?>

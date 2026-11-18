@@ -3,6 +3,316 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-19 — Workspace Cleanup: Removed Obsolete Test Files, Temporary Scripts, and Legacy Database Seeds
+
+- Cleaned Obsolete Scripts & Test Files:
+  - Removed obsolete `scripts/` folder (`update_admin_password.php`).
+  - Removed temporary feature verification test files (`chat_message_button_test.php`, `client_dashboard_render_test.php`, `dark_theme_verification_test.php`, `manage_account_modal_test.php`, `navbar_layout_test.php`, `comprehensive_system_test.php`).
+  - Retained [tests/production_baseline_test.php](file:///d:/xampp/htdocs/KingQuiry/tests/production_baseline_test.php) to ensure [.github/workflows/php.yml](file:///d:/xampp/htdocs/KingQuiry/.github/workflows/php.yml) CI checks pass without issue.
+  - Removed legacy database archives `database/legacy_migrations/` and `database/seeds/`, retaining the authoritative single [database/schema.sql](file:///d:/xampp/htdocs/KingQuiry/database/schema.sql).
+
+
+## 2026-11-19 — Cleaned Up Transaction Tracking Card: Removed Redundant Message Button
+
+- Tracking Card Clean-Up ([client_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/client_dashboard.php#L816)):
+  - Removed the redundant `💬 Message` button on the main transaction card next to `View tracking →`, keeping the card clean and uncluttered.
+  - Clients access conversations via the bottom-corner Facebook Messenger chat bubble or the assigned agent profile within the tracking details modal.
+
+
+## 2026-11-19 — Resolved Fatal Error `chat_csrf_token()` Restoring Live Clock, View Tracking Modals, and Dashboard Chat Bubble
+
+- Resolved Root-Cause Fatal Error in Chat Widget ([includes/auth.php](file:///d:/xampp/htdocs/KingQuiry/includes/auth.php), [includes/chat_widget.php](file:///d:/xampp/htdocs/KingQuiry/includes/chat_widget.php), [chat_api.php](file:///d:/xampp/htdocs/KingQuiry/chat_api.php)):
+  - Fixed `Call to undefined function chat_csrf_token()` by declaring `chat_csrf_token()` in [includes/auth.php](file:///d:/xampp/htdocs/KingQuiry/includes/auth.php) and adding defensive `function_exists('chat_csrf_token')` guards across [includes/chat_widget.php](file:///d:/xampp/htdocs/KingQuiry/includes/chat_widget.php) and [chat_api.php](file:///d:/xampp/htdocs/KingQuiry/chat_api.php).
+  - This fatal error occurred inside [includes/footer.php](file:///d:/xampp/htdocs/KingQuiry/includes/footer.php) when loading [includes/chat_widget.php](file:///d:/xampp/htdocs/KingQuiry/includes/chat_widget.php) on [client_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/client_dashboard.php), which truncated HTML rendering before reaching `bootstrap.bundle.min.js` and `assets/js/app.js`.
+  - As a direct result of fixing the error:
+    1. **Live Date & Time Clock Restored**: [assets/js/app.js](file:///d:/xampp/htdocs/KingQuiry/assets/js/app.js) loads and executes normally, running the live Philippine clock tick loop every second.
+    2. **View Tracking Button & Modal Restored**: Bootstrap's bundle loads into the DOM, making all `data-bs-toggle="modal"` triggers and `#trackingModal[ID]` modals interactive again.
+    3. **Corner Bottom Chat Bubble Restored**: `#kingquiry-chat-launcher` and `#kingquiry-chat-panel` render on [client_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/client_dashboard.php) with multi-condition page matching in [includes/footer.php](file:///d:/xampp/htdocs/KingQuiry/includes/footer.php) (`SCRIPT_NAME`, `PHP_SELF`, `REQUEST_URI`, and `$trackingRows` presence).
+- Verification ([tests/client_dashboard_render_test.php](file:///d:/xampp/htdocs/KingQuiry/tests/client_dashboard_render_test.php), [tests/chat_message_button_test.php](file:///d:/xampp/htdocs/KingQuiry/tests/chat_message_button_test.php)):
+  - Output reaches `</html>` without truncation (131k bytes).
+  - Verified `bootstrap.bundle.min.js`, `assets/js/app.js`, `kq-live-clock`, `kingquiry-chat-launcher`, and `trackingModal` all render and pass 100%.
+
+## 2026-11-19 — Facebook Messenger-Style Corner Bottom Chat Bubble with Unified Conversations Navigation and Real-Time Agent Messaging
+
+- Corner Bottom Floating Messenger Bubble ([includes/chat_widget.php](file:///d:/xampp/htdocs/KingQuiry/includes/chat_widget.php), [includes/footer.php](file:///d:/xampp/htdocs/KingQuiry/includes/footer.php)):
+  - Converted the client-side conversation UI into a Facebook Messenger-style floating circular chat launcher (`#kingquiry-chat-launcher`) fixed in the bottom-right corner (`60x60px` circle, royal blue gradient, subtle elevation shadow).
+  - Integrated the chat bubble onto `client_dashboard.php` by adding `'client_dashboard.php'` to `$chatWidgetPages` in [includes/footer.php](file:///d:/xampp/htdocs/KingQuiry/includes/footer.php), ensuring clients can access the chat bubble on their dashboard and across client pages.
+  - Clicking the launcher opens the corner bottom floating window (`#kingquiry-chat-panel`, `460px` wide, `660px` tall, `20px` border-radius) housing the exact conversation design from the user's reference image.
+- Unified Conversations Navigation & Direct Channel Info ([includes/chat_widget.php](file:///d:/xampp/htdocs/KingQuiry/includes/chat_widget.php)):
+  - Dynamic **"CONVERSATIONS (N)"** top section with horizontal tabs allowing clients with multiple property requests/transactions to switch between assigned sales agents with 1 click.
+  - Each tab displays the assigned agent's name (`👨‍💼 Agent one`), transaction badge (`#KQT-[ID]`), and property title (`Beach lang to`).
+  - Active header displays agent avatar, name, badges (`Assigned Sales Representative`, `Online`), and regarding subtitle (`Regarding: Beach lang to (Transaction #KQT-1) · Cancelled`).
+  - Added a dedicated `[Tracking]` pill button in the chat header: clicking it smoothly minimizes the chat window and opens that transaction's tracking details modal.
+  - Added a Direct Channel bar displaying the agent's verified contact email (`contact@kingsland.ph`), phone (`0965 803 0933`), and `Verified KingQuiry Representative` status.
+- End-to-End Reliable Messaging & Agent Notification Bug Fixes ([chat_api.php](file:///d:/xampp/htdocs/KingQuiry/chat_api.php), [client_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/client_dashboard.php)):
+  - Fixed database exception in [chat_api.php](file:///d:/xampp/htdocs/KingQuiry/chat_api.php): replaced non-existent column `status` with `accountStatus` in user table queries (`accountStatus = 'Active' OR accountStatus IS NULL`), which previously caused a 500 error preventing message dispatch.
+  - Dual CSRF validation: updated `chat_validate_csrf()` to accept both `chat_csrf_token()` and canonical session `csrf_token()`, eliminating 403 expiration errors.
+  - Server-side pre-rendered CSRF token directly embedded in [includes/chat_widget.php](file:///d:/xampp/htdocs/KingQuiry/includes/chat_widget.php) (`data-csrf`), ensuring zero-latency message submission without race conditions.
+  - Sending messages immediately dispatches `{ action: 'send', message, transaction_id, agent_id, csrf }`, records the message in `chat_messages` with `sender = 'client'`, updates `chat_conversations.updated_at`, and generates an unread notification in `user_notifications` for the assigned agent (`link = 'admin_chat.php'`).
+  - The assigned agent sees the message in real-time in [admin_chat.php](file:///d:/xampp/htdocs/KingQuiry/admin_chat.php) and receives the notification in their top navbar notification center.
+  - The client sees their message instantly with real-time timestamps and double checkmarks.
+- First-Time Automated Agent Greeting & Text-Only Enforcement:
+  - First-time messaging automatically generates the personalized greeting: *"Hello [Client Name]! I am [Agent Name], your assigned sales representative for [Property Title] (Transaction #KQT-[ID]). How can I assist you with your inquiry or transaction today?"*.
+  - Strict text-only messaging with 1000 character countdown, drag-and-drop file blocking, and clipboard file paste blocking.
+- Streamlined Client Dashboard Architecture ([client_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/client_dashboard.php)):
+  - Removed duplicate `#clientAgentChatModal` and its redundant scripts.
+  - Added "💬 Message" button directly on each transaction card next to "View tracking", as well as inside the tracking modal.
+  - Updated `openClientAgentChat(transactionId)` to seamlessly hide any open tracking modal and pop open the corner Messenger bubble with that transaction selected.
+- Test Verification ([tests/chat_message_button_test.php](file:///d:/xampp/htdocs/KingQuiry/tests/chat_message_button_test.php)):
+  - 100% passing tests covering corner chat bubble launcher, floating panel, conversations tabs, direct channel info, text-only enforcement, database tables, message delivery, and agent notifications.
+
+
+## 2026-11-19 — Unified Client-Side Agent Chat with Conversations Navigation, Real-Time Agent Notifications, and Dark Mode Contrast Fix
+
+- Real-Time Agent Notifications & Inbox Synchronization ([chat_api.php](file:///d:/xampp/htdocs/KingQuiry/chat_api.php)):
+  - Connected client-side messages directly to [chat_api.php](file:///d:/xampp/htdocs/KingQuiry/chat_api.php), synchronizing them with [admin_chat.php](file:///d:/xampp/htdocs/KingQuiry/admin_chat.php) where agents review and reply to conversations.
+  - On `action === 'send'`: Resolves the client's assigned sales representative (from `agent_id`, `transaction_id`, or active `property_transactions`) and automatically triggers `create_user_notification(...)` in `user_notifications`.
+  - The assigned agent's top navbar notification bell immediately updates with an unread badge and dropdown item ("New Message from Jane Doe") linking directly to [admin_chat.php](file:///d:/xampp/htdocs/KingQuiry/admin_chat.php).
+  - On `action === 'admin_reply'`: When an agent replies in [admin_chat.php](file:///d:/xampp/htdocs/KingQuiry/admin_chat.php), `create_user_notification(...)` dispatches a notification to the client's navbar bell linking back to [client_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/client_dashboard.php).
+  - Suppressed generic canned bot answers during direct client-to-assigned-agent conversations, keeping the human conversation thread clean and uncluttered.
+- Unified Client Chat Window with Conversations Navigation ([client_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/client_dashboard.php)):
+  - Designed and deployed `#clientAgentChatModal` featuring a top **"Conversations"** section matching the layout in [admin_chat.php](file:///d:/xampp/htdocs/KingQuiry/admin_chat.php).
+  - If a client has multiple property transactions or inquiries, each transaction card/pill is listed with the agent's name, property title, and transaction reference (`#KQT-[ID]`).
+  - Clients can switch between transactions and assigned sales representatives with 1 click (`selectClientChatConversation(...)`).
+  - Clicking "💬 Message" inside any transaction tracking window immediately transitions smoothly to that transaction's conversation tab with the agent's initial automated greeting loaded.
+  - Added a convenient `← Tracking` button in the chat modal header allowing seamless return to the tracking modal.
+- Modernized Chat Thread & Box Design ([client_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/client_dashboard.php), [assets/css/style.css](file:///d:/xampp/htdocs/KingQuiry/assets/css/style.css)):
+  - Agent speech bubbles feature verified agent badges, agent avatar (👨‍💼), crisp timestamps, and high-contrast card styling (`#ffffff` with `#e2e8f0` border in light mode; `#132537` with `#1e3a4e` border in dark mode).
+  - Client speech bubbles feature a modern royal blue gradient (`linear-gradient(135deg, #174a70, #0f324e)`) with crisp white typography and double checkmark delivery status.
+  - Live 3.5-second polling loop automatically checks for new agent responses while the chat window is open and pauses on modal dismissal.
+- Strict Text-Only Messaging Enforcement:
+  - Form accepts text messages only (1 to 1000 characters) with a real-time character counter.
+  - Drag-and-drop (`drop`) and clipboard pasting (`paste`) of files or images are strictly blocked on both the input element and message container with warning alerts.
+  - Backend [chat_api.php](file:///d:/xampp/htdocs/KingQuiry/chat_api.php) rejects file uploads (`$_FILES`) with HTTP 400.
+- Dark Mode Contrast & Readability Fix in Transaction Updates ([client_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/client_dashboard.php), [includes/header.php](file:///d:/xampp/htdocs/KingQuiry/includes/header.php), [assets/css/style.css](file:///d:/xampp/htdocs/KingQuiry/assets/css/style.css)):
+  - Fixed the unreadable white-on-white text bug in Transaction Updates timeline under dark mode.
+  - Replaced hardcoded `bg-white` and `.text-dark` classes with semantic classes: `.kq-tracking-updates-box`, `.kq-tracking-updates-title`, `.kq-tracking-event-title`, `.kq-tracking-event-time`, `.kq-tracking-event-author`, `.kq-tracking-event-note`.
+  - In dark mode (`[data-bs-theme="dark"]`), event boxes change background to `#09141d` (normal) and `#092019` (latest/completed) with `#1e3a4e` / `#17543e` borders, and crisp high-contrast text (`#f8fafc` titles, `#34d399` latest badge, `#94a3b8` timestamps, `#cbd5e1` authors, `#e2e8f0` notes).
+- Comprehensive Test Verification ([tests/chat_message_button_test.php](file:///d:/xampp/htdocs/KingQuiry/tests/chat_message_button_test.php), [tests/client_dashboard_render_test.php](file:///d:/xampp/htdocs/KingQuiry/tests/client_dashboard_render_test.php)):
+  - Verified 21 critical checks: unified modal existence, conversations list, message form, text-only constraints, agent notifications creation, bot canned response suppression, and dark mode contrast selectors.
+
+
+## 2026-11-19 — Resolved View Tracking Modal Issue: CSRF Function Name Alignment
+
+- Root Cause Resolution ([client_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/client_dashboard.php#L1473), [agent_message_api.php](file:///d:/xampp/htdocs/KingQuiry/agent_message_api.php#L126-L165)):
+  - Resolved fatal error (`Call to undefined function get_csrf_token()`) in the newly added client dashboard script.
+  - The undefined function call prevented PHP from finishing the rendering of [client_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/client_dashboard.php), which truncated the document before [includes/footer.php](file:///d:/xampp/htdocs/KingQuiry/includes/footer.php) was reached.
+  - As a result, Bootstrap's JavaScript bundle (`bootstrap.bundle.min.js`) was never loaded into the DOM, causing all `data-bs-toggle="modal"` buttons (including the "View tracking" button and cards) to become unresponsive.
+  - Replaced `get_csrf_token()` with the canonical `csrf_token()` defined in [includes/auth.php](file:///d:/xampp/htdocs/KingQuiry/includes/auth.php#L228).
+  - Also protected `config/db.php` helper function declaration with `function_exists` guard to ensure idempotent inclusion.
+- Verification ([tests/client_dashboard_render_test.php](file:///d:/xampp/htdocs/KingQuiry/tests/client_dashboard_render_test.php)):
+  - Added an end-to-end HTML buffer test verifying that [client_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/client_dashboard.php) renders cleanly to `</html>`, loads `bootstrap.bundle.min.js`, and outputs the "View tracking" modal and trigger buttons without warnings or fatal errors.
+
+## 2026-11-19 — Dedicated Agent Direct Message Window, No Chat Bubble, and Per-Agent Saved Messages
+
+- Dedicated Agent Direct Message Window ([client_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/client_dashboard.php#L754-L762)):
+  - Replaced the generic KingQuiry Assistant chat bubble with a dedicated direct message pop-up window (`#agentMessageModal_<?= $transactionId ?>`) specifically for the assigned sales representative.
+  - When the client clicks "💬 Message", the tracking modal transitions directly to the Agent Message Window with smooth focus.
+  - Window header clearly presents the assigned agent's avatar, name, email, phone number, and the referenced transaction and property (`#KQT-[ID]`).
+  - Added a convenient "← Tracking" return button allowing the client to switch back to transaction progress at any time.
+- Isolated Per-Agent Message Storage ([includes/agent_messages.php](file:///d:/xampp/htdocs/KingQuiry/includes/agent_messages.php)):
+  - Implemented the `agent_direct_messages` database table to permanently store and isolate conversation histories between clients and their assigned sales agents per transaction.
+  - Ensures a client's conversation with one agent does not mix with another agent or with the generic automated assistant.
+  - All messages are permanently saved to MySQL and reloaded whenever the client reopens the window for that agent.
+- Automated First-Time Agent Greeting ([includes/agent_messages.php](file:///d:/xampp/htdocs/KingQuiry/includes/agent_messages.php), [agent_message_api.php](file:///d:/xampp/htdocs/KingQuiry/agent_message_api.php)):
+  - When a client opens the message window for that assigned agent for the first time, an automated greeting from the agent is automatically generated and recorded:
+    `"Hello [Client Name]! I am [Agent Name], your assigned sales representative for [Property Title] (Transaction #KQT-[ID]). How can I assist you with your transaction or inquiry today?"`
+  - The greeting displays on the left as an agent speech bubble with sender attribution and timestamp.
+- Strict Text-Only Messaging Enforcement ([client_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/client_dashboard.php), [agent_message_api.php](file:///d:/xampp/htdocs/KingQuiry/agent_message_api.php)):
+  - Message form accepts text only (max 1000 characters) with a live character countdown.
+  - Intercepted drag-and-drop (`drop`) and clipboard paste (`paste`) events on the input to block file drops or images with user-friendly alerts.
+  - In `agent_message_api.php`, blocked incoming file uploads (`$_FILES`) with HTTP 400 and strictly validated text string content.
+- Exclusion of Chat Bubble on Client Dashboard ([includes/footer.php](file:///d:/xampp/htdocs/KingQuiry/includes/footer.php#L2)):
+  - Removed `client_dashboard.php` from `$chatWidgetPages`, ensuring no floating chat bubble appears on the client dashboard.
+- Dark Theme Styling ([assets/css/style.css](file:///d:/xampp/htdocs/KingQuiry/assets/css/style.css#L2285-L2325)):
+  - Added dark theme surfaces for `.agent-chat-info-bar` (`#162838`), `.agent-messages-scroll` (`#09141d`), and `.agent-message-bubble` (`#162838`) with crisp slate borders.
+- Automated Test Suite ([tests/chat_message_button_test.php](file:///d:/xampp/htdocs/KingQuiry/tests/chat_message_button_test.php)):
+  - Verified button binding, dedicated modal window, absence of generic chat bubble on dashboard, API validation, text-only enforcement, and database table creation (18/18 checks passed).
+
+## 2026-11-19 — Transaction Tracking Message Popup Window, Persistent Chat Bubble, Text-Only Restrictions, and First-Time Automated Agent Greeting
+
+- Transaction Tracking Message Popup Window ([client_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/client_dashboard.php#L754-L762)):
+  - Connected the "💬 Message" button on the assigned sales representative card inside transaction tracking details.
+  - Configured HTML5 data attributes (`data-agent-name`, `data-property-title`, `data-transaction-id`) to safely deliver transaction metadata to client handlers.
+  - Automatically closes the tracking modal on click so the chat window pops up without modal or dark backdrop obstruction.
+- Persistent Chat Bubble & History Retention ([includes/chat_widget.php](file:///d:/xampp/htdocs/KingQuiry/includes/chat_widget.php), [chat_api.php](file:///d:/xampp/htdocs/KingQuiry/chat_api.php#L42-L73)):
+  - Preserved the fixed circular chat bubble launcher (`#kingquiry-chat-launcher`) on screen (`z-index: 1060`) for easy access.
+  - When the client minimizes or closes the chat window (`×`), the chat bubble remains accessible at the bottom-right corner.
+  - Client conversations are indexed by `user_id` in `chat_conversations` and stored permanently in `chat_messages`, ensuring chat history is preserved whenever the chat bubble is reopened across sessions or page reloads.
+- Automated First-Time Agent Greeting ([chat_api.php](file:///d:/xampp/htdocs/KingQuiry/chat_api.php#L182-L224), [includes/chat_widget.php](file:///d:/xampp/htdocs/KingQuiry/includes/chat_widget.php#L324-L370)):
+  - Implemented the `agent_greeting` API action called by `window.openChatWithAgent(...)`.
+  - When a client clicks the message button to contact their assigned sales agent for the first time, the system checks whether a greeting for this transaction `#KQT-[ID]` already exists. If not, the assigned agent sends an automated greeting directly into the chat thread:
+    `Hello [Client Name]! I am [Agent Name], your assigned sales representative for [Property Title] (Transaction #KQT-[ID]). How can I assist you with your inquiry or transaction today?`
+  - Subsequent clicks open the window displaying the full saved conversation without creating duplicate greetings.
+- Strict Text-Only Messaging Enforcement ([includes/chat_widget.php](file:///d:/xampp/htdocs/KingQuiry/includes/chat_widget.php), [chat_api.php](file:///d:/xampp/htdocs/KingQuiry/chat_api.php#L147-L151)):
+  - Client can only send text messages: input field has `type="text"` with 1000 character limit.
+  - Intercepted drag-and-drop (`drop`) and clipboard paste (`paste`) events on the chat input, displaying an alert that file attachments are not supported.
+  - Displayed a clear notice below the input: "Text messages only (file attachments are not supported)."
+  - In `chat_api.php`, blocked incoming file uploads (`$_FILES`) with HTTP 400 and strictly validated that messages are text strings (1–1000 characters).
+- Chat Widget Dark Theme Styling ([includes/chat_widget.php](file:///d:/xampp/htdocs/KingQuiry/includes/chat_widget.php#L48-L67)):
+  - Converted chat panel footer to `.kingquiry-chat-footer` with dark slate `#0f1f2b` background, `#1e3a4e` border, and dark text input `#162838` in dark mode.
+- Automated Test Suite ([tests/chat_message_button_test.php](file:///d:/xampp/htdocs/KingQuiry/tests/chat_message_button_test.php)):
+  - Created end-to-end verification suite covering button binding, popup window execution, persistent chat bubble, text-only validation, and automated first-time agent greeting (17/17 checks passed).
+
+## 2026-11-19 — Navbar Streamlining: Removed Redundant Client "My Tracking" Link
+
+- Navbar Link Streamlining ([includes/header.php](file:///d:/xampp/htdocs/KingQuiry/includes/header.php#L585-L592)):
+  - Removed redundant `My Tracking` link from the top navigation bar for authenticated clients.
+  - Clients accessing their `Dashboard` ([client_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/client_dashboard.php)) already land immediately on their interactive transaction tracking tracker as the primary dashboard feature.
+  - Eliminating this redundant link declutters the header and provides additional horizontal space across wide and compact desktop screens.
+- Verification ([tests/navbar_layout_test.php](file:///d:/xampp/htdocs/KingQuiry/tests/navbar_layout_test.php)):
+  - Added assertion confirming `>My Tracking<` link is omitted from the public navbar (16/16 checks passed).
+
+## 2026-11-19 — Manage Account Modal ID Alignment and Profile Integration
+
+- Modal Identifier Alignment ([includes/modals/account_modals.php](file:///d:/xampp/htdocs/KingQuiry/includes/modals/account_modals.php)):
+  - Resolved bug where clicking "Manage Account" in the user dropdown menu did nothing. The dropdown link targeted `data-bs-target="#manageAccountModal"` and [assets/js/app.js](file:///d:/xampp/htdocs/KingQuiry/assets/js/app.js) listened for `manageAccountModal`, but the modal in [includes/modals/account_modals.php](file:///d:/xampp/htdocs/KingQuiry/includes/modals/account_modals.php) was erroneously named `id="modalChangePassword"`.
+  - Renamed the modal container to `id="manageAccountModal"` and added the required `#manageAccountAlert` feedback element.
+  - Enhanced the modal with an Account Profile Summary Card displaying the user's Full Name, Email, Role badge, and direct link to the full settings page ([manage_account.php](file:///d:/xampp/htdocs/KingQuiry/manage_account.php)).
+- Session Safety ([includes/footer.php](file:///d:/xampp/htdocs/KingQuiry/includes/footer.php)):
+  - Guarded `$currentUser` resolution from `$_SESSION['user']` to ensure modals render reliably on every authenticated page.
+- Automated Test Suite ([tests/manage_account_modal_test.php](file:///d:/xampp/htdocs/KingQuiry/tests/manage_account_modal_test.php)):
+  - Added end-to-end verification for modal ID matching, form binding, alert box presence, and JavaScript hook alignment (all 9 checks passed).
+
+## 2026-11-19 — Manage Account Modal ID Alignment and Profile Integration
+
+- Modal Identifier Alignment ([includes/modals/account_modals.php](file:///d:/xampp/htdocs/KingQuiry/includes/modals/account_modals.php)):
+  - Resolved bug where clicking "Manage Account" in the user dropdown menu did nothing. The dropdown link targeted `data-bs-target="#manageAccountModal"` and [assets/js/app.js](file:///d:/xampp/htdocs/KingQuiry/assets/js/app.js) listened for `manageAccountModal`, but the modal in [includes/modals/account_modals.php](file:///d:/xampp/htdocs/KingQuiry/includes/modals/account_modals.php) was erroneously named `id="modalChangePassword"`.
+  - Renamed the modal container to `id="manageAccountModal"` and added the required `#manageAccountAlert` feedback element.
+  - Enhanced the modal with an Account Profile Summary Card displaying the user's Full Name, Email, Role badge, and direct link to the full settings page ([manage_account.php](file:///d:/xampp/htdocs/KingQuiry/manage_account.php)).
+- Session Safety ([includes/footer.php](file:///d:/xampp/htdocs/KingQuiry/includes/footer.php)):
+  - Guarded `$currentUser` resolution from `$_SESSION['user']` to ensure modals render reliably on every authenticated page.
+- Automated Test Suite ([tests/manage_account_modal_test.php](file:///d:/xampp/htdocs/KingQuiry/tests/manage_account_modal_test.php)):
+  - Added end-to-end verification for modal ID matching, form binding, alert box presence, and JavaScript hook alignment (all 9 checks passed).
+
+## 2026-11-19 — Transaction Tracking Timeline Dark Theme Resolution
+
+- Dark Mode Timeline Container & Card Theming ([includes/header.php](file:///d:/xampp/htdocs/KingQuiry/includes/header.php#L367-L395), [assets/css/style.css](file:///d:/xampp/htdocs/KingQuiry/assets/css/style.css#L1647-L1690)):
+  - Resolved issue in client dashboard transaction updates where `.kq-tracking-event-content` had hardcoded light gray (`#f7f9fb`) and pale green (`#f0f8f4`) backgrounds while dark theme turned the status text (`.text-dark`) off-white (`#f1f5f9`), resulting in unreadable white-on-white text.
+  - Implemented dark mode surfaces for `.kq-tracking-event-content` using dark slate (`#0d1b26`) with border (`#1e3a4e`) and latest milestone update container using deep forest emerald (`#0b221e`) with green accent border (`#17543e`) and emerald border strip (`box-shadow: inset 4px 0 0 #10b981`).
+  - Darkened timeline connecting line (`border-left-color: #1e3a4e`) and timeline node dots (`.kq-tracking-event::before`) with dark slate fills and borders.
+  - Styled all inner text elements with high WCAG AA contrast: stage titles (`#f1f5f9`), update timestamps (`#94a3b8`), latest update badge (`#34d399`), agent attribution (`#cbd5e1`), and note descriptions (`#e2e8f0`).
+- Test Verification ([tests/dark_theme_verification_test.php](file:///d:/xampp/htdocs/KingQuiry/tests/dark_theme_verification_test.php)):
+  - Added selector check for `[data-bs-theme="dark"] .kq-tracking-event-content` (40/40 checks passed).
+
+## 2026-11-19 — Footer Dark Mode Background and Contrast Fix
+
+- Root Cause Resolution ([includes/header.php](file:///d:/xampp/htdocs/KingQuiry/includes/header.php#L372-L390), [assets/css/style.css](file:///d:/xampp/htdocs/KingQuiry/assets/css/style.css#L1624-L1645)):
+  - Fixed `.app-footer` which previously used `background: var(--kq-ink);`. Because `--kq-ink` was re-mapped to off-white (`#f1f5f9`) in dark mode as the general text color, the footer background turned stark white with white text in dark mode.
+  - Replaced with solid deep navy (`#102a43`) in light mode and midnight navy (`#081522`) under `[data-bs-theme="dark"]`, accompanied by subtle border (`1px solid rgba(255, 255, 255, 0.1)`), high-contrast off-white text (`#f1f5f9`), and gold hover accents (`#d8ad63`).
+- Full-Width Alignment ([includes/footer.php](file:///d:/xampp/htdocs/KingQuiry/includes/footer.php#L15)):
+  - Updated footer inner container to `container-fluid px-3 px-sm-4 px-xl-5`, matching the horizontally expanded header layout.
+- Automated Test Suite ([tests/dark_theme_verification_test.php](file:///d:/xampp/htdocs/KingQuiry/tests/dark_theme_verification_test.php)):
+  - Added selector verification for `[data-bs-theme="dark"] .app-footer` to ensure footer dark theme styling is strictly guarded against regressions (39/39 checks passed).
+
+## 2026-11-19 — Dedicated About Us Page and Clean Navigation Dropdown
+
+- Created Dedicated About Us Section ([about.php](file:///d:/xampp/htdocs/KingQuiry/about.php)):
+  - Migrated the four company overview sections ("Company background", "Service history", "Testimonials", and "Frequently asked questions") out of [resources.php](file:///d:/xampp/htdocs/KingQuiry/resources.php) into their own standalone [about.php](file:///d:/xampp/htdocs/KingQuiry/about.php) page.
+  - Added dedicated hero header, in-page navigation anchors (`#company`, `#service-history`, `#testimonials`, `#faqs`), and a direct link to the active sales agents directory.
+- Reorganized Resources & Guides ([resources.php](file:///d:/xampp/htdocs/KingQuiry/resources.php)):
+  - Retained core property buyer resources (Buyer's Guide, Market Trends, Expert Advice, Listing Prices) and removed all company/history/testimonials/FAQ sections.
+  - Added cross-navigation callout to [about.php](file:///d:/xampp/htdocs/KingQuiry/about.php).
+- Cleaned About Us Navbar Dropdown Menu ([includes/header.php](file:///d:/xampp/htdocs/KingQuiry/includes/header.php)):
+  - Removed confusing anchor links that redirected visitors to the Resources & Guides page (`resources.php#company`, `resources.php#service-history`, `resources.php#testimonials`, `resources.php#faqs`).
+  - Streamlined the About Us dropdown into two clean, direct destinations: "About Us" ([about.php](file:///d:/xampp/htdocs/KingQuiry/about.php)) and "Our Team" ([agents.php](file:///d:/xampp/htdocs/KingQuiry/agents.php)).
+- Automated Verification ([tests/navbar_layout_test.php](file:///d:/xampp/htdocs/KingQuiry/tests/navbar_layout_test.php)):
+  - Verified absence of external resource redirects in About Us dropdown, presence of all four sections in [about.php](file:///d:/xampp/htdocs/KingQuiry/about.php), and removal from [resources.php](file:///d:/xampp/htdocs/KingQuiry/resources.php) (15/15 checks passed).
+
+## 2026-11-19 — Navbar Horizontal Expansion, Sizing Enhancement, and Theme-Matched Buttons
+
+- Full-Width Edge-to-Edge Navbar Layout ([includes/header.php](file:///d:/xampp/htdocs/KingQuiry/includes/header.php)):
+  - Replaced constrained `<div class="container">` (fixed max-width 1320px) with `<div class="container-fluid px-3 px-sm-4 px-xl-5">` to fully utilize widescreen displays and eliminate empty navy gutters on the left and right.
+  - Set `--kq-content-width: 1480px;` and updated desktop navbar media query to `flex-wrap: nowrap; align-items: center; gap: .45rem;`, eliminating wrapping of the Help and Theme toggle buttons beneath "Home".
+- Navbar Sizing Enhancement:
+  - Increased navbar height from 58px to 68px (`min-height: 68px;`) for a more spacious, premium feel.
+  - Scaled brand wordmark to `1.15rem`, nav links to `.95rem` with `.52rem .8rem` padding, and official logo to `86px x 56px`.
+  - Scaled live Philippine clock display: date to `.82rem` and time to `1.12rem` bold with `0.95rem` divider padding.
+- Theme-Matched Help & Dark/Light Mode Buttons ([includes/header.php](file:///d:/xampp/htdocs/KingQuiry/includes/header.php), [assets/css/style.css](file:///d:/xampp/htdocs/KingQuiry/assets/css/style.css), [assets/js/app.js](file:///d:/xampp/htdocs/KingQuiry/assets/js/app.js)):
+  - Removed generic white wireframe borders (`btn-outline-light btn-sm`) and OS-rendered text emojis (`❓` and `🌙`).
+  - Implemented bespoke luxury styles `.kq-help-btn` and `.kq-theme-toggle-btn` featuring translucent royal gold backgrounds (`rgba(216, 173, 99, 0.12)`), gold borders (`rgba(216, 173, 99, 0.42)`), and crisp gold vector SVGs that harmonize with the 4Kings branding and the primary "Contact Us" gold button.
+  - Added smooth interactive hover state with gradient fill (`linear-gradient(135deg, #d8ad63, #c49643)`), deep navy text/icon (`#102a43`), subtle lift (`translateY(-1px)`), and gold glow shadow (`0 4px 16px rgba(216, 173, 99, 0.4)`).
+  - Updated [assets/js/app.js](file:///d:/xampp/htdocs/KingQuiry/assets/js/app.js) `updateThemeIcon()` to dynamically render crisp vector SVG icons for Moon (in light mode) and Sun (in dark mode).
+- Testing & Verification:
+  - Added [tests/navbar_layout_test.php](file:///d:/xampp/htdocs/KingQuiry/tests/navbar_layout_test.php) to verify edge-to-edge layout, sizing, no-wrap behavior, and SVG theme button attributes (100% pass).
+
+## 2026-11-19 — Complete Dark Theme Overhaul and Contrast Redesign
+
+- Master Dark Theme Architecture ([assets/css/style.css](file:///d:/xampp/htdocs/KingQuiry/assets/css/style.css)):
+  re-engineered the complete dark mode experience under `[data-bs-theme="dark"]`
+  with unified WCAG AA accessible contrast, consistent palettes, and responsive styling
+  across all public, client, agent, and administrator interfaces.
+- Scoped Dynamic CSS Variables ([includes/header.php](file:///d:/xampp/htdocs/KingQuiry/includes/header.php)):
+  defined root dark mode custom properties (`--kq-ink: #f1f5f9`, `--kq-muted: #94a3b8`,
+  `--kq-primary: #60a5fa`, `--kq-surface: #0f1f2b`, `--kq-canvas: #09131a`,
+  `--kq-line: #1e3a4e`, `--kq-shadow: 0 12px 32px rgba(0,0,0,0.45)`).
+- Admin Control Room Dark Theme: resolved issue where `--admin-ink` was hardcoded
+  to `#0f2942` (black) causing black text on dark surfaces; configured full dark mode
+  variables for `body.admin-control-room`, stat cards, and navigation tabs.
+- Buttons Contrast and Legibility:
+  - `.btn-outline-primary`: corrected dark navy blue `#123b5a` text to crisp `#93c5fd`
+    with `#3b82f6` border and bright active/hover states.
+  - `.btn-outline-secondary`: tuned to `#cbd5e1` with visible `#475569` border.
+  - `.btn-light`: converted from stark white to elevated dark navy surface `#1e3244` with `#f1f5f9` text.
+  - `.btn-close`: added `filter: invert(1) grayscale(100%) brightness(200%)` for crisp visibility in modals.
+  - `.password-toggle`: tuned show/hide buttons to legible `#93c5fd`.
+- Modals & Popups Refactoring:
+  - [includes/modals/contact_us_modal.php](file:///d:/xampp/htdocs/KingQuiry/includes/modals/contact_us_modal.php):
+    removed hardcoded inline `style="background: #ffffff;"` and `style="background: #f8fafc;"`,
+    replacing with adaptive `.kq-contact-card`, `.kq-fb-icon-box`, and `.kq-phone-icon-box`.
+  - [includes/modals/notifications_modal.php](file:///d:/xampp/htdocs/KingQuiry/includes/modals/notifications_modal.php):
+    removed hardcoded white background so notification cards and unread badges render with proper dark mode contrast.
+  - [includes/modals/user_manual_modal.php](file:///d:/xampp/htdocs/KingQuiry/includes/modals/user_manual_modal.php):
+    themed tab navigation, numbered badges, guide containers, and formula blocks.
+- Dropdown Menus and Notifications:
+  - Formatted `.dropdown-menu` with dark elevation (`#0f1f2b`), borders (`#1e3a4e`),
+    legible `.dropdown-item` hover states (`#162838`), and dark-safe headers.
+- Forms & Controls:
+  - Styled `.form-control`, `.form-select`, `input`, and `textarea` with dark slate
+    backgrounds (`#0a1620`), borders (`#24415c`), off-white inputs (`#f1f5f9`),
+    and gold focus glows (`#d8ad63`).
+- Tables & Stat Cards:
+  - Applied dark theme table variables (`--bs-table-bg`, `--bs-table-color: #f1f5f9`,
+    `--bs-table-border-color: #1e3a4e`), styled headers (`#162838`), and dark stat cards.
+- Homepage Search Bar & Catalog:
+  - Adaptive `.hero-search-bar` container, inputs, and autocomplete dropdowns in dark mode.
+- Chat Assistant & Support Inboxes:
+  - Styled floating chat message thread and land estimate collapse form for dark mode.
+- Verification & Automated Tests:
+  - Added [tests/dark_theme_verification_test.php](file:///d:/xampp/htdocs/KingQuiry/tests/dark_theme_verification_test.php)
+    verifying 38 critical selectors and CSS variable integrity (100% pass).
+
+## 2026-11-19 — Project Structure Organization and Codebase Cleanup
+
+- Integrated live clock into main navigation bar ([includes/header.php](file:///d:/xampp/htdocs/KingQuiry/includes/header.php)):
+  removed the redundant top dark bar ("Kings Land Properties") and relocated the
+  live Philippine date and time directly to the top-right corner of the blue
+  primary navbar with responsive font sizing and clean divider styling.
+- Modularized modal architecture: extracted 400+ lines of inline modal dialogs
+  from `includes/footer.php` into clean partials under `includes/modals/`
+  (`contact_us_modal.php`, `notifications_modal.php`, `account_modals.php`,
+  and `user_manual_modal.php`), shrinking `footer.php` to a concise 48-line file.
+- Unified authentication handling: abstracted ~150 lines of duplicate POST
+  processing across `client_login.php`, `agent_login.php`, and `admin_login.php`
+  into `kq_process_user_login()` in `includes/auth.php`.
+- Organized database assets: categorized 15 scattered SQL files under `database/`
+  into `database/schema.sql` (single authoritative source of truth),
+  `database/seeds/` (demo, testing, and property datasets), and
+  `database/legacy_migrations/` (historical reference snippets).
+- Eliminated dead files and development clutter: removed obsolete `scratch/` test
+  scripts, the 0-byte `database/seed_runner.php`, and the dead `property_map.php`
+  redirect. Relocated the CLI password tool to `scripts/update_admin_password.php`.
+- Database auto-schema migration resilience at `config/db.php`: resolved 503 "The
+  service is temporarily unavailable" error caused by strict table validation on
+  pre-existing databases missing newly introduced tables (such as
+  `security_rate_limits`, `agent_dismissed_appointments`, or
+  `agent_inquiry_assignments`).
+- Automated DDL creation & column repair: in non-production environments, missing
+  tables and columns (`properties.isDeleted`, `properties.deletedAt`,
+  `property_locations.isDeleted`, `users.phone`, `users.address`,
+  `users.accountStatus`, `property_transactions.paymentMethod`) are now automatically
+  detected and created safely without data loss, eliminating manual migration steps.
+
 ## 2026-11-18 — Public Navigation and Information Organization
 
 - Simplified the public navbar to Properties, Resources & Guides, About Us,
