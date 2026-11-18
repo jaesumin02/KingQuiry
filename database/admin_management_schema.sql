@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS payments (
     amount DECIMAL(12,2) NOT NULL,
     paymentType ENUM('Reservation', 'Down Payment', 'Installment', 'Full Payment', 'Other')
         NOT NULL DEFAULT 'Other',
-    paymentMethod ENUM('Cash', 'Bank Transfer', 'GCash', 'Check', 'Other')
+    paymentMethod ENUM('Cash', 'Bank Transfer', 'Check', 'Other')
         NOT NULL DEFAULT 'Cash',
     referenceNo VARCHAR(100) DEFAULT NULL,
     status ENUM('Pending', 'Verified', 'Rejected') NOT NULL DEFAULT 'Pending',

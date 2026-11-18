@@ -252,6 +252,7 @@ try {
             $message = trim($payload['message']);
             chat_add_message($conn, $conversationId, 'client', $message);
             $lowerMessage = mb_strtolower($message);
+            // ALGORITHM: Check keyword rules in order and return the first matching canned response.
             if (preg_match('/hello|hi\b|good morning|good afternoon|good evening|kamusta|kumusta|magandang umaga|magandang hapon|magandang gabi/', $lowerMessage)) {
                 $reply = 'Hello! Welcome to KingQuiry. I can help with property listings, viewing appointments, contact details, and land estimates. What would you like to know?';
             } elseif (preg_match('/estimate|estimation|presyo|price|halaga|how much|magkano|sqm|square meter/', $lowerMessage)) {

@@ -542,7 +542,7 @@ include 'includes/header.php';
             </div>
             <div class="col-md-4">
                 <label class="form-label fw-semibold" for="payment-reference">Reference number <span class="text-muted fw-normal">(optional)</span></label>
-                <input id="payment-reference" type="text" name="referenceNo" class="form-control" maxlength="100" value="<?= kq_e($paymentForm['referenceNo']) ?>" placeholder="Bank / GCash reference">
+                <input id="payment-reference" type="text" name="referenceNo" class="form-control" maxlength="100" value="<?= kq_e($paymentForm['referenceNo']) ?>" placeholder="Bank reference">
             </div>
             <div class="col-md-4">
                 <label class="form-label fw-semibold" for="payment-date">Payment date</label>

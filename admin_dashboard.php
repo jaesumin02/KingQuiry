@@ -614,6 +614,8 @@ $clientOverview = $conn->query(
      WHERE role = 'Client'"
 )->fetch_assoc();
 
+// ALGORITHM: Municipal inventory heuristic compares inquiries with available listings,
+// then recommends an inventory or marketing review using fixed thresholds.
 $demandPrescription = [];
 $demandRes = $conn->query("
     SELECT l.municipalityName,

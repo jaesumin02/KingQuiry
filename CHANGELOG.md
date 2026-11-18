@@ -3,6 +3,18 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-18 — Algorithm Guide and Payment / Contact Cleanup
+
+- Added `ALGORITHM:` source markers and a README index for the system's main
+  recommendation, price-estimation, appointment-conflict, transaction-stage,
+  inventory-insight, and chatbot decision logic.
+- Updated the estimator documentation to describe the implemented batch
+  gradient descent model and weighted-median fallback.
+- Removed GCash from payment entry options and validation, including new-install
+  schema definitions; existing payment records were left unchanged.
+- Removed the duplicate Contact Us action from the shared footer; the navbar
+  contact button and modal remain available.
+
 ## 2026-11-17 — Inventory Editing and Portal Navigation
 
 - Added full property-detail editing from the admin inventory, including safe optional image replacement and preservation of the listing's map pin.

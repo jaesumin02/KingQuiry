@@ -84,11 +84,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_payment_review
         : filter_var($postedPaymentAmount, FILTER_VALIDATE_FLOAT);
     $paymentMethod = is_string($_POST['paymentMethod'] ?? null) ? trim($_POST['paymentMethod']) : '';
     $paymentRef = is_string($_POST['paymentRef'] ?? null) ? trim($_POST['paymentRef']) : '';
+    $allowedPaymentMethods = ['Spot Cash', 'Bank Transfer', 'Check', 'Paperwork (Face-to-face)'];
 
     if (!has_valid_csrf_token()) {
         $formError = 'Your session expired. Refresh the page and try again.';
     } elseif ($transactionId === false || $transactionId <= 0) {
         $formError = 'Choose a valid transaction.';
+    } elseif ($paymentMethod !== '' && !in_array($paymentMethod, $allowedPaymentMethods, true)) {
+        $formError = 'Choose a supported payment method.';
     } elseif ($newStage === 'completed' && ($salePrice === false || $salePrice === null || $salePrice <= 0)) {
         $formError = 'Enter the verified sale price before marking this transaction successful.';
     } else {
@@ -475,11 +478,13 @@ include 'includes/header.php';
                                             <div class="col-sm-6">
                                                 <label class="form-label small mb-1 fw-semibold" for="modal-payment-method-<?= $tId ?>">Payment Method</label>
                                                 <select id="modal-payment-method-<?= $tId ?>" name="paymentMethod" class="form-select form-select-sm payment-method-trigger" data-tid="<?= $tId ?>">
+                                                    <?php if (in_array(strtolower((string) ($transaction['paymentMethod'] ?? '')), ['gcash', 'maya', 'gcash / maya'], true)): ?>
+                                                        <option value="" selected disabled>Existing payment method unavailable</option>
+                                                    <?php endif; ?>
                                                     <option value="Spot Cash" <?= $isTxSpotCash ? 'selected' : '' ?>>⚡ Spot Cash (Document verification skipped)</option>
                                                     <option value="Bank Transfer" <?= strcasecmp((string)($transaction['paymentMethod'] ?? ''), 'Bank Transfer') === 0 ? 'selected' : '' ?>>🏦 Bank Transfer (Requires document verification)</option>
                                                     <option value="Check" <?= in_array(strtolower((string)($transaction['paymentMethod'] ?? '')), ['check', 'cheque'], true) ? 'selected' : '' ?>>📝 Check (Requires document verification)</option>
                                                     <option value="Paperwork (Face-to-face)" <?= empty($transaction['paymentMethod']) || strcasecmp((string)($transaction['paymentMethod'] ?? ''), 'Paperwork (Face-to-face)') === 0 ? 'selected' : '' ?>>🤝 Paperwork (Face-to-face agreement)</option>
-                                                    <option value="GCash / Maya" <?= strcasecmp((string)($transaction['paymentMethod'] ?? ''), 'GCash / Maya') === 0 ? 'selected' : '' ?>>📱 GCash / Maya</option>
                                                 </select>
                                             </div>
                                             <div class="col-12">

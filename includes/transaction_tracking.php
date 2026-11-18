@@ -19,6 +19,7 @@ function property_transaction_stages(): array
 
 function property_transaction_next_stages(string $stage, ?string $paymentMethod = null): array
 {
+    // ALGORITHM: State machine mapping each stage to allowed next stages; Spot Cash skips document verification.
     $isSpotCash = $paymentMethod !== null && (strcasecmp($paymentMethod, 'Spot Cash') === 0 || strcasecmp($paymentMethod, 'Spot cash') === 0);
 
     $transitions = [

@@ -4,7 +4,7 @@
 Land Properties. It provides a public property catalog and different pages for
 clients, sales agents, and administrators.
 
-- **Last reviewed:** 2026-11-06
+- **Last reviewed:** 2026-11-18
 - **Application type:** Server-rendered PHP website
 - **Database:** MySQL, accessed with PHP `mysqli`
 - **Local development environment:** XAMPP
@@ -36,6 +36,23 @@ appointments, inquiries, payments, or sales; create or import only business data
 you are authorized to use. If the XAMPP folder or database credentials differ,
 update the settings in `config/db.php` or set the documented
 `KINGQUIRY_DB_*` environment variables.
+
+## Algorithm guide
+
+Search the source files for `ALGORITHM:` to find these main decision and
+calculation flows:
+
+| Algorithm | Location | What it does |
+| --- | --- | --- |
+| Property recommendations | [`includes/ml_recommender.php`](includes/ml_recommender.php) | Ranks available listings by weighted price, category, municipality, and area similarity. |
+| Property price estimation | [`includes/property_estimator.php`](includes/property_estimator.php) | Fits a normalized linear regression with batch gradient descent; falls back to a weighted median of comparable price-per-square-meter rates. |
+| Viewing schedule conflict check | [`property_detail.php`](property_detail.php) | Rejects an active same-property appointment if it is less than one hour from the requested time. |
+| Transaction stage flow | [`includes/transaction_tracking.php`](includes/transaction_tracking.php) | Defines allowed next transaction stages; Spot Cash can skip document verification. |
+| Inventory insights | [`admin_dashboard.php`](admin_dashboard.php) | Uses fixed inquiry/listing thresholds to suggest an inventory or marketing review. |
+| Chatbot responses | [`chat_api.php`](chat_api.php) | Checks ordered keyword rules and selects a matching preset response; it does not call an external AI service. |
+
+These are the system's main algorithms and rule-based decision flows; ordinary
+form validation and database CRUD operations are not listed as algorithms.
 
 ## Features
 
@@ -144,14 +161,13 @@ update the settings in `config/db.php` or set the documented
   property image. New price-per-square-meter values are calculated from total
   asking price and land area. Existing free-text location data stays visible as
   legacy data until an administrator replaces that listing.
-- Use a data-based price estimator, which calculates a weighted price per
-  square meter from existing listings, using a weighted median with stronger
-  weighting for matching category and municipality. It reports its comparable
-  listing count, exact-match count, a heuristic confidence label based on
-  exact-match count, and an indicative range. It requires at least one positive
-  listing price per square meter. The current system does not contain a trained
-  machine-learning model; do not describe this comparable-listing estimator as
-  machine learning or a formal appraisal.
+- Use a data-based price estimator, which fits a normalized linear-regression
+  model with batch gradient descent when at least three comparable listings are
+  available. If model fitting fails, it falls back to a weighted median of
+  comparable prices per square meter, with stronger weights for matching
+  category and municipality. It reports comparable and exact-match counts, a
+  heuristic confidence label, and an indicative range. It is not a formal
+  appraisal.
 - Read client conversations and send replies on the Customer Chat page. The
   admin's conversations and reply form are presented inside a floating bubble
   on that page, which is opened from the single **Customer inbox** button on
@@ -337,14 +353,14 @@ invented.
 
 ### Price estimator limitations
 
-The project has no supplied historical training dataset, and older listings
-may lack verified land areas or structured locations. The estimator therefore
-uses available `pricePerSqm` values as comparable listing data and a weighted
-median, prioritizing exact category-and-municipality matches, then category
-and municipality matches, with other listings given a lower weight. It shows
-an indicative range of +/-10% around the calculated value. It does not train a
-machine-learning model and should not be treated as a formal valuation or
-appraisal.
+The estimator fits its linear-regression weights from current available
+listings each time an estimate is requested; the project does not use a
+separate historical training dataset or a pre-trained model. It uses area,
+property category, and municipality as input features. If there are too few
+usable listings for regression, it falls back to the weighted median of
+comparable prices per square meter, prioritizing exact category-and-
+municipality matches. The resulting range is indicative only and is not a
+formal valuation or appraisal.
 
 Only available listings with a standardized municipality and a positive
 price-per-square-meter value contribute as estimate comparables. Newly entered

@@ -122,7 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($duplicate->get_result()->num_rows > 0) {
                 $errorMsg = 'You already have an active request for this property at that date and time.';
             } else {
-                // Anti-Overlap Scheduling: Prevent double-booking on the same property within a 1-hour buffer
+                // ALGORITHM: Reject same-property appointments less than one hour apart.
                 $clashStmt = $conn->prepare(
                     "SELECT appointmentID, appointmentTime FROM appointments
                      WHERE propertyID = ?

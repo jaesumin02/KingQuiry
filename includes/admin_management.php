@@ -45,7 +45,7 @@ function ensure_admin_management_schema(mysqli $conn): void
             amount DECIMAL(12,2) NOT NULL,
             paymentType ENUM('Reservation', 'Down Payment', 'Installment', 'Full Payment', 'Other')
                 NOT NULL DEFAULT 'Other',
-            paymentMethod ENUM('Cash', 'Bank Transfer', 'GCash', 'Check', 'Other')
+            paymentMethod ENUM('Cash', 'Bank Transfer', 'Check', 'Other')
                 NOT NULL DEFAULT 'Cash',
             referenceNo VARCHAR(100) DEFAULT NULL,
             status ENUM('Pending', 'Verified', 'Rejected') NOT NULL DEFAULT 'Pending',
@@ -83,7 +83,7 @@ function payment_type_options(): array
 
 function payment_method_options(): array
 {
-    return ['Cash', 'Bank Transfer', 'GCash', 'Check', 'Other'];
+    return ['Cash', 'Bank Transfer', 'Check', 'Other'];
 }
 
 function payment_status_options(): array

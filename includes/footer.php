@@ -22,9 +22,6 @@ if (in_array($currentPage, $chatWidgetPages, true) && ($currentRole === null || 
             </div>
             <div class="d-flex align-items-center gap-3 small flex-wrap">
                 <?php if ($currentRole === null || $currentRole === 'Client'): ?>
-                    <button type="button" class="btn btn-link text-white-50 p-0 text-decoration-none hover-white" data-bs-toggle="modal" data-bs-target="#contactUsModal">
-                        Contact Us
-                    </button>
                     <a href="https://www.facebook.com/p/Kings-Land-Properties-61568411772451/" target="_blank" rel="noopener noreferrer" class="text-white-50 text-decoration-none hover-white d-inline-flex align-items-center gap-1">
                         <span>Facebook Page</span>
                         <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
