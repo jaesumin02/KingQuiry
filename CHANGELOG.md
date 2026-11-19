@@ -3,6 +3,15 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-19 — Restored Local Database Connectivity and Property Listings
+
+- Added `KINGQUIRY_DB_PORT` support for local MySQL configurations and documented
+  the XAMPP port setting in [README.md](README.md).
+- Recovered property timestamps and trash flags from the preserved tablespace
+  using its original column order; kept the database name `kingquiry_db`.
+- Verified all 32 property records, including 20 available listings and 11
+  trashed listings.
+
 ## 2026-11-19 — Workspace Cleanup: Removed Obsolete Test Files, Temporary Scripts, and Legacy Database Seeds
 
 - Cleaned Obsolete Scripts & Test Files:

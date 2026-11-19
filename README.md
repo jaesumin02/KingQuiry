@@ -280,10 +280,11 @@ form validation and database CRUD operations are not listed as algorithms.
    accounts, property listings, appointment/inquiry records, chat messages, or
    audit-log entries from any developer's local database.
 4. Configure the database environment variables if needed:
-   `KINGQUIRY_DB_HOST`, `KINGQUIRY_DB_USER`, `KINGQUIRY_DB_PASSWORD`, and
-   `KINGQUIRY_DB_NAME`. Local defaults are host `localhost`, user `root`, an
-   empty password, and database `kingquiry_db`; do not use those defaults for
-   production.
+   `KINGQUIRY_DB_HOST`, `KINGQUIRY_DB_PORT`, `KINGQUIRY_DB_USER`,
+   `KINGQUIRY_DB_PASSWORD`, and `KINGQUIRY_DB_NAME`. Local defaults are host
+   `localhost`, port `3307`, user `root`, an empty password, and database
+   `kingquiry_db`; set `KINGQUIRY_DB_PORT` to match your MySQL server. Do not
+   use those defaults for production.
 5. Put the project under XAMPP's web root and open it through the local Apache
    URL (for example, `http://localhost/kingquiry/`).
    Bootstrap styling and navigation scripts are currently loaded from a CDN,

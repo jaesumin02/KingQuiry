@@ -5,6 +5,15 @@ $host = getenv('KINGQUIRY_DB_HOST') ?: 'localhost';
 $username = getenv('KINGQUIRY_DB_USER') ?: 'root';
 $password = getenv('KINGQUIRY_DB_PASSWORD') ?: '';
 $dbname = getenv('KINGQUIRY_DB_NAME') ?: 'kingquiry_db';
+$portValue = getenv('KINGQUIRY_DB_PORT');
+$port = filter_var($portValue !== false ? $portValue : '3307', FILTER_VALIDATE_INT, [
+    'options' => ['min_range' => 1, 'max_range' => 65535],
+]);
+if ($port === false) {
+    error_log('KingQuiry database port is invalid.');
+    http_response_code(503);
+    exit('The service is temporarily unavailable. Please try again later.');
+}
 $appEnvironment = strtolower((string) (getenv('KINGQUIRY_ENV') ?: 'development'));
 
 if (!in_array($appEnvironment, ['development', 'test', 'production'], true)) {
@@ -398,7 +407,7 @@ function ensure_property_coordinates_columns(mysqli $connection, bool $allowSche
 }
 
 try {
-    $conn = new mysqli($host, $username, $password, $dbname);
+    $conn = new mysqli($host, $username, $password, $dbname, $port);
     $conn->set_charset('utf8mb4');
     ensure_required_database_tables($conn, $appEnvironment !== 'production');
     ensure_property_coordinates_columns($conn, $appEnvironment !== 'production');
@@ -413,13 +422,13 @@ try {
             exit('The service is temporarily unavailable. Please try again later.');
         }
 
-        $adminConn = new mysqli($host, $username, $password);
+        $adminConn = new mysqli($host, $username, $password, '', $port);
         $adminConn->query('CREATE DATABASE IF NOT EXISTS `' . str_replace('`', '``', $dbname) . '` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
         $adminConn->select_db($dbname);
         ensure_required_database_tables($adminConn, true);
         $adminConn->close();
 
-        $conn = new mysqli($host, $username, $password, $dbname);
+        $conn = new mysqli($host, $username, $password, $dbname, $port);
         $conn->set_charset('utf8mb4');
     } else {
         error_log('KingQuiry database connection failed: ' . $exception->getMessage());
