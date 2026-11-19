@@ -743,6 +743,9 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
     }
 </style>
 
+<?php if ($formSuccess !== ''): ?><div class="alert alert-success mb-3" role="status"><?= htmlspecialchars($formSuccess, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
+<?php if ($formError !== '' && !isset($_GET['edit_property']) && !isset($_POST['update_property'])): ?><div class="alert alert-danger mb-3" role="alert"><?= htmlspecialchars($formError, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
+
 <section class="mb-4" aria-labelledby="business-analytics-title">
     <div class="kq-panel-header mb-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
         <div>
@@ -972,59 +975,6 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
         </div>
     </section>
 </section>
-</div>
-
-<?php if ($formSuccess !== ''): ?><div class="alert alert-success" role="status"><?= htmlspecialchars($formSuccess, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
-<?php if ($formError !== '' && !isset($_GET['edit_property']) && !isset($_POST['update_property'])): ?><div class="alert alert-danger" role="alert"><?= htmlspecialchars($formError, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
-
-<div class="row g-3 mb-4">
-    <div class="col-6 col-xl-3">
-        <div class="card h-100 p-3 p-lg-4">
-            <div class="d-flex justify-content-between align-items-center">
-                <div class="small text-muted fw-semibold">Property listings</div>
-                <a href="#property-list" class="badge text-bg-primary text-decoration-none">View list &darr;</a>
-            </div>
-            <div class="display-6 fw-bold mt-2"><?= number_format((int) $totalProperties) ?></div>
-            <a href="#property-list" class="small text-decoration-none mt-2 d-inline-block">Manage <?= number_format((int) $totalProperties) ?> active properties &rarr;</a>
-        </div>
-    </div>
-    <div class="col-6 col-xl-3"><div class="card h-100 p-3 p-lg-4"><div class="small text-muted fw-semibold">Registered users</div><div class="display-6 fw-bold mt-2"><?= number_format((int) $totalUsers) ?></div></div></div>
-    <div class="col-6 col-xl-3"><div class="card h-100 p-3 p-lg-4"><div class="small text-muted fw-semibold">Viewing requests</div><div class="display-6 fw-bold mt-2"><?= number_format((int) $totalAppointments) ?></div></div></div>
-    <div class="col-6 col-xl-3"><div class="card h-100 p-3 p-lg-4"><div class="small text-muted fw-semibold">Property inquiries</div><div class="display-6 fw-bold mt-2"><?= number_format((int) $totalInquiries) ?></div></div></div>
-</div>
-
-<div class="row g-3 mb-4">
-    <div class="col-md-4">
-        <div class="card h-100 p-3 p-lg-4">
-            <div class="d-flex justify-content-between align-items-start gap-2">
-                <div class="small text-muted fw-semibold">Verified collections</div>
-                <a href="admin_payments.php" class="small text-decoration-none">Open register</a>
-            </div>
-            <div class="h3 fw-bold mt-2 mb-1">₱<?= number_format((float) $collectionOverview['verifiedTotal'], 2) ?></div>
-            <div class="small text-muted"><?= number_format((int) $collectionOverview['paymentCount']) ?> payment record(s), <?= htmlspecialchars(kq_format_peso((float) $collectionOverview['pendingTotal']), ENT_QUOTES, 'UTF-8') ?> awaiting verification.</div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card h-100 p-3 p-lg-4">
-            <div class="d-flex justify-content-between align-items-start gap-2">
-                <div class="small text-muted fw-semibold">Clients</div>
-                <a href="admin_clients.php" class="small text-decoration-none">Manage clients</a>
-            </div>
-            <div class="h3 fw-bold mt-2 mb-1"><?= number_format((int) $clientOverview['totalClients']) ?></div>
-            <div class="small text-muted"><?= number_format((int) $clientOverview['activeClients']) ?> active client account(s) in the directory.</div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card h-100 p-3 p-lg-4">
-            <div class="d-flex justify-content-between align-items-start gap-2">
-                <div class="small text-muted fw-semibold">Sales operations</div>
-                <a href="admin_sales.php" class="small text-decoration-none">Open sales</a>
-            </div>
-            <div class="h3 fw-bold mt-2 mb-1"><?= number_format($activePipelineCount) ?> active</div>
-            <div class="small text-muted"><?= htmlspecialchars(kq_format_peso($activePipelineAskingValue), ENT_QUOTES, 'UTF-8') ?> in asking-price pipeline value.</div>
-        </div>
-    </div>
-</div>
 
 <div class="row g-3 mb-4">
     <div class="col-lg-7">
@@ -1106,14 +1056,14 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3 pb-3 border-bottom">
         <div>
             <div class="page-eyebrow mb-1">Current inventory</div>
-            <h2 class="h4 fw-bold mb-0">🏘️ Property list</h2>
+            <h2 class="h4 fw-bold mb-0">Property list</h2>
             <p class="text-muted small mb-0">Active property listings visible across the KingQuiry catalog and customer portals.</p>
         </div>
         <div class="d-flex flex-wrap align-items-center gap-2">
             <span class="badge bg-primary px-3 py-2 fs-6 fw-bold" id="activePropsCountBadge"><?= number_format($properties->num_rows) ?> active listings</span>
-            <a href="#properties" class="btn btn-sm btn-primary fw-semibold">+ Publish listing</a>
+            <a href="#properties" class="btn btn-sm btn-primary fw-semibold">Publish listing</a>
             <button type="button" class="btn btn-outline-danger fw-semibold d-inline-flex align-items-center gap-1" data-bs-toggle="modal" data-bs-target="#trashbinModal" id="btnOpenTrashbin">
-                <span>🗑️</span> Trashbin (<span id="trashHeaderBadge"><?= $totalTrashed ?></span>)
+                Trashbin (<span id="trashHeaderBadge"><?= $totalTrashed ?></span>)
             </button>
         </div>
     </div>
@@ -1121,7 +1071,7 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
     <!-- Quick Search Input for Property Table -->
     <div class="row g-2 mb-3">
         <div class="col-md-6 col-lg-4">
-            <input type="text" id="propTableSearch" class="form-control form-control-sm" placeholder="🔍 Quick search property list by title, category, or location...">
+            <input type="text" id="propTableSearch" class="form-control form-control-sm" placeholder="Search by title, category, or location">
         </div>
     </div>
 
@@ -1145,7 +1095,7 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
                 ?>
                     <tr class="prop-table-row" data-search="<?= htmlspecialchars(mb_strtolower($row['title'] . ' ' . $row['propertyType'] . ' ' . $propLocLabel . ' ' . ($row['barangay'] ?? '')), ENT_QUOTES, 'UTF-8') ?>">
                         <td class="fw-bold text-dark"><?= htmlspecialchars($row['title']) ?></td>
-                        <td><span class="badge rounded-pill text-bg-light border"><?= htmlspecialchars($row['propertyType']) ?></span></td>
+                        <td><span class="badge text-bg-light border"><?= htmlspecialchars($row['propertyType']) ?></span></td>
                         <td><?= htmlspecialchars($propLocLabel) ?><?php if (!empty($row['barangay'])): ?><br><small class="text-muted"><?= htmlspecialchars($row['barangay']) ?></small><?php endif; ?></td>
                         <td>₱<?= number_format((float) $row['price'], 2) ?><br><small class="text-muted"><?= $row['areaSqm'] !== null ? number_format((float) $row['areaSqm'], 2) . ' sq.m. · ₱' . number_format((float) $row['pricePerSqm'], 2) . '/sq.m.' : 'Legacy area not recorded' ?></small></td>
                         <td>
@@ -1166,12 +1116,12 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
                         </td>
                         <td class="text-end">
                             <div class="d-flex justify-content-end align-items-center gap-1">
-                                <a href="admin_dashboard.php?edit_property=<?= (int) $row['propertyID'] ?>#properties" class="btn btn-sm btn-outline-primary py-1 px-2" title="Edit all property details">✏️ Edit</a>
-                                <a href="property_detail.php?id=<?= (int) $row['propertyID'] ?>" target="_blank" class="btn btn-sm btn-outline-secondary py-1 px-2" title="View live property page">👁️ View</a>
+                                <a href="admin_dashboard.php?edit_property=<?= (int) $row['propertyID'] ?>#properties" class="btn btn-sm btn-outline-primary py-1 px-2" title="Edit all property details">Edit</a>
+                                <a href="property_detail.php?id=<?= (int) $row['propertyID'] ?>" target="_blank" class="btn btn-sm btn-outline-secondary py-1 px-2" title="View live property page">View</a>
                                 <form method="POST" class="m-0 d-inline" data-confirm="Move this property to the trash? It will be hidden from the public catalog.">
                                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                                     <input type="hidden" name="propertyID" value="<?= (int) $row['propertyID'] ?>">
-                                    <button type="submit" name="trash_property" class="btn btn-sm btn-outline-danger py-1 px-2" title="Move to trash bin">🗑️ Trash</button>
+                                    <button type="submit" name="trash_property" class="btn btn-sm btn-outline-danger py-1 px-2" title="Move to trash bin">Trash</button>
                                 </form>
                             </div>
                         </td>
@@ -1189,7 +1139,6 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
         <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-danger text-white">
                 <div class="d-flex align-items-center gap-2">
-                    <span class="fs-5">🗑️</span>
                     <div>
                         <h5 class="modal-title h6 mb-0 text-white fw-bold" id="trashbinModalLabel">Archived Inventory — Trashbin</h5>
                         <div class="small opacity-75">Restore listings or permanently delete property records</div>
@@ -1208,7 +1157,7 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
                 <!-- Search and Sort Controls -->
                 <div class="row g-2 mb-3">
                     <div class="col-sm-7">
-                        <input type="text" id="trashSearchInput" class="form-control form-control-sm" placeholder="🔍 Search trashed properties by title or location...">
+                        <input type="text" id="trashSearchInput" class="form-control form-control-sm" placeholder="Search trashed properties by title or location">
                     </div>
                     <div class="col-sm-5">
                         <select id="trashSortSelect" class="form-select form-select-sm">
@@ -1233,10 +1182,10 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
                         </div>
                         <div class="d-flex gap-1">
                             <button type="submit" name="bulk_restore" id="btnBulkRestore" class="btn btn-sm btn-outline-success py-1 px-3 fw-semibold" data-confirm="Restore the selected properties to the active inventory?" disabled title="Restore selected properties">
-                                ↺ Restore Selected
+                                Restore Selected
                             </button>
                             <button type="button" id="btnBulkDelete" class="btn btn-sm btn-danger py-1 px-3 fw-semibold" data-bs-toggle="modal" data-bs-target="#bulkDeleteModal" disabled title="Permanently delete selected properties">
-                                🗑️ Delete Selected
+                                Delete Selected
                             </button>
                         </div>
                     </div>
@@ -1280,11 +1229,11 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
                                         <div class="d-flex gap-1 flex-shrink-0">
                                             <!-- Individual Restore Button -->
                                             <button type="submit" name="restore_property" value="<?= $tId ?>" formaction="admin_dashboard.php" class="btn btn-sm btn-outline-success py-1 px-2 fw-semibold" data-confirm="Restore this property to the active inventory?" title="Restore to active inventory">
-                                                ↺ Restore
+                                                Restore
                                             </button>
                                             <!-- Individual Permanent Delete Button -->
                                             <button type="button" class="btn btn-sm btn-outline-danger py-1 px-2 fw-semibold" data-bs-toggle="modal" data-bs-target="#deleteSingleModal<?= $tId ?>" title="Delete permanently">
-                                                🗑️ Delete
+                                                Delete
                                             </button>
                                         </div>
                                     </div>
@@ -1292,7 +1241,6 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
                             <?php endforeach; ?>
                         <?php else: ?>
                             <div class="p-4 text-center text-muted small bg-light rounded" id="trashEmptyMsg">
-                                <span class="fs-4 d-block mb-1">🏠</span>
                                 No properties in the trashbin. Properties moved to trash will appear here.
                             </div>
                         <?php endif; ?>
@@ -1484,7 +1432,7 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
             <div class="toast-body text-dark">
                 <p class="mb-2"><strong><?= htmlspecialchars($_GET['pname'] ?? 'The property', ENT_QUOTES, 'UTF-8') ?></strong> has been moved to the trashbin.</p>
                 <button type="button" class="btn btn-sm btn-danger fw-semibold" data-bs-toggle="modal" data-bs-target="#trashbinModal">
-                    🗑️ Open Trashbin
+                    Open Trashbin
                 </button>
             </div>
         </div>
@@ -1652,7 +1600,6 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="modal-content shadow-lg border-0 rounded-4 overflow-hidden">
             <div class="modal-header border-0 text-white" style="background: linear-gradient(135deg, #142d4e 0%, #174a70 100%); padding: 1.25rem 1.5rem;">
                 <div class="d-flex align-items-center gap-3">
-                    <span class="fs-4">🛡️</span>
                     <div>
                         <h5 class="modal-title fw-bold text-white mb-0" id="auditLogsModalLabel">System Security &amp; Activity Audit Logs</h5>
                         <div class="small text-white-50">Immutable trail of administrative updates, role changes, and system modifications</div>

@@ -288,6 +288,43 @@ body.admin-control-room {
 }
 
 .admin-control-room .table thead th { color: #4b5e72; background: #f3f6f9; }
+
+#property-list {
+    border: 1px solid #dfe7ed;
+    border-radius: 0.75rem;
+}
+
+#property-list .page-eyebrow {
+    color: #805a20;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+#property-list .badge.text-bg-light {
+    border-radius: 0.35rem;
+    font-weight: 700;
+}
+
+#adminPropertiesTable thead th {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    border-bottom-width: 1px;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+#adminPropertiesTable tbody td {
+    padding-top: 0.85rem;
+    padding-bottom: 0.85rem;
+}
+
+#property-list .btn,
+#trashbinModal .btn {
+    border-radius: 0.45rem;
+}
 .admin-control-room .alert { border: 1px solid var(--bs-alert-border-color); }
 .admin-control-room .alert-info {
     --bs-alert-color: #e0f2fe;
