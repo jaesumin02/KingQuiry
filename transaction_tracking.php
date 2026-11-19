@@ -283,14 +283,14 @@ include 'includes/header.php';
 
 <div class="transaction-tracking-page" id="transactions">
 <?php if ($role !== 'Admin'): ?>
-<div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-3 mb-4">
-    <div>
-        <div class="page-eyebrow">Sales pipeline</div>
+<header class="kq-dashboard-hero mb-4" id="transaction-overview">
+    <img class="kq-official-logo kq-logo-dashboard kq-logo-on-dark" src="assets/images/kings-land-properties-logo-light.png" alt="4 Kings Realty Services">
+    <div class="kq-dashboard-hero-copy">
+        <div class="page-eyebrow">SALES PIPELINE</div>
         <h1 class="page-title h2 mb-1">Transaction tracking</h1>
         <p class="text-muted mb-0">Record each verified milestone so clients can follow their request through completion.</p>
     </div>
-    <a href="agent_dashboard.php" class="btn btn-outline-primary">Agent portal</a>
-</div>
+</header>
 <?php endif; ?>
 
 <div class="alert alert-info small" role="note">

@@ -196,35 +196,61 @@ include 'includes/header.php';
 ?>
 
 <div class="row g-3 mb-4">
-        <div class="col-6 col-xl-3">
-            <div class="kq-stat-card">
-                <div class="kq-stat-label">Verified sales</div>
-                <div class="kq-stat-value"><?= number_format($verifiedSalesCount) ?></div>
-                <div class="kq-stat-sub"><?= number_format($conversionRate, 1) ?>% of <?= number_format($totalTracked) ?> tracked case(s).</div>
-            </div>
-        </div>
-        <div class="col-6 col-xl-3">
-            <div class="kq-stat-card">
-                <div class="kq-stat-label">Actual revenue</div>
-                <div class="kq-stat-value"><?= kq_format_compact_peso($actualRevenue) ?></div>
-                <div class="kq-stat-sub">Average verified sale <?= kq_format_compact_peso($averageSale) ?>.</div>
-            </div>
-        </div>
-        <div class="col-6 col-xl-3">
-            <div class="kq-stat-card">
-                <div class="kq-stat-label">Active pipeline</div>
-                <div class="kq-stat-value"><?= number_format($activePipelineCount) ?></div>
-                <div class="kq-stat-sub"><?= kq_format_compact_peso($activePipelineAskingValue) ?> in asking-price value.</div>
-            </div>
-        </div>
-        <div class="col-6 col-xl-3">
-            <div class="kq-stat-card">
-                <div class="kq-stat-label">Outstanding balances</div>
-                <div class="kq-stat-value"><?= kq_format_compact_peso($outstandingBalance) ?></div>
-                <div class="kq-stat-sub">Completed sale value not yet verified as collected.</div>
+    <div class="col-6 col-lg-4 col-xl-2">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body p-3">
+                <div class="page-eyebrow" style="font-size: 0.68rem;">Tracked Cases</div>
+                <h3 class="h3 mb-0"><?= number_format($totalTracked) ?></h3>
+                <small class="text-muted" style="font-size: 0.72rem;">Total requests</small>
             </div>
         </div>
     </div>
+    <div class="col-6 col-lg-4 col-xl-2">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body p-3">
+                <div class="page-eyebrow text-primary" style="font-size: 0.68rem;">Active Pipeline</div>
+                <h3 class="h3 mb-0 text-primary"><?= number_format($activePipelineCount) ?></h3>
+                <small class="text-muted" style="font-size: 0.72rem;">In progress</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-4 col-xl-2">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body p-3">
+                <div class="page-eyebrow text-success" style="font-size: 0.68rem;">Verified Sales</div>
+                <h3 class="h3 mb-0 text-success"><?= number_format($verifiedSalesCount) ?></h3>
+                <small class="text-muted" style="font-size: 0.72rem;">Completed deals</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-4 col-xl-2">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body p-3">
+                <div class="page-eyebrow text-info" style="font-size: 0.68rem;">Conversion</div>
+                <h3 class="h3 mb-0 text-info"><?= number_format($conversionRate, 1) ?>%</h3>
+                <small class="text-muted" style="font-size: 0.72rem;">Success rate</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-4 col-xl-2">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body p-3">
+                <div class="page-eyebrow text-success" style="font-size: 0.68rem;">Actual Revenue</div>
+                <h3 class="h3 mb-0 text-success"><?= kq_format_compact_peso($actualRevenue) ?></h3>
+                <small class="text-muted" style="font-size: 0.72rem;">Verified collected</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-4 col-xl-2">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body p-3">
+                <div class="page-eyebrow text-warning" style="font-size: 0.68rem;">Outstanding</div>
+                <h3 class="h3 mb-0 text-warning"><?= kq_format_compact_peso($outstandingBalance) ?></h3>
+                <small class="text-muted" style="font-size: 0.72rem;">Awaiting collection</small>
+            </div>
+        </div>
+    </div>
+</div>
 
     <div class="row g-3 mb-4">
         <div class="col-lg-7">
@@ -241,17 +267,17 @@ include 'includes/header.php';
                             $gridY = $plotBottom - ($gridLine * ($plotHeight / 4));
                             $gridValue = $revenueMaximum * $gridLine / 4;
                         ?>
-                            <line x1="<?= $plotLeft ?>" y1="<?= $gridY ?>" x2="<?= $plotLeft + $plotWidth ?>" y2="<?= $gridY ?>" stroke="#e5ebf0" stroke-width="1"/>
-                            <text x="<?= $plotLeft - 8 ?>" y="<?= $gridY + 4 ?>" text-anchor="end" fill="#687789" font-size="11"><?= kq_e(kq_format_compact_peso($gridValue)) ?></text>
+                            <line class="kq-chart-grid" x1="<?= $plotLeft ?>" y1="<?= $gridY ?>" x2="<?= $plotLeft + $plotWidth ?>" y2="<?= $gridY ?>" stroke-width="1"/>
+                            <text class="kq-chart-text" x="<?= $plotLeft - 8 ?>" y="<?= $gridY + 4 ?>" text-anchor="end" font-size="11"><?= kq_e(kq_format_compact_peso($gridValue)) ?></text>
                         <?php endfor; ?>
-                        <line x1="<?= $plotLeft ?>" y1="<?= $plotBottom - $plotHeight ?>" x2="<?= $plotLeft ?>" y2="<?= $plotBottom ?>" stroke="#aab6c2" stroke-width="1"/>
-                        <line x1="<?= $plotLeft ?>" y1="<?= $plotBottom ?>" x2="<?= $plotLeft + $plotWidth ?>" y2="<?= $plotBottom ?>" stroke="#aab6c2" stroke-width="1"/>
+                        <line class="kq-chart-axis" x1="<?= $plotLeft ?>" y1="<?= $plotBottom - $plotHeight ?>" x2="<?= $plotLeft ?>" y2="<?= $plotBottom ?>" stroke-width="1"/>
+                        <line class="kq-chart-axis" x1="<?= $plotLeft ?>" y1="<?= $plotBottom ?>" x2="<?= $plotLeft + $plotWidth ?>" y2="<?= $plotBottom ?>" stroke-width="1"/>
                         <?php foreach ($salesBars as $bar): ?>
                             <rect x="<?= number_format($bar['x'], 2, '.', '') ?>" y="<?= number_format($bar['y'], 2, '.', '') ?>" width="<?= number_format($bar['width'], 2, '.', '') ?>" height="<?= number_format($bar['height'], 2, '.', '') ?>" rx="6" fill="#17865b">
                                 <title><?= kq_e($bar['label'] . ': ' . kq_format_peso($bar['revenue']) . ' (' . $bar['sales'] . ' sale(s))') ?></title>
                             </rect>
                             <text x="<?= number_format($bar['center'], 2, '.', '') ?>" y="<?= number_format($bar['y'] - 8, 2, '.', '') ?>" text-anchor="middle" fill="#17865b" font-size="11" font-weight="700"><?= $bar['revenue'] > 0 ? kq_e(kq_format_compact_peso($bar['revenue'])) : '' ?></text>
-                            <text x="<?= number_format($bar['center'], 2, '.', '') ?>" y="245" text-anchor="middle" fill="#687789" font-size="11"><?= kq_e($bar['label']) ?></text>
+                            <text class="kq-chart-text" x="<?= number_format($bar['center'], 2, '.', '') ?>" y="245" text-anchor="middle" font-size="11"><?= kq_e($bar['label']) ?></text>
                         <?php endforeach; ?>
                     </svg>
                 </div>

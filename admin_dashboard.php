@@ -476,6 +476,12 @@ $activePipeline = $conn->query(
 $activePipelineCount = (int) $activePipeline['activeCases'];
 $activePipelineAskingValue = (float) $activePipeline['askingPriceValue'];
 
+$availablePropertiesRes = $conn->query("SELECT COUNT(*) AS total FROM properties WHERE status = 'Available' AND isDeleted = 0");
+$availableListingsCount = $availablePropertiesRes ? (int) $availablePropertiesRes->fetch_assoc()['total'] : 0;
+
+$recentInquiriesRes = $conn->query("SELECT COUNT(*) AS total FROM feedbackinquiries WHERE createdAt >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 30 DAY)");
+$recentInquiriesCount = $recentInquiriesRes ? (int) $recentInquiriesRes->fetch_assoc()['total'] : 0;
+
 $salesMonthStart = (new DateTimeImmutable('first day of this month'))->modify('-5 months');
 $salesRangeStart = $salesMonthStart->format('Y-m-d');
 $salesRangeEnd = $salesMonthStart->modify('+6 months')->format('Y-m-d');
@@ -744,27 +750,60 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
             <h2 class="h4 fw-bold mb-0" id="business-analytics-title">Sales performance</h2>
         </div>
     </div>
-    <div class="row g-3 mb-3">
-        <div class="col-sm-6 col-xl-4">
-            <article class="kq-stat-card">
-                <div class="kq-stat-label">Completed sales</div>
-                <div class="kq-stat-value"><?= number_format($verifiedSalesCount) ?></div>
-                <div class="kq-stat-sub">Completed transactions with an actual sale price recorded.</div>
-            </article>
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-lg-4 col-xl-2">
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-body p-3">
+                    <div class="page-eyebrow" style="font-size: 0.68rem;">Active Listings</div>
+                    <h3 class="h3 mb-0"><?= (int) $availableListingsCount ?></h3>
+                    <small class="text-muted" style="font-size: 0.72rem;">Available properties</small>
+                </div>
+            </div>
         </div>
-        <div class="col-sm-6 col-xl-4">
-            <article class="kq-stat-card">
-                <div class="kq-stat-label">Revenue secured</div>
-                <div class="kq-stat-value">₱<?= number_format($actualRevenue, 2) ?></div>
-                <div class="kq-stat-sub">Sum of verified actual sale values, not listing estimates.</div>
-            </article>
+        <div class="col-6 col-lg-4 col-xl-2">
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-body p-3">
+                    <div class="page-eyebrow text-warning" style="font-size: 0.68rem;">Pending Action</div>
+                    <h3 class="h3 mb-0 text-warning"><?= (int) ($appointmentStatusCounts['Pending'] ?? 0) ?></h3>
+                    <small class="text-muted" style="font-size: 0.72rem;">Viewings to review</small>
+                </div>
+            </div>
         </div>
-        <div class="col-sm-6 col-xl-4">
-            <article class="kq-stat-card">
-                <div class="kq-stat-label">Active pipeline</div>
-                <div class="kq-stat-value"><?= number_format($activePipelineCount) ?></div>
-                <div class="kq-stat-sub">₱<?= number_format($activePipelineAskingValue, 2) ?> combined value in active cases.</div>
-            </article>
+        <div class="col-6 col-lg-4 col-xl-2">
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-body p-3">
+                    <div class="page-eyebrow text-info" style="font-size: 0.68rem;">Inquiries (30d)</div>
+                    <h3 class="h3 mb-0 text-info"><?= (int) $recentInquiriesCount ?></h3>
+                    <small class="text-muted" style="font-size: 0.72rem;">Client inquiries</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-4 col-xl-2">
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-body p-3">
+                    <div class="page-eyebrow text-primary" style="font-size: 0.68rem;">Active Pipeline</div>
+                    <h3 class="h3 mb-0 text-primary"><?= (int) $activePipelineCount ?></h3>
+                    <small class="text-muted" style="font-size: 0.72rem;"><a href="admin_sales.php" class="text-decoration-none">Transactions &rarr;</a></small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-4 col-xl-2">
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-body p-3">
+                    <div class="page-eyebrow text-success" style="font-size: 0.68rem;">Completed Sales</div>
+                    <h3 class="h3 mb-0 text-success"><?= (int) $verifiedSalesCount ?></h3>
+                    <small class="text-muted" style="font-size: 0.72rem;">Closed acquisitions</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-4 col-xl-2">
+            <div class="card h-100 border-0 shadow-sm">
+                <div class="card-body p-3">
+                    <div class="page-eyebrow text-success" style="font-size: 0.68rem;">Revenue Secured</div>
+                    <h3 class="h3 mb-0 text-success"><?= $formatCompactPeso($actualRevenue) ?></h3>
+                    <small class="text-muted" style="font-size: 0.72rem;">Verified actual sales</small>
+                </div>
+            </div>
         </div>
     </div>
 

@@ -418,7 +418,7 @@ $appointmentStmt = $conn->prepare(
 );
 $appointmentStmt->bind_param('i', $clientID);
 $appointmentStmt->execute();
-$appointments = $appointmentStmt->get_result();
+$appointmentRows = $appointmentStmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $inquiryStmt = $conn->prepare(
     "SELECT i.*, p.title
      FROM feedbackinquiries i
@@ -429,7 +429,7 @@ $inquiryStmt = $conn->prepare(
 );
 $inquiryStmt->bind_param('i', $clientID);
 $inquiryStmt->execute();
-$inquiries = $inquiryStmt->get_result();
+$inquiryRows = $inquiryStmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $trackingStmt = $conn->prepare(
     "SELECT t.transactionID, t.propertyID, t.currentStage, t.salePrice, t.paymentMethod, t.createdAt, t.updatedAt,
             p.title, a.appointmentDate, a.appointmentTime,
@@ -483,6 +483,26 @@ $trackingStmt = $conn->prepare(
 $trackingStmt->bind_param('i', $clientID);
 $trackingStmt->execute();
 $trackingRows = $trackingStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+$totalTrackedProperties = count($trackingRows);
+$clientActivePipeline = 0;
+$clientCompletedSales = 0;
+foreach ($trackingRows as $tRow) {
+    $cStage = (string) ($tRow['currentStage'] ?? '');
+    if ($cStage === 'completed') {
+        $clientCompletedSales++;
+    } elseif ($cStage !== 'cancelled') {
+        $clientActivePipeline++;
+    }
+}
+$totalClientAppointments = count($appointmentRows);
+$pendingClientAppointments = 0;
+foreach ($appointmentRows as $aRow) {
+    if (($aRow['status'] ?? '') === 'Pending') {
+        $pendingClientAppointments++;
+    }
+}
+$totalClientInquiries = count($inquiryRows);
 $trackingEvents = [];
 $paymentRowsByTransaction = [];
 if ($trackingRows !== []) {
@@ -670,6 +690,63 @@ $progressStages = [
 <?php if (isset($_GET['review_submitted'])): ?>
     <div class="alert alert-success" role="status">Thank you for your feedback. Your agent rating has been recorded.</div>
 <?php endif; ?>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg-4 col-xl-2">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body p-3">
+                <div class="page-eyebrow" style="font-size: 0.68rem;">Properties</div>
+                <h3 class="h3 mb-0"><?= (int) $totalTrackedProperties ?></h3>
+                <small class="text-muted" style="font-size: 0.72rem;">Tracked requests</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-4 col-xl-2">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body p-3">
+                <div class="page-eyebrow text-primary" style="font-size: 0.68rem;">Active Pipeline</div>
+                <h3 class="h3 mb-0 text-primary"><?= (int) $clientActivePipeline ?></h3>
+                <small class="text-muted" style="font-size: 0.72rem;"><a href="#transaction-tracking" class="text-decoration-none">In progress &rarr;</a></small>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-4 col-xl-2">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body p-3">
+                <div class="page-eyebrow text-info" style="font-size: 0.68rem;">Site Viewings</div>
+                <h3 class="h3 mb-0 text-info"><?= (int) $totalClientAppointments ?></h3>
+                <small class="text-muted" style="font-size: 0.72rem;"><a href="#viewing-requests" class="text-decoration-none">Scheduled visits</a></small>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-4 col-xl-2">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body p-3">
+                <div class="page-eyebrow text-warning" style="font-size: 0.68rem;">Pending Visits</div>
+                <h3 class="h3 mb-0 text-warning"><?= (int) $pendingClientAppointments ?></h3>
+                <small class="text-muted" style="font-size: 0.72rem;">Awaiting confirm</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-4 col-xl-2">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body p-3">
+                <div class="page-eyebrow text-info" style="font-size: 0.68rem;">Inquiries</div>
+                <h3 class="h3 mb-0 text-info"><?= (int) $totalClientInquiries ?></h3>
+                <small class="text-muted" style="font-size: 0.72rem;"><a href="#client-inquiries" class="text-decoration-none">Questions sent</a></small>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-4 col-xl-2">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body p-3">
+                <div class="page-eyebrow text-success" style="font-size: 0.68rem;">Completed</div>
+                <h3 class="h3 mb-0 text-success"><?= (int) $clientCompletedSales ?></h3>
+                <small class="text-muted" style="font-size: 0.72rem;">Closed &amp; owned</small>
+            </div>
+        </div>
+    </div>
+</div>
 
 <section class="card p-3 p-lg-4 mb-4" id="transaction-tracking">
     <div class="kq-panel-header mb-3">
@@ -1136,8 +1213,8 @@ $progressStages = [
             <h2 class="h4 fw-bold mb-0">Viewing requests</h2>
         </div>
     </div>
-    <?php if ($appointments && $appointments->num_rows > 0): ?>
-        <?php while($appt = $appointments->fetch_assoc()): ?>
+    <?php if ($appointmentRows !== []): ?>
+        <?php foreach ($appointmentRows as $appt): ?>
             <?php $status = $appt['status']; ?>
             <article class="border rounded-3 p-3 p-lg-4 mb-3">
                 <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
@@ -1155,7 +1232,7 @@ $progressStages = [
                     <a href="property_summary_pdf.php?property_id=<?= (int) $appt['propertyID'] ?>&appointment_id=<?= (int) $appt['appointmentID'] ?>" target="_blank" class="btn btn-outline-primary btn-sm">Download summary PDF</a>
                 </div>
             </article>
-        <?php endwhile; ?>
+        <?php endforeach; ?>
     <?php else: ?>
         <div class="text-muted">You do not have any viewing requests yet. <a href="index.php">Browse available properties</a>.</div>
     <?php endif; ?>
@@ -1251,19 +1328,19 @@ $progressStages = [
             <h2 class="h4 fw-bold mb-0">Your property inquiries</h2>
         </div>
     </div>
-    <?php if ($inquiries && $inquiries->num_rows > 0): ?>
+    <?php if ($inquiryRows !== []): ?>
         <div class="table-responsive">
             <table class="table align-middle mb-0">
                 <thead><tr><th>Property</th><th>Your message</th><th>Sent</th><th>Status</th></tr></thead>
                 <tbody>
-                <?php while ($inquiry = $inquiries->fetch_assoc()): ?>
+                <?php foreach ($inquiryRows as $inquiry): ?>
                     <tr>
                         <td class="fw-semibold"><?= htmlspecialchars($inquiry['title'], ENT_QUOTES, 'UTF-8') ?></td>
                         <td class="text-break"><?= htmlspecialchars($inquiry['message'], ENT_QUOTES, 'UTF-8') ?></td>
                         <td><?= htmlspecialchars($inquiry['createdAt'], ENT_QUOTES, 'UTF-8') ?></td>
                         <td><span class="badge rounded-pill text-bg-light"><?= htmlspecialchars($inquiry['status'], ENT_QUOTES, 'UTF-8') ?></span></td>
                     </tr>
-                <?php endwhile; ?>
+                <?php endforeach; ?>
                 </tbody>
             </table>
         </div>

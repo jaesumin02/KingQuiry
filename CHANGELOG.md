@@ -15,7 +15,10 @@ Dates use `YYYY-MM-DD`.
   - Standardized `.modal`, `.modal-dialog`, `.modal-content`, and `.btn` styles in `assets/css/style.css` with responsive max-widths (`min(94%, 860px)` for `.modal-lg`), word wrapping, and `white-space: normal` button wrapping.
   - Enhanced SVG analytics chart styling with semantic classes (`.kq-chart-grid`, `.kq-chart-axis`, `.kq-chart-text`) with full dark/light theme contrast adaptation.
 - **Dashboard & Analytics Standardization**:
+  - Unified the top overview across **Agent Dashboard**, **Client Dashboard**, **Admin Dashboard**, and **Admin Sales** into a consistent, organized 6-card responsive stat row (`col-6 col-lg-4 col-xl-2`) with color-coded accents, uppercase micro-eyebrows, and direct section shortcuts.
   - Expanded `agent_dashboard.php` metrics to 6 stat cards, integrating active pipeline tracking and closed deal counts alongside appointments and customer inquiries.
+  - Implemented 6 KPI cards on `client_dashboard.php` (`My Properties`, `Active Pipeline`, `Site Viewings`, `Pending Visits`, `Inquiries`, `Completed Acquisitions`) with efficient pre-fetched array iteration.
+  - Replaced bulky admin cards on `admin_dashboard.php` and `admin_sales.php` with the standardized 6-card row (`Active Listings`, `Pending Action`, `Inquiries 30d`, `Active Pipeline`, `Completed Sales`, `Revenue Secured`).
   - Completed Admin Agent Assignment Dispatch in `transaction_tracking.php` with assigned representative status badges in the main table and modal dispatch dropdown for allocating agents.
   - Verified consistent status thresholds across properties (`Available`, `Reserved`, `Sold`), appointments (`Pending`, `Approved`, `Cancelled`), and transactions.
 - **Code & Database Quality**:
