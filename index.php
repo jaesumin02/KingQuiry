@@ -1,18 +1,13 @@
 <?php
 include 'config/db.php';
 require_once 'includes/location_directory.php';
+require_once 'includes/property_categories.php';
 require_once 'includes/property_images.php';
 require_once 'includes/ml_recommender.php';
 include 'includes/header.php';
 
-$allowedCategories = ['Residential', 'Commercial', 'Farmlot', 'Beachlot', 'Condo'];
-$categoryLabels = [
-    'Residential' => 'Residential Lot',
-    'Farmlot'     => 'Farm Lot',
-    'Beachlot'    => 'Beach Lot',
-    'Condo'       => 'Condo',
-    'Commercial'  => 'Commercial Property',
-];
+$allowedCategories = property_type_values();
+$categoryLabels = property_type_labels();
 $search = $_GET['search'] ?? '';
 $search = is_string($search) ? trim(substr($search, 0, 120)) : '';
 $category = $_GET['category'] ?? '';
@@ -24,7 +19,7 @@ if ($category !== '' || $locationFilter > 0) {
     record_user_search_preference($category, $locationFilter);
 }
 
-$conditions = ["p.status = 'Available'", "p.isDeleted = 0", "LEFT(p.title, 8) <> '[SAMPLE]'"];
+$conditions = ["p.status = 'Available'", "p.isDeleted = 0"];
 $parameters = [];
 $parameterTypes = '';
 if ($search !== '') {
@@ -57,13 +52,13 @@ if (!array_key_exists($sort, $allowedSorts)) {
 }
 $orderBySql = $allowedSorts[$sort]['order'];
 
-$perPageInput = $_GET['per_page'] ?? '10';
+$perPageInput = $_GET['per_page'] ?? 'all';
 if ($perPageInput === 'all' || $perPageInput === '0' || $perPageInput === 0) {
     $perPage = 0;
 } else {
     $perPage = filter_var($perPageInput, FILTER_VALIDATE_INT);
     if ($perPage === false || !in_array($perPage, [6, 10, 15, 24], true)) {
-        $perPage = 10;
+        $perPage = 0;
     }
 }
 
@@ -157,7 +152,7 @@ function kq_build_catalog_url(array $changes = []): string
     if (isset($params['sort']) && $params['sort'] === 'newest') {
         unset($params['sort']);
     }
-    if (isset($params['per_page']) && (int) $params['per_page'] === 10) {
+    if (isset($params['per_page']) && in_array((string) $params['per_page'], ['all', '0'], true)) {
         unset($params['per_page']);
     }
     $query = http_build_query($params);
@@ -427,7 +422,7 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0 || $sor
 
         <!-- Centered Search Bar at the bottom of hero text -->
         <div class="hero-search-wrapper">
-            <form method="GET" action="index.php" id="property-search-form">
+            <form method="GET" action="index.php#all-properties" id="property-search-form">
                 <?php if ($sort !== 'newest'): ?>
                     <input type="hidden" name="sort" value="<?= htmlspecialchars($sort, ENT_QUOTES, 'UTF-8') ?>">
                 <?php endif; ?>
@@ -504,22 +499,29 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0 || $sor
         <div class="row g-3">
             <?php foreach ($featuredProperties as $featuredProperty):
                 $featuredImage = basename((string) ($featuredProperty['image'] ?? ''));
+                if ($featuredImage === '' || $featuredImage === 'default.jpg') {
+                    $featuredImage = property_representative_image((string) $featuredProperty['propertyType']) ?? '';
+                }
                 $featuredImagePath = __DIR__ . '/assets/images/' . $featuredImage;
                 $hasFeaturedImage = $featuredImage !== '' && $featuredImage !== 'default.jpg' && is_file($featuredImagePath);
+                $featuredImageCredit = $hasFeaturedImage ? get_property_image_credit($featuredImage) : null;
             ?>
                 <div class="col-md-6 col-xl-4">
                     <article class="card h-100 overflow-hidden">
                         <?php if ($hasFeaturedImage): ?>
-                            <img src="assets/images/<?= rawurlencode($featuredImage) ?>" class="property-card-image" alt="<?= htmlspecialchars((string) $featuredProperty['title'], ENT_QUOTES, 'UTF-8') ?>" loading="lazy">
+                            <img src="assets/images/<?= rawurlencode($featuredImage) ?>" class="property-card-image" alt="<?= htmlspecialchars($featuredImageCredit ? 'Representative image for ' . $featuredProperty['title'] : (string) $featuredProperty['title'], ENT_QUOTES, 'UTF-8') ?>" loading="lazy">
+                            <?php if ($featuredImageCredit): ?>
+                                <div class="small text-muted px-3 py-2" style="font-size: .72rem; line-height: 1.35;">
+                                    Representative image. <a href="<?= htmlspecialchars($featuredImageCredit['sourceUrl'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer"><?= htmlspecialchars($featuredImageCredit['title'] . ' by ' . $featuredImageCredit['creator'], ENT_QUOTES, 'UTF-8') ?></a>,
+                                    <a href="<?= htmlspecialchars($featuredImageCredit['licenseUrl'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer"><?= htmlspecialchars($featuredImageCredit['license'], ENT_QUOTES, 'UTF-8') ?></a>.
+                                </div>
+                            <?php endif; ?>
                         <?php else: ?>
                             <div class="property-placeholder property-card-image d-flex align-items-center justify-content-center" aria-label="No property image available"><span class="property-placeholder-mark" aria-hidden="true">KQ</span></div>
                         <?php endif; ?>
                         <div class="card-body d-flex flex-column">
                             <div class="d-flex align-items-start justify-content-between gap-2 mb-2">
                                 <span class="badge rounded-pill text-bg-light"><?= htmlspecialchars($categoryLabels[$featuredProperty['propertyType']] ?? $featuredProperty['propertyType'], ENT_QUOTES, 'UTF-8') ?></span>
-                                <?php if ($featuredProperty['match_percentage'] !== null): ?>
-                                    <span class="badge rounded-pill text-bg-primary"><?= (int) $featuredProperty['match_percentage'] ?>% match</span>
-                                <?php endif; ?>
                             </div>
                             <h3 class="h5 fw-bold"><?= htmlspecialchars((string) $featuredProperty['title'], ENT_QUOTES, 'UTF-8') ?></h3>
                             <p class="small text-muted mb-2"><?= htmlspecialchars((string) ($featuredProperty['municipalityName'] ?? $featuredProperty['location'] ?? 'Location not specified'), ENT_QUOTES, 'UTF-8') ?></p>
@@ -650,6 +652,9 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0 || $sor
         <?php foreach ($visibleProperties as $row): ?>
             <?php
             $imageName = basename((string) ($row['image'] ?? ''));
+            if ($imageName === '' || $imageName === 'default.jpg') {
+                $imageName = property_representative_image((string) $row['propertyType']) ?? '';
+            }
             $imagePath = __DIR__ . '/assets/images/' . $imageName;
             $hasImage = $imageName !== '' && $imageName !== 'default.jpg' && is_file($imagePath);
             $imageCredit = $hasImage ? get_property_image_credit($imageName) : null;
@@ -687,6 +692,9 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0 || $sor
                         <p class="text-muted small mb-3"><?= htmlspecialchars($row['landCharacteristics'] ?: 'Contact our team for property characteristics.', ENT_QUOTES, 'UTF-8') ?></p>
                         <div class="border-top pt-3 mt-auto">
                             <div class="property-price">₱<?= number_format((float) $row['price'], 2) ?></div>
+                            <?php if ($isSampleListing): ?>
+                                <div class="small text-warning-emphasis fw-semibold mb-2">Illustrative sample price only; not an offer.</div>
+                            <?php endif; ?>
                             <?php if ((float) $row['pricePerSqm'] > 0): ?>
                                 <div class="small text-muted mb-3">₱<?= number_format((float) $row['pricePerSqm'], 2) ?> per sq.m.</div>
                             <?php else: ?>

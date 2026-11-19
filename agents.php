@@ -55,39 +55,64 @@ include __DIR__ . '/includes/header.php';
     </div>
 <?php else: ?>
     <?php if ($agent): ?>
-        <div class="card p-4 p-lg-5">
-            <a class="small text-decoration-none mb-3" href="agents.php">&larr; Back to all agents</a>
-            <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-4">
-                <div>
-                    <div class="page-eyebrow">Sales agent profile</div>
-                    <h2 class="h3 fw-bold mb-2"><?= htmlspecialchars((string) $agent['fullname'], ENT_QUOTES, 'UTF-8') ?></h2>
-                    <p class="text-muted mb-0">Contact this agent to ask about available property listings or arrange a viewing.</p>
+        <div class="card p-3 p-md-4 p-lg-5">
+            <div class="mb-4">
+                <a class="btn btn-sm btn-outline-secondary" href="agents.php">&larr; Back to all agents</a>
+            </div>
+            <div class="row align-items-center g-4">
+                <div class="col-12 col-lg-8">
+                    <div class="d-flex align-items-center gap-3 gap-md-4">
+                        <span class="d-inline-flex flex-shrink-0 rounded-circle align-items-center justify-content-center bg-primary-subtle text-primary fw-bold" style="width: 76px; height: 76px; font-size: 1.8rem;" aria-hidden="true"><?= htmlspecialchars(strtoupper(substr((string) $agent['fullname'], 0, 1)), ENT_QUOTES, 'UTF-8') ?></span>
+                        <div class="min-w-0">
+                            <div class="page-eyebrow">Sales agent profile</div>
+                            <h2 class="h3 fw-bold mb-2 text-break"><?= htmlspecialchars((string) $agent['fullname'], ENT_QUOTES, 'UTF-8') ?></h2>
+                            <p class="text-muted mb-0">Contact this agent to ask about available property listings or arrange a viewing.</p>
+                        </div>
+                    </div>
                 </div>
-                <div class="d-flex flex-wrap gap-2">
-                    <?php if (filter_var($agent['email'], FILTER_VALIDATE_EMAIL)): ?>
-                        <a class="btn btn-primary" href="mailto:<?= htmlspecialchars((string) $agent['email'], ENT_QUOTES, 'UTF-8') ?>?subject=KingQuiry%20property%20inquiry">Email agent</a>
-                    <?php endif; ?>
-                    <?php
-                    $phoneHref = preg_replace('/[^0-9+]/', '', (string) ($agent['phone'] ?? ''));
-                    $phoneIsCallable = is_string($phoneHref) && preg_match('/^\+?[0-9]{7,15}$/', $phoneHref) === 1;
-                    ?>
-                    <?php if ($phoneIsCallable): ?>
-                        <a class="btn btn-outline-primary" href="tel:<?= htmlspecialchars($phoneHref, ENT_QUOTES, 'UTF-8') ?>">Call agent</a>
-                    <?php endif; ?>
+                <?php
+                $phoneHref = preg_replace('/[^0-9+]/', '', (string) ($agent['phone'] ?? ''));
+                $phoneIsCallable = is_string($phoneHref) && preg_match('/^\+?[0-9]{7,15}$/', $phoneHref) === 1;
+                $emailIsValid = filter_var($agent['email'], FILTER_VALIDATE_EMAIL) !== false;
+                ?>
+                <div class="col-12 col-lg-4">
+                    <div class="rounded-3 border bg-light p-3 p-md-4 h-100">
+                        <div class="page-eyebrow mb-2">Contact this agent</div>
+                        <div class="d-grid gap-2">
+                            <button type="button" class="btn btn-primary"
+                                    data-kq-chat-agent="<?= htmlspecialchars((string) $agent['fullname'], ENT_QUOTES, 'UTF-8') ?>"
+                                    data-kq-chat-agent-id="<?= (int) $agent['userID'] ?>"
+                                    data-kq-chat-agent-email="<?= $emailIsValid ? htmlspecialchars((string) $agent['email'], ENT_QUOTES, 'UTF-8') : '' ?>"
+                                    data-kq-chat-agent-phone="<?= $phoneIsCallable ? htmlspecialchars((string) $agent['phone'], ENT_QUOTES, 'UTF-8') : '' ?>">Chat with agent</button>
+                            <?php if ($emailIsValid): ?>
+                                <a class="btn btn-outline-primary" href="mailto:<?= htmlspecialchars((string) $agent['email'], ENT_QUOTES, 'UTF-8') ?>?subject=KingQuiry%20property%20inquiry">Email agent</a>
+                            <?php endif; ?>
+                            <?php if ($phoneIsCallable): ?>
+                                <a class="btn btn-outline-primary" href="tel:<?= htmlspecialchars($phoneHref, ENT_QUOTES, 'UTF-8') ?>">Call agent</a>
+                            <?php endif; ?>
+                            <?php if (!$emailIsValid && !$phoneIsCallable): ?>
+                                <p class="small text-muted mb-0">Direct contact details are not currently available for this profile.</p>
+                            <?php endif; ?>
+                        </div>
+                    </div>
                 </div>
             </div>
             <hr class="my-4">
-            <dl class="row mb-0">
-                <?php if (filter_var($agent['email'], FILTER_VALIDATE_EMAIL)): ?>
-                    <dt class="col-sm-3">Email</dt>
-                    <dd class="col-sm-9"><a href="mailto:<?= htmlspecialchars((string) $agent['email'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars((string) $agent['email'], ENT_QUOTES, 'UTF-8') ?></a></dd>
+            <div class="row g-3">
+                <?php if ($emailIsValid): ?>
+                    <div class="col-12 col-md-6">
+                        <div class="small text-muted mb-1">Email</div>
+                        <a class="text-break" href="mailto:<?= htmlspecialchars((string) $agent['email'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars((string) $agent['email'], ENT_QUOTES, 'UTF-8') ?></a>
+                    </div>
                 <?php endif; ?>
                 <?php if ($phoneIsCallable): ?>
-                    <dt class="col-sm-3">Phone</dt>
-                    <dd class="col-sm-9"><a href="tel:<?= htmlspecialchars($phoneHref, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars((string) $agent['phone'], ENT_QUOTES, 'UTF-8') ?></a></dd>
+                    <div class="col-12 col-md-6">
+                        <div class="small text-muted mb-1">Phone</div>
+                        <a href="tel:<?= htmlspecialchars($phoneHref, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars((string) $agent['phone'], ENT_QUOTES, 'UTF-8') ?></a>
+                    </div>
                 <?php endif; ?>
-            </dl>
-            <p class="small text-muted mb-0">Email and phone conversations take place outside KingQuiry. Do not send passwords, payment credentials, or sensitive identity documents through these links.</p>
+            </div>
+            <p class="small text-muted mt-4 mb-0">Direct chat messages are sent to the selected agent through KingQuiry. Email and phone links open outside the site. Do not send passwords, payment credentials, or sensitive identity documents.</p>
         </div>
     <?php else: ?>
         <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-3">
@@ -104,7 +129,7 @@ include __DIR__ . '/includes/header.php';
                 $phoneIsCallable = is_string($phoneHref) && preg_match('/^\+?[0-9]{7,15}$/', $phoneHref) === 1;
             ?>
                 <div class="col-md-6 col-xl-4">
-                    <article class="card h-100 p-4">
+                    <article class="card h-100 p-4 d-flex flex-column">
                         <div class="d-flex align-items-center gap-3 mb-3">
                             <span class="d-inline-flex rounded-circle align-items-center justify-content-center bg-primary-subtle text-primary fw-bold" style="width: 52px; height: 52px;" aria-hidden="true"><?= htmlspecialchars(strtoupper(substr((string) $listedAgent['fullname'], 0, 1)), ENT_QUOTES, 'UTF-8') ?></span>
                             <div>
@@ -113,11 +138,17 @@ include __DIR__ . '/includes/header.php';
                             </div>
                         </div>
                         <p class="text-muted small flex-grow-1">Ask about available listings, property details, or arranging a viewing.</p>
-                        <div class="d-flex flex-wrap gap-2">
+                        <div class="d-grid gap-2 mt-auto">
                             <a class="btn btn-sm btn-outline-primary" href="agents.php?id=<?= (int) $listedAgent['userID'] ?>">View profile</a>
+                            <button type="button" class="btn btn-sm btn-outline-primary"
+                                    data-kq-chat-agent="<?= htmlspecialchars((string) $listedAgent['fullname'], ENT_QUOTES, 'UTF-8') ?>"
+                                    data-kq-chat-agent-id="<?= (int) $listedAgent['userID'] ?>"
+                                    data-kq-chat-agent-email="<?= $emailIsValid ? htmlspecialchars((string) $listedAgent['email'], ENT_QUOTES, 'UTF-8') : '' ?>"
+                                    data-kq-chat-agent-phone="<?= $phoneIsCallable ? htmlspecialchars((string) $listedAgent['phone'], ENT_QUOTES, 'UTF-8') : '' ?>">Chat with agent</button>
                             <?php if ($emailIsValid): ?>
                                 <a class="btn btn-sm btn-primary" href="mailto:<?= htmlspecialchars((string) $listedAgent['email'], ENT_QUOTES, 'UTF-8') ?>?subject=KingQuiry%20property%20inquiry">Email agent</a>
-                            <?php elseif ($phoneIsCallable): ?>
+                            <?php endif; ?>
+                            <?php if ($phoneIsCallable): ?>
                                 <a class="btn btn-sm btn-primary" href="tel:<?= htmlspecialchars($phoneHref, ENT_QUOTES, 'UTF-8') ?>">Call agent</a>
                             <?php endif; ?>
                         </div>
@@ -125,7 +156,7 @@ include __DIR__ . '/includes/header.php';
                 </div>
             <?php endforeach; ?>
         </div>
-        <p class="small text-muted mt-3 mb-0">Direct email and phone communication is handled outside KingQuiry; agent availability should be confirmed directly.</p>
+        <p class="small text-muted mt-3 mb-0">Use Chat with agent for an in-site message or the email and phone links for direct contact. Agent availability should be confirmed.</p>
     <?php endif; ?>
 <?php endif; ?>
 

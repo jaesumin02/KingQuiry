@@ -2,6 +2,7 @@
 include 'config/db.php';
 require_once 'includes/auth.php';
 require_once 'includes/location_directory.php';
+require_once 'includes/property_categories.php';
 require_once 'includes/property_images.php';
 require_once 'includes/transaction_tracking.php';
 require_once 'includes/appointment_management.php';
@@ -105,7 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $statusError = 'Enter a title (3-150 characters) and a description (10-10,000 characters).';
         } elseif ($price === false || $price <= 0 || $price > 9999999999.99 || $areaSqm === false || $areaSqm < 0.01 || $areaSqm > 1000000) {
             $statusError = 'Enter a valid total price and a land area between 0 and 1,000,000 sq.m.';
-        } elseif (!in_array($propertyType, ['Residential', 'Commercial', 'Farmlot', 'Beachlot', 'Condo'], true)) {
+        } elseif (!in_array($propertyType, property_type_values(), true)) {
             $statusError = 'Choose a valid property category.';
         } elseif (!$location || strlen($barangay) > 120 || strlen($landCharacteristics) > 2000) {
             $statusError = 'Choose an active directory location and check the optional land details.';
@@ -198,6 +199,20 @@ $statsStmt->bind_param('iii', $currentAgentId, $currentAgentId, $currentAgentId)
 $statsStmt->execute();
 $stats = $statsStmt->get_result();
 $statsRow = $stats && $stats->num_rows > 0 ? $stats->fetch_assoc() : ['total_appointments' => 0, 'pending_appointments' => 0, 'approved_appointments' => 0, 'cancelled_appointments' => 0, 'total_inquiries' => 0];
+
+$txStatsStmt = $conn->prepare(
+    "SELECT
+        COALESCE(SUM(CASE WHEN t.currentStage NOT IN ('completed', 'cancelled') THEN 1 ELSE 0 END), 0) AS active_transactions,
+        COALESCE(SUM(CASE WHEN t.currentStage = 'completed' THEN 1 ELSE 0 END), 0) AS completed_transactions
+     FROM property_transactions t
+     LEFT JOIN appointments a ON a.appointmentID = t.appointmentID
+     LEFT JOIN agent_inquiry_assignments ia ON ia.inquiryID = t.inquiryID
+     WHERE a.agentID = ? OR ia.agentID = ?"
+);
+$txStatsStmt->bind_param('ii', $currentAgentId, $currentAgentId);
+$txStatsStmt->execute();
+$txStatsRow = $txStatsStmt->get_result()->fetch_assoc() ?: ['active_transactions' => 0, 'completed_transactions' => 0];
+
 include 'includes/header.php';
 ?>
 <style>
@@ -320,49 +335,63 @@ include 'includes/header.php';
             <h1 class="page-title h2 mb-1">Agent dashboard</h1>
             <p class="text-muted mb-0">Welcome, <?= htmlspecialchars($_SESSION['user']['fullname'], ENT_QUOTES, 'UTF-8') ?>. Manage viewing requests and share transaction updates.</p>
         </div>
-        <div class="d-flex gap-2 flex-wrap">
-            <a href="admin_chat.php" class="btn btn-outline-light flex-shrink-0">💬 Customer chat</a>
-            <a href="transaction_tracking.php" class="btn btn-primary flex-shrink-0">Transaction tracking</a>
-        </div>
     </header>
 
 <?php if ($statusMessage !== ''): ?><div class="alert alert-success" role="status"><?= htmlspecialchars($statusMessage, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
 <?php if ($statusError !== ''): ?><div class="alert alert-danger" role="alert"><?= htmlspecialchars($statusError, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
 
 <div class="row g-3 mb-4">
-    <div class="col-md-3">
+    <div class="col-6 col-lg-4 col-xl-2">
         <div class="card h-100 border-0 shadow-sm">
-            <div class="card-body">
-                <div class="page-eyebrow">Appointments</div>
-                <h3 class="h2 mb-0"><?= (int) ($statsRow['total_appointments'] ?? 0) ?></h3>
-                <small class="text-muted">Total viewing requests</small>
+            <div class="card-body p-3">
+                <div class="page-eyebrow" style="font-size: 0.68rem;">Appointments</div>
+                <h3 class="h3 mb-0"><?= (int) ($statsRow['total_appointments'] ?? 0) ?></h3>
+                <small class="text-muted" style="font-size: 0.72rem;">All site visits</small>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-6 col-lg-4 col-xl-2">
         <div class="card h-100 border-0 shadow-sm">
-            <div class="card-body">
-                <div class="page-eyebrow">Pending</div>
-                <h3 class="h2 mb-0"><?= (int) ($statsRow['pending_appointments'] ?? 0) ?></h3>
-                <small class="text-muted">Needs action</small>
+            <div class="card-body p-3">
+                <div class="page-eyebrow text-warning" style="font-size: 0.68rem;">Pending Action</div>
+                <h3 class="h3 mb-0 text-warning"><?= (int) ($statsRow['pending_appointments'] ?? 0) ?></h3>
+                <small class="text-muted" style="font-size: 0.72rem;">Needs review</small>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-6 col-lg-4 col-xl-2">
         <div class="card h-100 border-0 shadow-sm">
-            <div class="card-body">
-                <div class="page-eyebrow">Approved</div>
-                <h3 class="h2 mb-0"><?= (int) ($statsRow['approved_appointments'] ?? 0) ?></h3>
-                <small class="text-muted">Confirmed site visits</small>
+            <div class="card-body p-3">
+                <div class="page-eyebrow text-success" style="font-size: 0.68rem;">Confirmed</div>
+                <h3 class="h3 mb-0 text-success"><?= (int) ($statsRow['approved_appointments'] ?? 0) ?></h3>
+                <small class="text-muted" style="font-size: 0.72rem;">Ready for tripping</small>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
+    <div class="col-6 col-lg-4 col-xl-2">
         <div class="card h-100 border-0 shadow-sm">
-            <div class="card-body">
-                <div class="page-eyebrow">Inquiries</div>
-                <h3 class="h2 mb-0"><?= (int) ($statsRow['total_inquiries'] ?? 0) ?></h3>
-                <small class="text-muted">Customer messages</small>
+            <div class="card-body p-3">
+                <div class="page-eyebrow text-info" style="font-size: 0.68rem;">Inquiries</div>
+                <h3 class="h3 mb-0 text-info"><?= (int) ($statsRow['total_inquiries'] ?? 0) ?></h3>
+                <small class="text-muted" style="font-size: 0.72rem;">Messages to answer</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-4 col-xl-2">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body p-3">
+                <div class="page-eyebrow text-primary" style="font-size: 0.68rem;">Active Pipeline</div>
+                <h3 class="h3 mb-0 text-primary"><?= (int) ($txStatsRow['active_transactions'] ?? 0) ?></h3>
+                <small class="text-muted" style="font-size: 0.72rem;"><a href="transaction_tracking.php" class="text-decoration-none">In progress &rarr;</a></small>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-lg-4 col-xl-2">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body p-3">
+                <div class="page-eyebrow text-success" style="font-size: 0.68rem;">Closed Deals</div>
+                <h3 class="h3 mb-0 text-success"><?= (int) ($txStatsRow['completed_transactions'] ?? 0) ?></h3>
+                <small class="text-muted" style="font-size: 0.72rem;">Closed &amp; verified</small>
             </div>
         </div>
     </div>
@@ -383,7 +412,7 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
             <div class="d-flex align-items-center gap-2">
                 <?php if ($agentUnreadCount > 0): ?>
                     <span class="badge bg-danger rounded-pill px-2 py-1 small"><?= $agentUnreadCount ?> unread</span>
-                    <form method="POST" action="notifications_action.php" class="m-0">
+                    <form method="POST" action="notifications_action.php" class="m-0" data-confirm="Mark all notifications as read?">
                         <input type="hidden" name="action" value="mark_all_read">
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                         <input type="hidden" name="redirect" value="agent_dashboard.php#viewing-alerts">
@@ -403,7 +432,7 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
             ?>
                 <div class="list-group-item p-3 d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 position-relative <?= $isUnread ? 'bg-primary-subtle border-start border-4 border-primary' : 'bg-white' ?>" id="agent-notif-<?= $notifId ?>">
                     <!-- Top-right X button to dismiss notification -->
-                    <button type="button" class="btn-close position-absolute top-0 end-0 m-2 kq-dismiss-notif-btn" data-notif-id="<?= $notifId ?>" data-csrf-token="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>" title="Dismiss alert" aria-label="Dismiss"></button>
+                    <button type="button" class="btn-close position-absolute top-0 end-0 m-2 kq-dismiss-notif-btn" data-confirm="Dismiss this notification?" data-notif-id="<?= $notifId ?>" data-csrf-token="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>" title="Dismiss alert" aria-label="Dismiss"></button>
                     
                     <form method="POST" action="notifications_action.php" class="m-0 flex-grow-1 pe-4">
                         <input type="hidden" name="action" value="read_and_go">
@@ -500,13 +529,13 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
                                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                                             <input type="hidden" name="dismiss_taken_viewing" value="1">
                                             <input type="hidden" name="appointmentID" value="<?= $apptId ?>">
-                                            <button type="button" class="btn btn-sm btn-outline-danger p-1 d-inline-flex align-items-center justify-content-center kq-dismiss-btn" title="Remove taken viewing (<?= htmlspecialchars($agentName) ?>) from your queue" aria-label="Remove taken viewing" style="width: 30px; height: 30px; border-radius: 50%;">
+                                            <button type="button" class="btn btn-sm btn-outline-danger p-1 d-inline-flex align-items-center justify-content-center kq-dismiss-btn" data-confirm="Remove this viewing request taken by <?= htmlspecialchars($agentName, ENT_QUOTES, 'UTF-8') ?> from your queue?" title="Remove taken viewing (<?= htmlspecialchars($agentName) ?>) from your queue" aria-label="Remove taken viewing" style="width: 30px; height: 30px; border-radius: 50%;">
                                                 <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                                             </button>
                                         </form>
                                     </div>
                                 <?php else: ?>
-                                    <form method="POST" class="d-flex gap-1">
+                                    <form method="POST" class="d-flex gap-1" data-confirm="Update this viewing request? The client will be notified of its new status.">
                                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                                         <input type="hidden" name="appointmentID" value="<?= $apptId ?>">
                                         <select name="status" class="form-select form-select-sm" style="width: 130px;">
@@ -559,7 +588,7 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
                             <?php if ((int) ($inquiry['agentID'] ?? 0) === $currentAgentId): ?>
                                 <span class="badge text-bg-success">Assigned to you</span>
                             <?php else: ?>
-                                <form method="POST" class="m-0">
+                                <form method="POST" class="m-0" data-confirm="Claim this property inquiry? It will be assigned to your account.">
                                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                                     <input type="hidden" name="claim_inquiry" value="1">
                                     <input type="hidden" name="inquiryID" value="<?= (int) $inquiry['inquiryID'] ?>">
@@ -588,7 +617,7 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
     </div>
     <p class="text-muted small mb-4">Add a new property to the KingQuiry catalog. Use the interactive map below to pin the exact location of the land.</p>
 
-    <form method="POST" enctype="multipart/form-data">
+    <form method="POST" enctype="multipart/form-data" data-confirm="Publish this property listing to the catalog?">
         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
         <div class="row g-3 kq-property-form-grid">
             <div class="col-md-6">
@@ -607,11 +636,9 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
                 <label class="form-label fw-semibold" for="property-type">Property category</label>
                 <select id="property-type" name="propertyType" class="form-select" required>
                     <option value="">Choose a category</option>
-                    <option value="Residential">Residential Lot</option>
-                    <option value="Farmlot">Farm Lot</option>
-                    <option value="Beachlot">Beach Lot</option>
-                    <option value="Condo">Condo</option>
-                    <option value="Commercial">Commercial</option>
+                    <?php foreach (property_type_labels() as $propertyType => $propertyLabel): ?>
+                        <option value="<?= htmlspecialchars($propertyType, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($propertyLabel, ENT_QUOTES, 'UTF-8') ?></option>
+                    <?php endforeach; ?>
                 </select>
             </div>
             <div class="col-md-4">

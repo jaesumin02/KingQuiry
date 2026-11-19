@@ -2,6 +2,7 @@
 include 'config/db.php';
 require_once 'includes/auth.php';
 require_once 'includes/location_directory.php';
+require_once 'includes/property_categories.php';
 require_once 'includes/property_images.php';
 require_once 'includes/notifications.php';
 require_once 'includes/transaction_tracking.php';
@@ -42,23 +43,10 @@ if ((int) ($property['isDeleted'] ?? 0) === 1) {
     exit();
 }
 
-$categoryLabels = [
-    'Residential' => 'Residential Lot',
-    'Farmlot'     => 'Farm Lot',
-    'Beachlot'    => 'Beach Lot',
-    'Condo'       => 'Condo',
-    'Commercial'  => 'Commercial Property',
-];
+$categoryLabels = property_type_labels();
 $propertyTitle = (string) $property['title'];
 $isSampleListing = str_starts_with($propertyTitle, '[SAMPLE]');
-if ($isSampleListing) {
-    http_response_code(404);
-    include 'includes/header.php';
-    echo "<div class='alert alert-warning'>This property is not available.</div>";
-    include 'includes/footer.php';
-    exit();
-}
-$displayTitle = $propertyTitle;
+$displayTitle = $isSampleListing ? trim(substr($propertyTitle, 8)) : $propertyTitle;
 
 if (!in_array((string) $property['status'], ['Available', 'Sold'], true)) {
     http_response_code(404);
@@ -100,7 +88,9 @@ if (!empty($_SESSION['flash_success'])) {
 }
 
 $currentUserId = isset($_SESSION['user']['userID']) ? (int) $_SESSION['user']['userID'] : null;
-record_user_search_preference((string) $property['propertyType'], (int) ($property['locationID'] ?? 0), (float) $property['price']);
+if (!$isSampleListing) {
+    record_user_search_preference((string) $property['propertyType'], (int) ($property['locationID'] ?? 0), (float) $property['price']);
+}
 $mlRecommendations = get_personalized_recommendations($conn, $currentUserId, $propertyID, 3);
 $businessTimeZone = new DateTimeZone('Asia/Manila');
 $businessNow = new DateTimeImmutable('now', $businessTimeZone);
@@ -163,6 +153,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     } elseif (!has_valid_csrf_token()) {
         $errorMsg = 'Your session expired. Refresh the page and try again.';
+    } elseif ($isSampleListing) {
+        $errorMsg = 'Sample listings are examples only and cannot accept viewing requests or inquiries.';
     } elseif ($submissionAction === null) {
         $errorMsg = 'Choose a valid property request and try again.';
     } elseif (!$hasValidSubmissionToken) {
@@ -394,8 +386,12 @@ include 'includes/header.php';
                     </div>
                 </div>
             <?php endif; ?>
+            <?php if ($isSampleListing): ?>
+                <div class="alert alert-warning mb-3" role="note">Sample listing only. The property details, price, location, and representative photo are examples, not an actual offer. Viewing requests and inquiries are disabled.</div>
+            <?php endif; ?>
             <div class="d-flex align-items-center gap-2 mb-2">
                 <span class="badge rounded-pill text-bg-light"><?= htmlspecialchars($categoryLabels[$property['propertyType']] ?? $property['propertyType'], ENT_QUOTES, 'UTF-8') ?></span>
+                <?php if ($isSampleListing): ?><span class="badge rounded-pill text-bg-warning">Sample listing</span><?php endif; ?>
             </div>
             <h2 class="fw-bold mb-2"><?= htmlspecialchars($displayTitle, ENT_QUOTES, 'UTF-8') ?></h2>
             <p class="text-muted mb-3">Location: <strong><?= htmlspecialchars(property_location_label($property), ENT_QUOTES, 'UTF-8') ?><?php if (!empty($property['barangay'])): ?>, <?= htmlspecialchars($property['barangay'], ENT_QUOTES, 'UTF-8') ?><?php endif; ?></strong></p>
@@ -419,6 +415,7 @@ include 'includes/header.php';
 
             <div class="bg-light p-3 rounded mb-4">
                 <h4 class="text-primary fw-bold mb-1">₱<?= number_format($property['price'], 2) ?></h4>
+                <?php if ($isSampleListing): ?><div class="small text-warning-emphasis fw-semibold mb-1">Illustrative sample price only; not an offer.</div><?php endif; ?>
                 <?php if (!empty($property['areaSqm'])): ?><div class="text-muted small mb-1"><?= $property['propertyType'] === 'Condo' ? 'Floor area' : 'Land area' ?>: <strong><?= number_format((float) $property['areaSqm'], 2) ?> sq.m.</strong></div><?php endif; ?>
                 <span class="text-muted">Price per Square Meter: <strong>₱<?= number_format($property['pricePerSqm'] ?? 0, 2) ?> / sq.m.</strong></span>
             </div>
@@ -428,6 +425,86 @@ include 'includes/header.php';
 
             <h3 class="h5 fw-bold">Description</h3>
             <p class="text-muted mb-0"><?= nl2br(htmlspecialchars($property['description'], ENT_QUOTES, 'UTF-8')) ?></p>
+
+            <!-- Land Estimation Formula & Acquisition Terms Calculator -->
+            <div class="card p-3 p-lg-4 mt-4 border rounded-3 bg-light-subtle shadow-sm">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h4 class="h6 fw-bold mb-0 text-dark"><i class="bi bi-calculator me-1 text-primary"></i> Land Estimation &amp; Acquisition Calculator</h4>
+                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle small fw-bold">Formula Engine</span>
+                </div>
+                <div class="small text-muted mb-3">
+                    Standard formula: <code>Total Price = Lot Area (sq.m.) × Price per sq.m.</code>
+                </div>
+
+                <div class="row g-2 mb-3">
+                    <div class="col-sm-6">
+                        <label class="form-label small fw-semibold" for="calc-area-input">Lot Area (sq.m.)</label>
+                        <input type="number" id="calc-area-input" class="form-control form-control-sm" value="<?= htmlspecialchars((string) ($property['areaSqm'] ?? 100), ENT_QUOTES, 'UTF-8') ?>" min="1" max="1000000" step="any">
+                    </div>
+                    <div class="col-sm-6">
+                        <label class="form-label small fw-semibold" for="calc-rate-input">Price / sq.m. (PHP)</label>
+                        <input type="number" id="calc-rate-input" class="form-control form-control-sm" value="<?= htmlspecialchars((string) ($property['pricePerSqm'] ?? 1000), ENT_QUOTES, 'UTF-8') ?>" min="1" step="any" readonly>
+                    </div>
+                </div>
+
+                <div class="p-3 bg-white border rounded-2 mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="small text-muted">Estimated Total Asking Price:</span>
+                        <strong class="fs-5 text-primary" id="calc-total-display">₱<?= number_format((float) $property['price'], 2) ?></strong>
+                    </div>
+                    <div class="row g-2 mt-2 pt-2 border-top small">
+                        <div class="col-6">
+                            <span class="text-muted d-block">Spot Cash (DOAS):</span>
+                            <strong class="text-success" id="calc-spot-display">₱<?= number_format((float) $property['price'], 2) ?></strong>
+                            <div class="text-muted" style="font-size: 0.72rem;">Deed of Absolute Sale</div>
+                        </div>
+                        <div class="col-6">
+                            <span class="text-muted d-block">20% Down Payment (CTS):</span>
+                            <strong class="text-dark" id="calc-dp-display">₱<?= number_format((float) $property['price'] * 0.20, 2) ?></strong>
+                            <div class="text-muted" style="font-size: 0.72rem;">Contract to Sell term</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Academic & Operational Policy Safeguards -->
+                <div class="alert alert-warning py-2 px-3 small mb-0 d-flex flex-column gap-1">
+                    <div>
+                        <strong class="text-dark">⏳ 7-Day Reservation Rule:</strong>
+                        <span class="text-muted">Placing a reservation initiates a strict 7-day period to settle the down payment and required compliance IDs.</span>
+                    </div>
+                    <div class="pt-1 border-top border-warning-subtle">
+                        <strong class="text-dark">📑 Contract to Sell (CTS) vs. DOAS:</strong>
+                        <span class="text-muted">Installment terms advance under Contract to Sell; full spot cash settlements proceed directly to Deed of Absolute Sale (DOAS).</span>
+                    </div>
+                    <div class="pt-1 border-top border-warning-subtle">
+                        <strong class="text-dark">⚖️ Title Transfer Disclosures:</strong>
+                        <span class="text-muted">Title transfer fees, registration expenses, and Documentary Stamp Taxes (DST) are strictly shouldered by the buyer as standard practice.</span>
+                    </div>
+                </div>
+            </div>
+            <script>
+            document.addEventListener('DOMContentLoaded', () => {
+                const areaInput = document.getElementById('calc-area-input');
+                const rateInput = document.getElementById('calc-rate-input');
+                const totalDisplay = document.getElementById('calc-total-display');
+                const spotDisplay = document.getElementById('calc-spot-display');
+                const dpDisplay = document.getElementById('calc-dp-display');
+
+                if (areaInput && rateInput && totalDisplay && spotDisplay && dpDisplay) {
+                    const updateCalc = () => {
+                        const area = Math.max(0, parseFloat(areaInput.value) || 0);
+                        const rate = Math.max(0, parseFloat(rateInput.value) || 0);
+                        const total = area * rate;
+                        const dp = total * 0.20;
+                        const formatPeso = (num) => '₱' + num.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        totalDisplay.textContent = formatPeso(total);
+                        spotDisplay.textContent = formatPeso(total);
+                        dpDisplay.textContent = formatPeso(dp);
+                    };
+                    areaInput.addEventListener('input', updateCalc);
+                }
+            });
+            </script>
         </div>
     </div>
 
@@ -461,7 +538,14 @@ include 'includes/header.php';
             </div>
         </div>
 
-        <?php if ($property['status'] === 'Sold'): ?>
+        <?php if ($isSampleListing): ?>
+            <div class="card p-4 text-center border-warning-subtle bg-warning-subtle mb-4">
+                <span class="badge text-bg-warning align-self-center mb-2">Sample listing</span>
+                <h4 class="h5 fw-bold mb-2">Example only</h4>
+                <p class="text-muted small mb-3">This listing and its representative photo are illustrative. It is not available for viewing or inquiry.</p>
+                <a href="index.php#all-properties" class="btn btn-primary w-100">Browse all listings</a>
+            </div>
+        <?php elseif ($property['status'] === 'Sold'): ?>
             <div class="card p-4 text-center border-0 shadow-sm bg-light mb-4">
                 <div class="rounded-circle bg-danger-subtle text-danger mx-auto d-flex align-items-center justify-content-center mb-3" style="width: 54px; height: 54px;">
                     <span class="fs-4">🏷️</span>
@@ -477,7 +561,7 @@ include 'includes/header.php';
                 <div class="page-eyebrow mb-2">Visit the property</div>
                 <h3 class="h5 fw-bold mb-3">Request a viewing</h3>
                 <?php if(normalized_user_role($_SESSION['user'] ?? null) === 'Client'): ?>
-                    <form method="POST">
+                    <form method="POST" data-confirm="Send a viewing request for this property? The assigned agent will be notified.">
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                         <input type="hidden" name="submission_token" value="<?= htmlspecialchars($_SESSION['property_action_tokens'][$propertyID]['appointment'], ENT_QUOTES, 'UTF-8') ?>">
                         <div class="mb-3">
@@ -501,7 +585,7 @@ include 'includes/header.php';
                 <div class="page-eyebrow mb-2">Have a question?</div>
                 <h3 class="h5 fw-bold mb-3">Contact the property team</h3>
                 <?php if(normalized_user_role($_SESSION['user'] ?? null) === 'Client'): ?>
-                    <form method="POST">
+                    <form method="POST" data-confirm="Send this inquiry to the property team?">
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                         <input type="hidden" name="submission_token" value="<?= htmlspecialchars($_SESSION['property_action_tokens'][$propertyID]['inquiry'], ENT_QUOTES, 'UTF-8') ?>">
                         <div class="mb-3">

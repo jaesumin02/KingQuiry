@@ -8,7 +8,7 @@ include __DIR__ . '/includes/header.php';
 <section class="rounded-4 p-4 p-lg-5 mb-4 text-white" style="background: linear-gradient(125deg, #102a43, #174a70);">
     <div class="page-eyebrow text-warning">Kings Land Properties</div>
     <h1 class="display-6 fw-bold mb-2">About Kings Land Properties</h1>
-    <p class="mb-0 text-white-50">Discover KingQuiry, our company background, client service scope, verified feedback, and answers to common questions.</p>
+    <p class="mb-0 text-white-50">Discover KingQuiry, our company background, client services, private feedback options, and answers to common questions.</p>
 </section>
 
 <nav class="card p-3 mb-4 shadow-sm" aria-label="About Us sections">
@@ -17,7 +17,7 @@ include __DIR__ . '/includes/header.php';
         <a class="btn btn-sm btn-outline-primary" href="#service-history">Service History</a>
         <a class="btn btn-sm btn-outline-primary" href="#testimonials">Testimonials</a>
         <a class="btn btn-sm btn-outline-primary" href="#faqs">Frequently Asked Questions</a>
-        <a class="btn btn-sm btn-outline-primary" href="agents.php">Our Team</a>
+        <a class="btn btn-sm btn-outline-primary" href="#team">About the Team</a>
     </div>
 </nav>
 
@@ -42,65 +42,99 @@ include __DIR__ . '/includes/header.php';
 <section class="card p-4 p-lg-5 mb-4 shadow-sm" id="testimonials">
     <div class="page-eyebrow">About Us</div>
     <h2 class="h3 fw-bold mb-3">Testimonials</h2>
-    <div class="rounded-3 p-3 border" style="background: rgba(16, 42, 67, 0.04);">
-        <p class="mb-1 fw-semibold">No approved testimonials have been published yet.</p>
-        <p class="small text-muted mb-0">Client feedback will only be shown here after it is reviewed and approved for public display.</p>
+    <div class="rounded-3 p-3 border bg-light">
+        <p class="mb-2 fw-semibold">Client reviews are private and are not published as public testimonials.</p>
+        <p class="small text-muted mb-3">Clients can leave feedback for a completed transaction from the Reviews section of their dashboard. Submitted feedback stays within the account and staff review system.</p>
+        <?php if (normalized_user_role($_SESSION['user'] ?? null) === 'Client'): ?>
+            <a class="btn btn-primary" href="client_dashboard.php#client-reviews">Go to my reviews</a>
+        <?php else: ?>
+            <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-primary" href="client_login.php">Client sign in</a>
+                <a class="btn btn-outline-primary" href="register.php">Create client account</a>
+            </div>
+        <?php endif; ?>
     </div>
 </section>
 
+<?php
+$faqItems = [
+    [
+        'id' => 'faq-search',
+        'question' => 'How do I search and filter the available properties?',
+        'answer' => 'Open the Properties catalog and enter a location, municipality, or keyword. You can also choose a municipality and a property type, then press Search. The catalog shows listings marked Available. Use the clear-filters link to return to the full catalog.',
+    ],
+    [
+        'id' => 'faq-photos',
+        'question' => 'Do the listing photos always show the exact property?',
+        'answer' => 'A photo marked “Representative image” illustrates the property category and may not show the exact property being offered. Ask the agent for current property-specific photos and confirm the listing details before arranging a visit or making a decision.',
+    ],
+    [
+        'id' => 'faq-account',
+        'question' => 'Do I need an account to ask about a property or request a viewing?',
+        'answer' => 'You can browse listings without signing in. To send a property inquiry or request a viewing, create a client account and sign in first. Keep your login details private and use the account registered to you.',
+    ],
+    [
+        'id' => 'faq-viewing',
+        'question' => 'How do I request a property viewing, and when is it confirmed?',
+        'answer' => 'Sign in as a client, open a real listing marked Available, and submit a future date and time using Request a viewing. The request is initially Pending; it is not a confirmed appointment until the sales team updates its status. Check your client dashboard for the latest status and messages.',
+    ],
+    [
+        'id' => 'faq-tracking',
+        'question' => 'Where can I check the status of an inquiry or transaction?',
+        'answer' => 'Sign in and open your client dashboard. The transaction-tracking area shows recorded status updates for your viewing request, inquiry, or transaction. If information is unclear, contact the assigned sales agent using the details shown for your transaction.',
+    ],
+    [
+        'id' => 'faq-payment',
+        'question' => 'Can I pay for a property or send money through KingQuiry?',
+        'answer' => 'No. KingQuiry does not collect or transfer money. It can record a payment report for staff review, but submitting a report does not mean the payment has been received or verified. Confirm the recipient, amount, and official instructions directly with authorized staff, and keep your official receipt.',
+    ],
+    [
+        'id' => 'faq-price',
+        'question' => 'Are listing prices and property estimates guaranteed?',
+        'answer' => 'No. Ask the sales team to confirm a real listing’s current availability and asking price. Any estimate shown by the site is indicative only, based on available listing information, and is not a formal appraisal, valuation, financing offer, or guarantee of a sale price.',
+    ],
+    [
+        'id' => 'faq-documents',
+        'question' => 'Does a listing or viewing request verify property ownership and documents?',
+        'answer' => 'No. A listing and a viewing request do not confirm ownership, title, boundaries, zoning, access, taxes, or legal status. Before paying or signing anything, independently verify documents and claims with qualified legal and property professionals and the appropriate government offices.',
+    ],
+    [
+        'id' => 'faq-agent',
+        'question' => 'How do I contact an agent?',
+        'answer' => 'Open Resources & Guides and choose About the Team, or visit the agent directory directly. Select View profile to see the active agent’s available contact details. Email and phone calls are handled outside KingQuiry; do not share passwords or payment credentials.',
+    ],
+    [
+        'id' => 'faq-review',
+        'question' => 'When can I leave a review about my agent?',
+        'answer' => 'After a transaction is marked completed, its client can submit one agent rating and optional written feedback from the Reviews section of the client dashboard. Reviews remain within the account and staff review system and are not displayed publicly as testimonials.',
+    ],
+];
+?>
 <section class="card p-4 p-lg-5 mb-4 shadow-sm" id="faqs">
     <div class="page-eyebrow">About Us</div>
     <h2 class="h3 fw-bold mb-3">Frequently asked questions</h2>
     <div class="accordion" id="kingquiryFaqs">
-        <div class="accordion-item">
-            <h3 class="accordion-header">
-                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#faqBrowse" aria-expanded="true" aria-controls="faqBrowse">
-                    How do I ask about a property?
-                </button>
-            </h3>
-            <div id="faqBrowse" class="accordion-collapse collapse show" data-bs-parent="#kingquiryFaqs">
-                <div class="accordion-body">Open an available listing and submit an inquiry, or contact an active agent through the Agents page.</div>
+        <?php foreach ($faqItems as $faq): ?>
+            <div class="accordion-item">
+                <h3 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#<?= htmlspecialchars($faq['id'], ENT_QUOTES, 'UTF-8') ?>" aria-expanded="false" aria-controls="<?= htmlspecialchars($faq['id'], ENT_QUOTES, 'UTF-8') ?>">
+                        <?= htmlspecialchars($faq['question'], ENT_QUOTES, 'UTF-8') ?>
+                    </button>
+                </h3>
+                <div id="<?= htmlspecialchars($faq['id'], ENT_QUOTES, 'UTF-8') ?>" class="accordion-collapse collapse" data-bs-parent="#kingquiryFaqs">
+                    <div class="accordion-body"><?= htmlspecialchars($faq['answer'], ENT_QUOTES, 'UTF-8') ?></div>
+                </div>
             </div>
-        </div>
-        <div class="accordion-item">
-            <h3 class="accordion-header">
-                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqViewing" aria-expanded="false" aria-controls="faqViewing">
-                    How do I request a viewing?
-                </button>
-            </h3>
-            <div id="faqViewing" class="accordion-collapse collapse" data-bs-parent="#kingquiryFaqs">
-                <div class="accordion-body">Sign in as a client, open an available property, and submit a preferred future date and time. The request remains pending until staff updates it.</div>
-            </div>
-        </div>
-        <div class="accordion-item">
-            <h3 class="accordion-header">
-                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqPayments" aria-expanded="false" aria-controls="faqPayments">
-                    Can I pay online through KingQuiry?
-                </button>
-            </h3>
-            <div id="faqPayments" class="accordion-collapse collapse" data-bs-parent="#kingquiryFaqs">
-                <div class="accordion-body">No. The system can record an offline payment report for staff verification; it does not collect, transfer, or independently verify funds.</div>
-            </div>
-        </div>
-        <div class="accordion-item">
-            <h3 class="accordion-header">
-                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faqPricing" aria-expanded="false" aria-controls="faqPricing">
-                    Where can I see listing plan prices?
-                </button>
-            </h3>
-            <div id="faqPricing" class="accordion-collapse collapse" data-bs-parent="#kingquiryFaqs">
-                <div class="accordion-body">Listing packages are not configured in the system yet. Contact an agent for confirmed details.</div>
-            </div>
-        </div>
+        <?php endforeach; ?>
     </div>
 </section>
 
-<section class="card p-4 p-lg-5 mb-4 shadow-sm text-center">
-    <div class="page-eyebrow">Our Team</div>
-    <h2 class="h4 fw-bold mb-2">Connect with our licensed agents</h2>
+<section class="card p-4 p-lg-5 mb-4 shadow-sm text-center" id="team">
+    <div class="page-eyebrow">About the Team</div>
+    <h2 class="h4 fw-bold mb-2">Connect with our active agents</h2>
     <p class="text-muted mb-3 mx-auto" style="max-width: 620px;">Our dedicated team of sales agents is ready to assist you with inquiries, scheduling viewing appointments, and guiding you through your property purchase.</p>
     <div>
-        <a class="btn btn-primary px-4 fw-semibold" href="agents.php">Browse agent directory</a>
+        <a class="btn btn-primary px-4 fw-semibold" href="agents.php">Meet the Agents</a>
     </div>
 </section>
 

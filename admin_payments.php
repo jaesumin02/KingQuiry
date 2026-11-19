@@ -497,7 +497,7 @@ include 'includes/header.php';
             <p class="small text-muted mb-0">Link the payment to a tracked transaction so the client and sales team see the same record.</p>
         </div>
 
-        <form method="POST" class="row g-3">
+        <form method="POST" class="row g-3" data-confirm="Save this payment record? This records payment information but does not transfer money.">
             <input type="hidden" name="csrf_token" value="<?= kq_e(csrf_token()) ?>">
             <input type="hidden" name="payment_action" value="record_payment">
 
@@ -626,7 +626,7 @@ include 'includes/header.php';
                             <td>
                                 <div class="d-flex flex-wrap gap-2">
                                     <?php if ($payment['status'] !== 'Verified'): ?>
-                                        <form method="POST" class="d-inline">
+                                        <form method="POST" class="d-inline" data-confirm="Verify this payment record? The client will be notified.">
                                             <input type="hidden" name="csrf_token" value="<?= kq_e(csrf_token()) ?>">
                                             <input type="hidden" name="payment_action" value="update_status">
                                             <input type="hidden" name="paymentID" value="<?= (int) $payment['paymentID'] ?>">
@@ -635,7 +635,7 @@ include 'includes/header.php';
                                         </form>
                                     <?php endif; ?>
                                     <?php if ($payment['status'] !== 'Pending'): ?>
-                                        <form method="POST" class="d-inline">
+                                        <form method="POST" class="d-inline" data-confirm="Return this payment record to pending verification?">
                                             <input type="hidden" name="csrf_token" value="<?= kq_e(csrf_token()) ?>">
                                             <input type="hidden" name="payment_action" value="update_status">
                                             <input type="hidden" name="paymentID" value="<?= (int) $payment['paymentID'] ?>">
@@ -644,7 +644,7 @@ include 'includes/header.php';
                                         </form>
                                     <?php endif; ?>
                                     <?php if ($payment['status'] !== 'Rejected'): ?>
-                                        <form method="POST" class="d-inline">
+                                        <form method="POST" class="d-inline" data-confirm="Reject this payment record?">
                                             <input type="hidden" name="csrf_token" value="<?= kq_e(csrf_token()) ?>">
                                             <input type="hidden" name="payment_action" value="update_status">
                                             <input type="hidden" name="paymentID" value="<?= (int) $payment['paymentID'] ?>">

@@ -1,3 +1,30 @@
+document.addEventListener('submit', (event) => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement)) {
+        return;
+    }
+
+    const submitter = event.submitter;
+    const message = (submitter instanceof HTMLElement && submitter.dataset.confirm)
+        || form.dataset.confirm;
+    if (message && !window.confirm(message)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+    }
+}, true);
+
+document.addEventListener('click', (event) => {
+    const button = event.target instanceof Element
+        ? event.target.closest('button[type="button"][data-confirm]')
+        : null;
+    if (!(button instanceof HTMLButtonElement) || window.confirm(button.dataset.confirm || 'Continue with this action?')) {
+        return;
+    }
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+}, true);
+
 document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('[data-portal-menu-toggle]').forEach((toggle) => {
         const sidebar = toggle.closest('.kq-admin-sidebar, .kq-portal-sidebar');
@@ -427,6 +454,15 @@ document.addEventListener('DOMContentLoaded', () => {
             updateThemeIcon(newTheme);
         });
     }
+
+    // ══════════ MODAL ISOLATION & VIEWPORT CENTERING ══════════
+    // Guarantees modals escape parent CSS Grid, transform, or layout clipping
+    document.addEventListener('show.bs.modal', (e) => {
+        const modal = e.target;
+        if (modal && modal.classList && modal.classList.contains('modal') && modal.parentElement !== document.body) {
+            document.body.appendChild(modal);
+        }
+    });
 });
 
 /**

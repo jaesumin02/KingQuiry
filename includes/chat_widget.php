@@ -1,4 +1,8 @@
 <?php
+require_once __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/location_directory.php';
+require_once __DIR__ . '/property_categories.php';
+
 if (!function_exists('chat_csrf_token')) {
     function chat_csrf_token(): string
     {
@@ -467,11 +471,9 @@ $conversationsData = array_map(static function($t) use ($widgetStageLabels) {
                 <input id="kingquiry-estimate-area" class="form-control form-control-sm mb-2" type="number" name="area" min="1" max="1000000" step="any" required>
                 <label class="form-label small mb-1" for="kingquiry-estimate-type" style="font-size: 0.75rem;">Property category</label>
                 <select id="kingquiry-estimate-type" class="form-select form-select-sm mb-2" name="property_type" required>
-                    <option value="Residential">Residential Lot</option>
-                    <option value="Farmlot">Farm Lot</option>
-                    <option value="Beachlot">Beach Lot</option>
-                    <option value="Condo">Condo</option>
-                    <option value="Commercial">Commercial</option>
+                    <?php foreach (property_type_labels() as $propertyType => $propertyLabel): ?>
+                        <option value="<?= htmlspecialchars($propertyType, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($propertyLabel, ENT_QUOTES, 'UTF-8') ?></option>
+                    <?php endforeach; ?>
                 </select>
                 <label class="form-label small mb-1" for="kingquiry-estimate-location" style="font-size: 0.75rem;">City or municipality</label>
                 <select id="kingquiry-estimate-location" class="form-select form-select-sm mb-2" name="location_id" required>
@@ -852,9 +854,42 @@ $conversationsData = array_map(static function($t) use ($widgetStageLabels) {
     };
 
     // Compatibility alias
-    window.openChatWithAgent = async function(agentName = '', propertyTitle = '', transactionId = '') {
+    window.openChatWithAgent = async function(agentName = '', propertyTitle = '', transactionId = '', agentId = '', agentEmail = '', agentPhone = '') {
         const txNum = Number(transactionId) || 0;
-        await window.openKingQuiryChatWithTransaction(txNum);
+        if (txNum > 0) {
+            await window.openKingQuiryChatWithTransaction(txNum);
+            return;
+        }
+
+        const targetAgentId = Number(agentId) || 0;
+        const safeAgentName = typeof agentName === 'string' && agentName.trim() !== ''
+            ? agentName.trim()
+            : 'the sales agent';
+        const safePropertyTitle = typeof propertyTitle === 'string' ? propertyTitle.trim() : '';
+        const prefill = `Hi, I would like to chat with ${safeAgentName}${safePropertyTitle ? ` about ${safePropertyTitle}` : ''}.`;
+        await window.openChatWidget(prefill);
+
+        if (targetAgentId > 0) {
+            updateActiveHeaderAndDetails(null);
+            activeAgentId = targetAgentId;
+            activeAgentName = safeAgentName;
+            activePropertyTitle = safePropertyTitle;
+            if (agentNameEl) agentNameEl.textContent = safeAgentName;
+            if (roleBadgeEl) roleBadgeEl.textContent = 'Direct sales agent chat';
+            if (regardingEl) regardingEl.textContent = safePropertyTitle
+                ? `Regarding: ${safePropertyTitle}`
+                : `Direct message to ${safeAgentName}`;
+            if (channelEmailEl && typeof agentEmail === 'string' && agentEmail.trim() !== '') {
+                channelEmailEl.innerHTML = `<i class="bi bi-envelope me-1"></i>${escapeHtml(agentEmail.trim())}`;
+            }
+            if (channelPhoneEl && typeof agentPhone === 'string' && agentPhone.trim() !== '') {
+                channelPhoneEl.innerHTML = `<i class="bi bi-telephone me-1"></i>${escapeHtml(agentPhone.trim())}`;
+            }
+            if (chatInput) chatInput.placeholder = `Write a message to ${safeAgentName}...`;
+            if (trackingBtnEl) trackingBtnEl.style.display = 'none';
+            renderConversationsList();
+        }
+        chatInput.focus();
     };
 
     // Compatibility alias for generic chat opener
@@ -893,6 +928,22 @@ $conversationsData = array_map(static function($t) use ($widgetStageLabels) {
                 if (matched) await requestAgentGreeting(matched);
             }
         }
+    });
+
+    document.addEventListener('click', (event) => {
+        const trigger = event.target instanceof Element
+            ? event.target.closest('[data-kq-chat-agent]')
+            : null;
+        if (!(trigger instanceof HTMLElement)) return;
+        event.preventDefault();
+        window.openChatWithAgent(
+            trigger.dataset.kqChatAgent || '',
+            trigger.dataset.kqChatProperty || '',
+            '',
+            trigger.dataset.kqChatAgentId || '',
+            trigger.dataset.kqChatAgentEmail || '',
+            trigger.dataset.kqChatAgentPhone || ''
+        );
     });
 
     closeButton.addEventListener('click', () => {

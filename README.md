@@ -4,7 +4,7 @@
 Land Properties. It provides a public property catalog and different pages for
 clients, sales agents, and administrators.
 
-- **Last reviewed:** 2026-11-18
+- **Last reviewed:** 2026-11-19
 - **Application type:** Server-rendered PHP website
 - **Database:** MySQL, accessed with PHP `mysqli`
 - **Local development environment:** XAMPP
@@ -22,7 +22,9 @@ required:
 2. Copy the whole project folder to `C:\xampp\htdocs\kingquiry`.
 3. Open the XAMPP Control Panel and start **Apache** and **MySQL**.
 4. Open `http://localhost/phpmyadmin/`, create a database named
-   `kingquiry_db`, select it, and import `database/schema.sql`.
+   `kingquiry_db`, select it, and import `database/schema.sql`. It includes
+   property listings across the supported categories with credited
+   representative photos.
 5. Open `http://localhost/kingquiry/`, register the first account, and promote
    only that account to administrator in phpMyAdmin using the safe query in
    [Local setup](#local-setup). Sign in again.
@@ -31,9 +33,10 @@ required:
 
 The fresh schema creates the tables, tracking and analytics fields, client
 profile fields, the payments register, chat storage, authentication rate limits,
-agent inquiry assignments, and initial Batangas locations. It intentionally
-contains no users, properties, messages, appointments, inquiries, payments, or
-sales; create or import only business data you are authorized to use. If the
+agent inquiry assignments, initial Batangas locations, and property listings
+across the supported categories. It contains no users, messages, appointments,
+inquiries, payments, or sales. Some listing photos are credited representative
+images and may not depict the exact property. If the
 XAMPP folder or database credentials differ, update the settings in
 `config/db.php` or set the documented `KINGQUIRY_DB_*` environment variables.
 
@@ -266,7 +269,7 @@ form validation and database CRUD operations are not listed as algorithms.
 | `database/transaction_tracking_schema.sql` | Additive transaction timeline tables and safe starting-state backfill for existing appointments and inquiries |
 | `database/agent_inquiry_assignments_schema.sql` | Appointment-agent assignment support, dismissed appointments, and inquiry ownership |
 | `database/security_rate_limits_schema.sql` | HMAC-keyed request-throttling buckets for authentication and customer chat |
-| `database/schema.sql` | Complete fresh-install schema for all application tables plus the initial Batangas location seed data; no live user or transaction records |
+| `database/schema.sql` | Complete fresh-install schema, Batangas location directory, and property listings across all supported categories; no user or transaction records |
 | `update_pass.php` | CLI-only administrator password reset utility |
 | `CHANGELOG.md` | Dated record of project changes |
 
@@ -275,10 +278,11 @@ form validation and database CRUD operations are not listed as algorithms.
 1. Install and start Apache and MySQL through XAMPP.
 2. Create a MySQL database named `kingquiry_db`.
 3. For a **new/empty database**, select `kingquiry_db` in phpMyAdmin and import
-   `database/schema.sql`. It creates all application tables and seeds the
-   standardized Batangas location directory. It deliberately does not import
-   accounts, property listings, appointment/inquiry records, chat messages, or
-   audit-log entries from any developer's local database.
+   `database/schema.sql`. It creates all application tables, seeds the
+   standardized Batangas location directory and property listings across the
+   supported types. Listings with representative photos are identified in the
+   catalog. No accounts, appointment/inquiry records, chat messages, or
+   audit-log entries from any developer's local database are imported.
 4. Configure the database environment variables if needed:
    `KINGQUIRY_DB_HOST`, `KINGQUIRY_DB_PORT`, `KINGQUIRY_DB_USER`,
    `KINGQUIRY_DB_PASSWORD`, and `KINGQUIRY_DB_NAME`. Local defaults are host

@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/property_categories.php';
+
 /**
  * ALGORITHM: Batch Gradient Descent Linear Regression
  * Normalize area and asking-price values, encode category/location as one-hot features,
@@ -149,7 +151,7 @@ function fallback_weighted_median_estimate(array $comparables, float $area): arr
 
 function estimate_property_value(mysqli $conn, float $area, string $propertyType, int $locationId): array
 {
-    $allowedTypes = ['Residential', 'Commercial', 'Farmlot', 'Beachlot', 'Condo'];
+    $allowedTypes = property_type_values();
 
     if ($area <= 0 || $area > 1000000 || !in_array($propertyType, $allowedTypes, true) || $locationId <= 0) {
         throw new InvalidArgumentException('Enter a valid land area, category, and location.');

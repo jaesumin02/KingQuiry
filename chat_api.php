@@ -365,7 +365,7 @@ try {
             );
             chat_add_message($conn, $conversationId, 'client', $clientMessage);
             $reply = sprintf(
-                'Based on %d comparable listing(s), the estimated range for %.2f sq.m. in %s is ₱%s–₱%s (about ₱%s/sq.m.). Confidence: %s. This is an indicative estimate, not an appraisal.',
+                'Based on %d comparable listing(s), the estimated range for %.2f sq.m. in %s is ₱%s–₱%s (about ₱%s/sq.m.). Confidence: %s. This is an indicative estimate, not an appraisal. (Note: Title transfer, Documentary Stamp Tax, and registration fees are shouldered by the buyer).',
                 $estimate['comparable_count'],
                 (float) $area,
                 $estimate['location_name'],
@@ -377,11 +377,26 @@ try {
             chat_add_message($conn, $conversationId, 'bot', $reply);
         } else {
             $message = trim($payload['message']);
+            $targetAgentId = filter_var($payload['agent_id'] ?? null, FILTER_VALIDATE_INT);
+            if ($targetAgentId !== false && $targetAgentId > 0) {
+                $agentStmt = $conn->prepare(
+                    "SELECT userID
+                     FROM users
+                     WHERE userID = ?
+                       AND role IN ('Agent', 'Sales Agent')
+                       AND accountStatus = 'Active'
+                     LIMIT 1"
+                );
+                $agentStmt->bind_param('i', $targetAgentId);
+                $agentStmt->execute();
+                if (!$agentStmt->get_result()->fetch_assoc()) {
+                    chat_respond(['error' => 'The selected sales agent is unavailable. Refresh the page and try again.'], 422);
+                }
+            }
             chat_add_message($conn, $conversationId, 'client', $message);
 
             // Determine if this is a direct agent conversation or transaction chat
             $isDirectAgentChat = false;
-            $targetAgentId = filter_var($payload['agent_id'] ?? null, FILTER_VALIDATE_INT);
             $transactionId = filter_var($payload['transaction_id'] ?? null, FILTER_VALIDATE_INT);
             $clientUserId = isset($_SESSION['user']['userID']) ? (int) $_SESSION['user']['userID'] : 0;
             $clientName = trim($_SESSION['user']['fullname'] ?? 'Client');

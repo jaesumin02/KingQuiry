@@ -13,6 +13,7 @@ header('Content-Type: application/json; charset=utf-8');
 
 require_once __DIR__ . '/../config/db.php';
 require_once __DIR__ . '/../includes/location_directory.php';
+require_once __DIR__ . '/../includes/property_categories.php';
 
 $locationId = filter_var($_GET['location_id'] ?? 0, FILTER_VALIDATE_INT);
 $locationId = $locationId === false ? 0 : max(0, $locationId);
@@ -21,10 +22,10 @@ $search = $_GET['search'] ?? '';
 $search = is_string($search) ? trim(substr($search, 0, 120)) : '';
 
 $category = $_GET['category'] ?? '';
-$allowedCategories = ['Residential', 'Commercial', 'Farmlot', 'Beachlot', 'Condo'];
+$allowedCategories = property_type_values();
 $category = is_string($category) && in_array($category, $allowedCategories, true) ? $category : '';
 
-$conditions = ["p.status = 'Available'", "p.isDeleted = 0", "LEFT(p.title, 8) <> '[SAMPLE]'"];
+$conditions = ["p.status = 'Available'", "p.isDeleted = 0"];
 $parameters = [];
 $parameterTypes = '';
 

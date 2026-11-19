@@ -77,16 +77,20 @@ for ($monthOffset = 0; $monthOffset < 6; $monthOffset++) {
     ];
 }
 $monthlySalesStmt = $conn->prepare(
-    "SELECT DATE_FORMAT(e.createdAt, '%Y-%m') AS monthKey,
-            COUNT(DISTINCT t.transactionID) AS sales,
+    "SELECT DATE_FORMAT(completions.completedAt, '%Y-%m') AS monthKey,
+            COUNT(*) AS sales,
             COALESCE(SUM(t.salePrice), 0) AS revenue
-     FROM property_transaction_events e
-     JOIN property_transactions t ON t.transactionID = e.transactionID
-     WHERE e.stage = 'completed'
-       AND t.currentStage = 'completed'
+     FROM property_transactions t
+     JOIN (
+         SELECT transactionID, MAX(createdAt) AS completedAt
+         FROM property_transaction_events
+         WHERE stage = 'completed'
+         GROUP BY transactionID
+     ) completions ON completions.transactionID = t.transactionID
+     WHERE t.currentStage = 'completed'
        AND t.salePrice IS NOT NULL
-       AND e.createdAt >= ?
-       AND e.createdAt < ?
+       AND completions.completedAt >= ?
+       AND completions.completedAt < ?
      GROUP BY monthKey"
 );
 $monthlySalesStmt->bind_param('ss', $salesRangeStart, $salesRangeEnd);

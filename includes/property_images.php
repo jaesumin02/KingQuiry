@@ -1,4 +1,23 @@
 <?php
+function property_representative_image(string $propertyType): ?string
+{
+    $representativeImages = [
+        'Residential' => 'representative-residential-01.jpg',
+        'Commercial' => 'representative-commercial-01.jpg',
+        'Farmlot' => 'representative-farm-01.jpg',
+        'Beachlot' => 'representative-beach-01.jpg',
+        'Condo' => 'representative-condo-01.jpg',
+        'House and Lot' => 'representative-residential-02.jpg',
+        'Townhouse' => 'representative-residential-04.jpg',
+        'Apartment' => 'representative-condo-03.jpg',
+        'Warehouse' => 'representative-commercial-03.jpg',
+        'Office Space' => 'representative-commercial-04.jpg',
+        'Resort' => 'representative-beach-04.jpg',
+    ];
+
+    return $representativeImages[$propertyType] ?? null;
+}
+
 function get_property_image_credit(string $filename): ?array
 {
     static $credits = [
@@ -30,6 +49,27 @@ function get_property_image_credit(string $filename): ?array
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
+        'representative-beach-05.jpg' => [
+            'title' => 'PEI Beach - Basin Head',
+            'creator' => 'Bold Frontiers',
+            'sourceUrl' => 'https://www.flickr.com/photos/82955120@N05/7731186444',
+            'license' => 'CC BY 2.0',
+            'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
+        ],
+        'representative-beach-06.jpg' => [
+            'title' => 'Shade On The Beach',
+            'creator' => 'kenteegardin',
+            'sourceUrl' => 'https://www.flickr.com/photos/26373139@N08/6669041987',
+            'license' => 'CC BY-SA 2.0',
+            'licenseUrl' => 'https://creativecommons.org/licenses/by-sa/2.0/',
+        ],
+        'representative-beach-07.jpg' => [
+            'title' => 'Dominican-Republic - Bayahibe',
+            'creator' => 'Traveller-Reini',
+            'sourceUrl' => 'https://www.flickr.com/photos/129472585@N03/16274828284',
+            'license' => 'CC BY-SA 2.0',
+            'licenseUrl' => 'https://creativecommons.org/licenses/by-sa/2.0/',
+        ],
         'representative-farm-01.jpg' => [
             'title' => "The Nation's Salad Bowl",
             'creator' => 'Malcolm Carlaw',
@@ -58,6 +98,13 @@ function get_property_image_credit(string $filename): ?array
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
+        'representative-farm-05.jpg' => [
+            'title' => 'Simple Landscape',
+            'creator' => 'DavidMartynHunt',
+            'sourceUrl' => 'https://www.flickr.com/photos/35395389@N00/1306006614',
+            'license' => 'CC BY 2.0',
+            'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
+        ],
         'representative-condo-01.jpg' => [
             'title' => 'Edifício Copan',
             'creator' => 'Rodrigo_Soldon',
@@ -83,6 +130,13 @@ function get_property_image_credit(string $filename): ?array
             'title' => 'Stamford Gardens, Milverton',
             'creator' => 'lydia_shiningbrightly',
             'sourceUrl' => 'https://www.flickr.com/photos/31917220@N07/3017010538',
+            'license' => 'CC BY 2.0',
+            'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
+        ],
+        'representative-condo-05.jpg' => [
+            'title' => 'Hugo Häring, Siemensstadt Housing, 1929',
+            'creator' => 'seier+seier',
+            'sourceUrl' => 'https://www.flickr.com/photos/94852245@N00/2565057817',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
@@ -121,6 +175,20 @@ function get_property_image_credit(string $filename): ?array
             'license' => 'CC BY-SA 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by-sa/2.0/',
         ],
+        'representative-residential-06.jpg' => [
+            'title' => 'York Cottage and the lower lake at Sandringham',
+            'creator' => 'ell brown',
+            'sourceUrl' => 'https://www.flickr.com/photos/39415781@N06/4574794418',
+            'license' => 'CC BY 2.0',
+            'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
+        ],
+        'representative-residential-07.jpg' => [
+            'title' => 'House near NMU',
+            'creator' => 'mrkumm',
+            'sourceUrl' => 'https://www.flickr.com/photos/73319630@N00/3716836335',
+            'license' => 'CC BY 2.0',
+            'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
+        ],
         'representative-commercial-01.jpg' => [
             'title' => 'Green Roof, Vancouver BC',
             'creator' => 'NNECAPA',
@@ -146,6 +214,27 @@ function get_property_image_credit(string $filename): ?array
             'title' => 'Federal Building',
             'creator' => 'Dano',
             'sourceUrl' => 'https://www.flickr.com/photos/36101697408@N01/409202019',
+            'license' => 'CC BY 2.0',
+            'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
+        ],
+        'representative-commercial-05.jpg' => [
+            'title' => 'Glass Office Building',
+            'creator' => 'ricardodiaz11',
+            'sourceUrl' => 'https://www.flickr.com/photos/41652235@N00/4485128485',
+            'license' => 'CC BY 2.0',
+            'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
+        ],
+        'representative-commercial-06.jpg' => [
+            'title' => 'Office Buildings',
+            'creator' => 'oatsy40',
+            'sourceUrl' => 'https://www.flickr.com/photos/68089229@N06/9569863543',
+            'license' => 'CC BY 2.0',
+            'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
+        ],
+        'representative-commercial-07.jpg' => [
+            'title' => 'Night Illuminated Office Building',
+            'creator' => 'OiMax',
+            'sourceUrl' => 'https://www.flickr.com/photos/72396314@N00/37254613004',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],

@@ -1045,7 +1045,7 @@ $progressStages = [
                                         </div>
                                     <?php endif; ?>
                                     <?php if ($canSubmitPayment): ?>
-                                        <form method="POST" class="mt-3 p-3 border rounded-3 bg-light">
+                                        <form method="POST" class="mt-3 p-3 border rounded-3 bg-light" data-confirm="Submit this offline payment report for staff verification? This does not transfer money.">
                                             <h5 class="h6 fw-bold mb-2">Report a payment made</h5>
                                             <p class="small text-muted mb-3">This records an offline payment for staff verification; it does not transfer money or verify a bank transaction.</p>
                                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
@@ -1208,7 +1208,7 @@ $progressStages = [
                                 <p class="mb-0 text-muted small">No written comment provided.</p>
                             <?php endif; ?>
                         <?php else: ?>
-                            <form method="POST" class="mt-2 review-rating-form" data-txid="<?= (int) $completedReview['transactionID'] ?>">
+                            <form method="POST" class="mt-2 review-rating-form" data-txid="<?= (int) $completedReview['transactionID'] ?>" data-confirm="Submit this agent rating and feedback?">
                                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                                 <input type="hidden" name="transactionID" value="<?= (int) $completedReview['transactionID'] ?>">
                                 
@@ -1378,6 +1378,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.preventDefault();
                 e.stopPropagation();
                 if (isSubmitting) return;
+                if (!window.confirm('Submit this agent rating now?')) return;
                 isSubmitting = true;
 
                 stars.forEach(s => s.disabled = true);

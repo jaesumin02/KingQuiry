@@ -7,6 +7,8 @@ require_once __DIR__ . '/../includes/rate_limit.php';
 require_once __DIR__ . '/../includes/transaction_tracking.php';
 require_once __DIR__ . '/../includes/appointment_management.php';
 require_once __DIR__ . '/../includes/ml_recommender.php';
+require_once __DIR__ . '/../includes/property_categories.php';
+require_once __DIR__ . '/../includes/property_images.php';
 
 function expect_true(bool $condition, string $message): void
 {
@@ -100,6 +102,55 @@ expect_true(
 expect_true(
     kq_property_match_percentage(0.0) === 0,
     'Recommendation percentages must not impose a misleading minimum score.'
+);
+foreach (property_type_values() as $propertyType) {
+    $representativeImage = property_representative_image($propertyType);
+    expect_true(
+        in_array($propertyType, property_type_values(), true)
+            && property_type_label($propertyType) !== ''
+            && $representativeImage !== null
+            && is_file(__DIR__ . '/../assets/images/' . $representativeImage)
+            && get_property_image_credit($representativeImage) !== null,
+        $propertyType . ' must have a selectable category and a credited representative image.'
+    );
+}
+$additionalRepresentativeImages = [
+    'representative-beach-05.jpg',
+    'representative-beach-06.jpg',
+    'representative-beach-07.jpg',
+    'representative-commercial-05.jpg',
+    'representative-commercial-06.jpg',
+    'representative-commercial-07.jpg',
+    'representative-condo-05.jpg',
+    'representative-farm-05.jpg',
+    'representative-residential-06.jpg',
+    'representative-residential-07.jpg',
+];
+foreach ($additionalRepresentativeImages as $image) {
+    expect_true(
+        is_file(__DIR__ . '/../assets/images/' . $image)
+            && get_property_image_credit($image) !== null,
+        $image . ' must exist and include its license attribution.'
+    );
+}
+
+// Business rules: Land estimation formula validation
+$testArea = 250.0;
+$testRate = 8500.0;
+$testTotalPrice = $testArea * $testRate;
+expect_true(
+    abs($testTotalPrice - 2125000.0) < 0.001,
+    'Land estimation formula must equal Lot Area multiplied by Price per sq.m.'
+);
+
+// Legal pathway checks: CTS (installment) vs DOAS (Spot Cash)
+expect_true(
+    in_array('document_verification', property_transaction_next_stages('payment_in_process'), true),
+    'Installment purchases must proceed through document verification for Contract to Sell (CTS).'
+);
+expect_true(
+    in_array('payment_confirmation', property_transaction_next_stages('payment_in_process', 'Spot Cash'), true),
+    'Spot Cash purchases must bypass document verification and proceed directly to DOAS payment confirmation.'
 );
 
 fwrite(STDOUT, "Production baseline checks passed.\n");

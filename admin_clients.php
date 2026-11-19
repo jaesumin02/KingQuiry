@@ -405,7 +405,7 @@ include 'includes/header.php';
             <?php endif; ?>
         </div>
 
-        <form method="POST" class="row g-3">
+        <form method="POST" class="row g-3" data-confirm="<?= $formMode === 'edit' ? 'Save changes to this client account?' : 'Create this client account?' ?>">
             <input type="hidden" name="csrf_token" value="<?= kq_e(csrf_token()) ?>">
             <input type="hidden" name="client_action" value="<?= $formMode === 'edit' ? 'update_client' : 'create_client' ?>">
             <input type="hidden" name="userID" value="<?= (int) $clientForm['userID'] ?>">
@@ -448,7 +448,7 @@ include 'includes/header.php';
 
         <?php if ($formMode === 'edit'): ?>
             <hr class="my-4">
-            <form method="POST" class="row g-3 align-items-end">
+            <form method="POST" class="row g-3 align-items-end" data-confirm="Reset this client’s password now?">
                 <input type="hidden" name="csrf_token" value="<?= kq_e(csrf_token()) ?>">
                 <input type="hidden" name="client_action" value="reset_password">
                 <input type="hidden" name="userID" value="<?= (int) $clientForm['userID'] ?>">
@@ -535,7 +535,7 @@ include 'includes/header.php';
                             <td>
                                 <div class="d-flex flex-wrap gap-2">
                                     <a href="admin_clients.php?edit=<?= (int) $client['userID'] ?>#client-form" class="btn btn-sm btn-outline-primary">Edit</a>
-                                    <form method="POST" class="d-inline">
+                                    <form method="POST" class="d-inline" data-confirm="Change this client’s account status?">
                                         <input type="hidden" name="csrf_token" value="<?= kq_e(csrf_token()) ?>">
                                         <input type="hidden" name="client_action" value="set_client_status">
                                         <input type="hidden" name="userID" value="<?= (int) $client['userID'] ?>">

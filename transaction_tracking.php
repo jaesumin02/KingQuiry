@@ -335,6 +335,14 @@ include 'includes/header.php';
                             <?php if (!empty($transaction['inquiryID'])): ?>
                                 <div class="small text-muted">Inquiry #<?= (int) $transaction['inquiryID'] ?></div>
                             <?php endif; ?>
+                            <div class="small mt-1">
+                                <span class="text-muted">Assigned agent: </span>
+                                <?php if (!empty($transaction['assignedAgentName']) && $transaction['assignedAgentName'] !== 'Unassigned'): ?>
+                                    <span class="badge text-bg-light border text-dark fw-semibold">👤 <?= htmlspecialchars($transaction['assignedAgentName'], ENT_QUOTES, 'UTF-8') ?></span>
+                                <?php else: ?>
+                                    <span class="badge text-bg-warning text-dark">⚠️ Unassigned agent</span>
+                                <?php endif; ?>
+                            </div>
                             <?php if ($currentStage === 'completed' && $transaction['salePrice'] !== null): ?>
                                 <div class="small fw-semibold text-success mt-1">Verified sale: ₱<?= number_format((float) $transaction['salePrice'], 2) ?></div>
                             <?php endif; ?>
@@ -451,7 +459,38 @@ include 'includes/header.php';
                                     💰 <strong>Verified sale price:</strong> ₱<?= number_format((float) $transaction['salePrice'], 2) ?>
                                 </div>
                             <?php endif; ?>
+                            <div class="small mt-2 pt-2 border-top d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                <span class="text-muted">Assigned Representative:</span>
+                                <strong>👤 <?= htmlspecialchars($transaction['assignedAgentName'] ?? 'Unassigned', ENT_QUOTES, 'UTF-8') ?></strong>
+                            </div>
                         </div>
+
+                        <!-- Admin Agent Assignment Dispatch (Admin Only) -->
+                        <?php if ($role === 'Admin'): ?>
+                            <div class="card p-3 mb-3 border shadow-none bg-white rounded-3">
+                                <div class="d-flex align-items-center justify-content-between mb-2">
+                                    <span class="small fw-bold text-dark"><i class="bi bi-person-gear me-1"></i> Agent Assignment Dispatch</span>
+                                    <span class="badge <?= (!empty($transaction['assignedAgentName']) && $transaction['assignedAgentName'] !== 'Unassigned') ? 'text-bg-success' : 'text-bg-warning text-dark' ?>">
+                                        <?= htmlspecialchars($transaction['assignedAgentName'] ?? 'Unassigned', ENT_QUOTES, 'UTF-8') ?>
+                                    </span>
+                                </div>
+                                <form method="POST" class="d-flex flex-column flex-sm-row gap-2">
+                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                                    <input type="hidden" name="transactionID" value="<?= $tId ?>">
+                                    <select name="assignedAgentID" class="form-select form-select-sm" required>
+                                        <option value="">-- Choose Sales Agent to Assign --</option>
+                                        <?php foreach ($activeAgentsList as $actAgent): ?>
+                                            <option value="<?= (int) $actAgent['userID'] ?>" <?= ((int) ($transaction['assignedAgentID'] ?? 0) === (int) $actAgent['userID']) ? 'selected' : '' ?>>
+                                                <?= htmlspecialchars($actAgent['fullname'], ENT_QUOTES, 'UTF-8') ?> (<?= htmlspecialchars($actAgent['email'], ENT_QUOTES, 'UTF-8') ?>)
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <button type="submit" name="assign_agent_to_transaction" class="btn btn-sm btn-outline-primary text-nowrap fw-semibold">
+                                        Dispatch Agent
+                                    </button>
+                                </form>
+                            </div>
+                        <?php endif; ?>
 
                         <!-- Post-Viewing Stages Pipeline Stepper -->
                         <?php
@@ -551,7 +590,7 @@ include 'includes/header.php';
                                 </div>
                                 <p class="small text-muted mb-3">Select the next verified stage. Once submitted, the system will record the milestone and immediately dispatch a notification alerting the client that the process for that stage is done.</p>
 
-                                <form method="POST" class="d-grid gap-3" id="advanceForm<?= $tId ?>">
+                                <form method="POST" class="d-grid gap-3" id="advanceForm<?= $tId ?>" data-confirm="Record this transaction stage and notify the client?">
                                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                                     <input type="hidden" name="transactionID" value="<?= $tId ?>">
 
@@ -631,7 +670,7 @@ include 'includes/header.php';
                                         <small class="text-muted">This note will appear directly in the client's notification and progress timeline.</small>
                                     </div>
 
-                                    <button type="submit" name="update_transaction" class="btn btn-primary fw-bold py-2 w-100 shadow-sm mt-1">
+                                    <button type="submit" name="update_transaction" class="btn btn-primary fw-bold py-2 w-100 shadow-sm mt-1 text-wrap">
                                         🚀 Advance Stage &amp; Notify Client
                                     </button>
                                     <div class="text-center text-muted small mt-1">
@@ -671,8 +710,8 @@ include 'includes/header.php';
                                                 <input type="hidden" name="paymentID" value="<?= (int) $payment['paymentID'] ?>">
                                                 <input id="modal-payment-review-note-<?= (int) $payment['paymentID'] ?>" type="text" name="reviewNote" class="form-control form-control-sm" maxlength="1000" placeholder="Optional note for client">
                                                 <div class="d-flex gap-2">
-                                                    <button type="submit" name="paymentStatus" value="confirmed" class="btn btn-sm btn-success">Confirm</button>
-                                                    <button type="submit" name="paymentStatus" value="rejected" class="btn btn-sm btn-outline-danger">Reject</button>
+                                                    <button type="submit" name="paymentStatus" value="confirmed" class="btn btn-sm btn-success" data-confirm="Confirm this client payment report?">Confirm</button>
+                                                    <button type="submit" name="paymentStatus" value="rejected" class="btn btn-sm btn-outline-danger" data-confirm="Reject this client payment report?">Reject</button>
                                                 </div>
                                                 <input type="hidden" name="submit_payment_review" value="1">
                                             </form>

@@ -2,6 +2,7 @@
 include 'config/db.php';
 require_once 'includes/auth.php';
 require_once 'includes/location_directory.php';
+require_once 'includes/property_categories.php';
 require_once 'includes/property_estimator.php';
 require_once 'includes/property_images.php';
 require_once 'includes/agent_feedback.php';
@@ -60,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $formError = 'Enter a title (3-150 characters) and a description (10-10,000 characters).';
         } elseif ($price === false || $price <= 0 || $price > 9999999999.99 || $areaSqm === false || $areaSqm < 0.01 || $areaSqm > 1000000) {
             $formError = 'Enter a valid total price and a land area between 0 and 1,000,000 sq.m.';
-        } elseif (!in_array($propertyType, ['Residential', 'Commercial', 'Farmlot', 'Beachlot', 'Condo'], true)) {
+        } elseif (!in_array($propertyType, property_type_values(), true)) {
             $formError = 'Choose a valid property category.';
         } elseif (!$location || strlen($barangay) > 120 || strlen($landCharacteristics) > 2000) {
             $formError = 'Choose an active directory location and check the optional land details.';
@@ -135,7 +136,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $formError = 'Enter a valid total price and a land area between 0 and 1,000,000 sq.m.';
         } elseif (round((float) $price / (float) $areaSqm, 2) > 9999999999.99) {
             $formError = 'The calculated price per square meter is outside the supported price range.';
-        } elseif (!in_array($propertyType, ['Residential', 'Commercial', 'Farmlot', 'Beachlot', 'Condo'], true)) {
+        } elseif (!in_array($propertyType, property_type_values(), true)) {
             $formError = 'Choose a valid property category.';
         } elseif (!$location || strlen($barangay) > 120 || strlen($landCharacteristics) > 2000) {
             $formError = 'Choose an active directory location and check the optional land details.';
@@ -429,14 +430,8 @@ $totalUsers = $conn->query("SELECT COUNT(*) as count FROM users")->fetch_assoc()
 $totalAppointments = $conn->query("SELECT COUNT(*) as count FROM appointments")->fetch_assoc()['count'];
 $totalInquiries = $conn->query("SELECT COUNT(*) as count FROM feedbackinquiries")->fetch_assoc()['count'];
 
-$standardPropertyCategories = ['Residential', 'Commercial', 'Farmlot', 'Beachlot', 'Condo'];
-$propertyCategoryCounts = [
-    'Residential' => 0,
-    'Commercial' => 0,
-    'Farmlot' => 0,
-    'Beachlot' => 0,
-    'Condo' => 0,
-];
+$standardPropertyCategories = property_type_values();
+$propertyCategoryCounts = array_fill_keys($standardPropertyCategories, 0);
 foreach ($conn->query('SELECT propertyType, COUNT(*) AS total FROM properties WHERE isDeleted = 0 GROUP BY propertyType') as $row) {
     $category = trim((string) $row['propertyType']);
     if ($category === '') {
@@ -495,16 +490,20 @@ for ($monthOffset = 0; $monthOffset < 6; $monthOffset++) {
     ];
 }
 $monthlySalesStmt = $conn->prepare(
-    "SELECT DATE_FORMAT(e.createdAt, '%Y-%m') AS monthKey,
-            COUNT(DISTINCT t.transactionID) AS sales,
+    "SELECT DATE_FORMAT(completions.completedAt, '%Y-%m') AS monthKey,
+            COUNT(*) AS sales,
             COALESCE(SUM(t.salePrice), 0) AS revenue
-     FROM property_transaction_events e
-     JOIN property_transactions t ON t.transactionID = e.transactionID
-     WHERE e.stage = 'completed'
-       AND t.currentStage = 'completed'
+     FROM property_transactions t
+     JOIN (
+         SELECT transactionID, MAX(createdAt) AS completedAt
+         FROM property_transaction_events
+         WHERE stage = 'completed'
+         GROUP BY transactionID
+     ) completions ON completions.transactionID = t.transactionID
+     WHERE t.currentStage = 'completed'
        AND t.salePrice IS NOT NULL
-       AND e.createdAt >= ?
-       AND e.createdAt < ?
+       AND completions.completedAt >= ?
+       AND completions.completedAt < ?
      GROUP BY monthKey"
 );
 $monthlySalesStmt->bind_param('ss', $salesRangeStart, $salesRangeEnd);
@@ -518,22 +517,25 @@ foreach ($monthlySalesStmt->get_result() as $row) {
 }
 $monthlyRevenueMaximum = max(1.0, ...array_column($monthlySales, 'revenue'));
 $hasMonthlySales = array_sum(array_column($monthlySales, 'sales')) > 0;
-$monthlyRevenuePoints = [];
+$monthlyRevenueBars = [];
+$monthlyChartLeft = 76;
+$monthlyChartWidth = 620;
+$monthlyChartBottom = 218;
+$monthlyChartHeight = 150;
+$monthlyChartSlotWidth = $monthlyChartWidth / count($monthlySales);
 foreach (array_values($monthlySales) as $index => $month) {
-    $x = 100 + ($index * 110);
-    $y = 245 - ((float) $month['revenue'] / $monthlyRevenueMaximum * 205);
-    $monthlyRevenuePoints[] = [
-        'x' => $x,
-        'y' => round($y, 2),
+    $barHeight = ((float) $month['revenue'] / $monthlyRevenueMaximum) * $monthlyChartHeight;
+    $monthlyRevenueBars[] = [
+        'x' => $monthlyChartLeft + ($index * $monthlyChartSlotWidth) + 14,
+        'y' => $monthlyChartBottom - $barHeight,
+        'width' => $monthlyChartSlotWidth - 28,
+        'height' => $barHeight,
+        'center' => $monthlyChartLeft + ($index * $monthlyChartSlotWidth) + ($monthlyChartSlotWidth / 2),
         'label' => $month['label'],
         'revenue' => (float) $month['revenue'],
         'sales' => (int) $month['sales'],
     ];
 }
-$monthlyRevenueLine = implode(' ', array_map(
-    static fn(array $point): string => $point['x'] . ',' . number_format($point['y'], 2, '.', ''),
-    $monthlyRevenuePoints
-));
 
 $topSalesProperties = $conn->query(
     "SELECT p.title, COUNT(*) AS sales, SUM(t.salePrice) AS revenue
@@ -623,7 +625,9 @@ $demandRes = $conn->query("
            COUNT(DISTINCT p.propertyID) AS availableListings
     FROM property_locations l
     LEFT JOIN properties p ON p.locationID = l.locationID AND p.status = 'Available' AND p.isDeleted = 0
-    LEFT JOIN feedbackinquiries i ON i.propertyID = p.propertyID
+    LEFT JOIN feedbackinquiries i
+        ON i.propertyID = p.propertyID
+       AND i.createdAt >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 30 DAY)
     WHERE l.isActive = 1
     GROUP BY l.locationID, l.municipalityName
     HAVING totalInquiries > 0 OR availableListings > 0
@@ -739,10 +743,6 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
             <div class="page-eyebrow">Live business analytics</div>
             <h2 class="h4 fw-bold mb-0" id="business-analytics-title">Sales performance</h2>
         </div>
-        <div class="d-flex align-items-center gap-2">
-            <a href="#property-list" class="btn btn-sm btn-success fw-bold text-white shadow-sm">🏘️ Property list (<?= number_format($totalProperties) ?>)</a>
-            <span class="kq-badge-soft">Updated live</span>
-        </div>
     </div>
     <div class="row g-3 mb-3">
         <div class="col-sm-6 col-xl-4">
@@ -819,11 +819,29 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
                     </div>
                     <span class="badge bg-primary-subtle text-primary border border-primary-subtle small fw-bold">Verified sales data</span>
                 </div>
-                <div style="position: relative; height: 260px; width: 100%;">
-                    <canvas id="adminRevenueTrajectoryChart"></canvas>
+                <div class="overflow-auto">
+                    <svg class="w-100" style="min-width: 620px;" viewBox="0 0 720 260" role="img" aria-labelledby="monthly-sales-title monthly-sales-chart-description">
+                        <desc id="monthly-sales-chart-description">Bar chart of verified actual sale revenue for the last six months.</desc>
+                        <?php for ($gridLine = 0; $gridLine <= 4; $gridLine++):
+                            $gridY = $monthlyChartBottom - ($gridLine * ($monthlyChartHeight / 4));
+                            $gridValue = $monthlyRevenueMaximum * $gridLine / 4;
+                        ?>
+                            <line class="kq-chart-grid" x1="<?= $monthlyChartLeft ?>" y1="<?= $gridY ?>" x2="<?= $monthlyChartLeft + $monthlyChartWidth ?>" y2="<?= $gridY ?>" stroke-width="1"/>
+                            <text class="kq-chart-text" x="<?= $monthlyChartLeft - 8 ?>" y="<?= $gridY + 4 ?>" text-anchor="end" font-size="11"><?= htmlspecialchars($formatCompactPeso($gridValue), ENT_QUOTES, 'UTF-8') ?></text>
+                        <?php endfor; ?>
+                        <line class="kq-chart-axis" x1="<?= $monthlyChartLeft ?>" y1="<?= $monthlyChartBottom - $monthlyChartHeight ?>" x2="<?= $monthlyChartLeft ?>" y2="<?= $monthlyChartBottom ?>" stroke-width="1"/>
+                        <line class="kq-chart-axis" x1="<?= $monthlyChartLeft ?>" y1="<?= $monthlyChartBottom ?>" x2="<?= $monthlyChartLeft + $monthlyChartWidth ?>" y2="<?= $monthlyChartBottom ?>" stroke-width="1"/>
+                        <?php foreach ($monthlyRevenueBars as $bar): ?>
+                            <rect x="<?= number_format($bar['x'], 2, '.', '') ?>" y="<?= number_format($bar['y'], 2, '.', '') ?>" width="<?= number_format($bar['width'], 2, '.', '') ?>" height="<?= number_format($bar['height'], 2, '.', '') ?>" rx="6" fill="#17865b">
+                                <title><?= htmlspecialchars($bar['label'] . ': ' . $formatCompactPeso($bar['revenue']) . ' (' . $bar['sales'] . ' completed sale(s))', ENT_QUOTES, 'UTF-8') ?></title>
+                            </rect>
+                            <text x="<?= number_format($bar['center'], 2, '.', '') ?>" y="<?= number_format($bar['y'] - 8, 2, '.', '') ?>" text-anchor="middle" fill="#17865b" font-size="11" font-weight="700"><?= $bar['revenue'] > 0 ? htmlspecialchars($formatCompactPeso($bar['revenue']), ENT_QUOTES, 'UTF-8') : '' ?></text>
+                            <text class="kq-chart-text" x="<?= number_format($bar['center'], 2, '.', '') ?>" y="245" text-anchor="middle" font-size="11"><?= htmlspecialchars($bar['label'], ENT_QUOTES, 'UTF-8') ?></text>
+                        <?php endforeach; ?>
+                    </svg>
                 </div>
                 <?php if (!$hasMonthlySales): ?>
-                    <p class="small text-muted mb-0 mt-2">No verified sales with a recorded sale price in this period yet. The graph is live and dynamically updates as soon as transactions are closed.</p>
+                    <p class="small text-muted mb-0 mt-2">No verified sales with a recorded sale price in this period yet. The chart will reflect completed transactions with a recorded sale price.</p>
                 <?php endif; ?>
             </section>
         </div>
@@ -868,7 +886,7 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
             <div>
                 <span class="badge bg-warning-subtle text-dark border border-warning fw-bold mb-1">Inventory insights</span>
                 <h3 class="h5 fw-bold mb-0" id="inventory-insights-title">Listing activity by municipality</h3>
-                <p class="small text-muted mb-0">Compare current inquiry counts with available listings to guide inventory and marketing reviews.</p>
+                <p class="small text-muted mb-0">Compare inquiries received in the last 30 days with currently available listings.</p>
             </div>
             <span class="badge text-bg-light border text-secondary small py-2 px-3">Municipal summary</span>
         </div>
@@ -877,7 +895,7 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
                 <thead>
                     <tr class="table-light">
                         <th>Municipality / Location</th>
-                        <th class="text-center">Inquiry Volume</th>
+                        <th class="text-center">Recent Inquiries (30d)</th>
                         <th class="text-center">Available Listings</th>
                         <th>Demand / Supply Status</th>
                         <th>Suggested next step</th>
@@ -988,6 +1006,12 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
                             'Farmlot' => 'bg-warning',
                             'Beachlot' => 'bg-info',
                             'Condo' => 'bg-purple text-white',
+                            'House and Lot' => 'bg-primary',
+                            'Townhouse' => 'bg-info',
+                            'Apartment' => 'bg-purple text-white',
+                            'Warehouse' => 'bg-warning',
+                            'Office Space' => 'bg-success',
+                            'Resort' => 'bg-info',
                             'Other / legacy' => 'bg-secondary',
                         ][$category] ?? 'bg-secondary';
                     ?>
@@ -1086,7 +1110,7 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
                         <td><?= htmlspecialchars($propLocLabel) ?><?php if (!empty($row['barangay'])): ?><br><small class="text-muted"><?= htmlspecialchars($row['barangay']) ?></small><?php endif; ?></td>
                         <td>₱<?= number_format((float) $row['price'], 2) ?><br><small class="text-muted"><?= $row['areaSqm'] !== null ? number_format((float) $row['areaSqm'], 2) . ' sq.m. · ₱' . number_format((float) $row['pricePerSqm'], 2) . '/sq.m.' : 'Legacy area not recorded' ?></small></td>
                         <td>
-                            <form method="POST" class="d-flex align-items-center gap-2" style="min-width: 12rem;">
+                            <form method="POST" class="d-flex align-items-center gap-2" style="min-width: 12rem;" data-confirm="Save this listing status change?">
                                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                                 <input type="hidden" name="propertyID" value="<?= (int) $row['propertyID'] ?>">
                                 <label class="visually-hidden" for="property-status-<?= (int) $row['propertyID'] ?>">Listing status</label>
@@ -1105,7 +1129,7 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
                             <div class="d-flex justify-content-end align-items-center gap-1">
                                 <a href="admin_dashboard.php?edit_property=<?= (int) $row['propertyID'] ?>#properties" class="btn btn-sm btn-outline-primary py-1 px-2" title="Edit all property details">✏️ Edit</a>
                                 <a href="property_detail.php?id=<?= (int) $row['propertyID'] ?>" target="_blank" class="btn btn-sm btn-outline-secondary py-1 px-2" title="View live property page">👁️ View</a>
-                                <form method="POST" class="m-0 d-inline">
+                                <form method="POST" class="m-0 d-inline" data-confirm="Move this property to the trash? It will be hidden from the public catalog.">
                                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                                     <input type="hidden" name="propertyID" value="<?= (int) $row['propertyID'] ?>">
                                     <button type="submit" name="trash_property" class="btn btn-sm btn-outline-danger py-1 px-2" title="Move to trash bin">🗑️ Trash</button>
@@ -1169,7 +1193,7 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
                             <label class="form-check-label fw-semibold" for="selectAllTrash">Select all</label>
                         </div>
                         <div class="d-flex gap-1">
-                            <button type="submit" name="bulk_restore" id="btnBulkRestore" class="btn btn-sm btn-outline-success py-1 px-3 fw-semibold" disabled title="Restore selected properties">
+                            <button type="submit" name="bulk_restore" id="btnBulkRestore" class="btn btn-sm btn-outline-success py-1 px-3 fw-semibold" data-confirm="Restore the selected properties to the active inventory?" disabled title="Restore selected properties">
                                 ↺ Restore Selected
                             </button>
                             <button type="button" id="btnBulkDelete" class="btn btn-sm btn-danger py-1 px-3 fw-semibold" data-bs-toggle="modal" data-bs-target="#bulkDeleteModal" disabled title="Permanently delete selected properties">
@@ -1216,7 +1240,7 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
                                         </div>
                                         <div class="d-flex gap-1 flex-shrink-0">
                                             <!-- Individual Restore Button -->
-                                            <button type="submit" name="restore_property" value="<?= $tId ?>" formaction="admin_dashboard.php" class="btn btn-sm btn-outline-success py-1 px-2 fw-semibold" title="Restore to active inventory">
+                                            <button type="submit" name="restore_property" value="<?= $tId ?>" formaction="admin_dashboard.php" class="btn btn-sm btn-outline-success py-1 px-2 fw-semibold" data-confirm="Restore this property to the active inventory?" title="Restore to active inventory">
                                                 ↺ Restore
                                             </button>
                                             <!-- Individual Permanent Delete Button -->
@@ -1313,8 +1337,8 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
         <div class="col-md-3">
             <label class="form-label fw-semibold" for="estimate-type">Category</label>
             <select id="estimate-type" name="property_type" class="form-select" required>
-                <?php foreach (['Residential', 'Commercial', 'Farmlot', 'Beachlot', 'Condo'] as $propertyType): ?>
-                    <option value="<?= $propertyType ?>" <?= $inputType === $propertyType ? 'selected' : '' ?>><?= $propertyType ?></option>
+                <?php foreach (property_type_labels() as $propertyType => $propertyLabel): ?>
+                    <option value="<?= htmlspecialchars($propertyType, ENT_QUOTES, 'UTF-8') ?>" <?= $inputType === $propertyType ? 'selected' : '' ?>><?= htmlspecialchars($propertyLabel, ENT_QUOTES, 'UTF-8') ?></option>
                 <?php endforeach; ?>
             </select>
         </div>
@@ -1348,7 +1372,7 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
         <div class="alert alert-danger" role="alert"><?= htmlspecialchars($formError, ENT_QUOTES, 'UTF-8') ?></div>
     <?php endif; ?>
     <p class="text-muted small">Choose a verified municipality/city from the directory.</p>
-    <form method="POST" action="admin_dashboard.php<?= $editingProperty ? '?edit_property=' . (int) $editingProperty['propertyID'] : '' ?>#properties" enctype="multipart/form-data">
+    <form method="POST" action="admin_dashboard.php<?= $editingProperty ? '?edit_property=' . (int) $editingProperty['propertyID'] : '' ?>#properties" enctype="multipart/form-data" data-confirm="<?= $editingProperty ? 'Save these property listing changes?' : 'Publish this property listing to the catalog?' ?>">
         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
         <?php if ($editingProperty): ?>
             <input type="hidden" name="propertyID" value="<?= (int) $editingProperty['propertyID'] ?>">
@@ -1357,7 +1381,7 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
             <div class="col-md-6"><label class="form-label fw-semibold" for="property-title">Listing title</label><input id="property-title" type="text" name="title" class="form-control" required minlength="3" maxlength="150" placeholder="e.g. Residential lot near the town center" value="<?= htmlspecialchars((string) ($propertyFormValues['title'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"></div>
             <div class="col-md-4"><label class="form-label fw-semibold" for="property-area">Land area (sq.m.)</label><input id="property-area" type="number" min="0.01" max="1000000" step="0.01" name="areaSqm" class="form-control" required placeholder="e.g. 500" value="<?= htmlspecialchars((string) ($propertyFormValues['areaSqm'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"></div>
             <div class="col-md-4"><label class="form-label fw-semibold" for="property-price">Total asking price (PHP)</label><input id="property-price" type="number" min="0.01" max="9999999999.99" step="0.01" name="price" class="form-control" required placeholder="1500000" value="<?= htmlspecialchars((string) ($propertyFormValues['price'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"></div>
-            <div class="col-md-4"><label class="form-label fw-semibold" for="property-type">Property category</label><select id="property-type" name="propertyType" class="form-select" required><option value="">Choose a category</option><option value="Residential" <?= ($propertyFormValues['propertyType'] ?? '') === 'Residential' ? 'selected' : '' ?>>Residential Lot</option><option value="Farmlot" <?= ($propertyFormValues['propertyType'] ?? '') === 'Farmlot' ? 'selected' : '' ?>>Farm Lot</option><option value="Beachlot" <?= ($propertyFormValues['propertyType'] ?? '') === 'Beachlot' ? 'selected' : '' ?>>Beach Lot</option><option value="Condo" <?= ($propertyFormValues['propertyType'] ?? '') === 'Condo' ? 'selected' : '' ?>>Condo</option><option value="Commercial" <?= ($propertyFormValues['propertyType'] ?? '') === 'Commercial' ? 'selected' : '' ?>>Commercial</option></select></div>
+            <div class="col-md-4"><label class="form-label fw-semibold" for="property-type">Property category</label><select id="property-type" name="propertyType" class="form-select" required><option value="">Choose a category</option><?php foreach (property_type_labels() as $propertyType => $propertyLabel): ?><option value="<?= htmlspecialchars($propertyType, ENT_QUOTES, 'UTF-8') ?>" <?= ($propertyFormValues['propertyType'] ?? '') === $propertyType ? 'selected' : '' ?>><?= htmlspecialchars($propertyLabel, ENT_QUOTES, 'UTF-8') ?></option><?php endforeach; ?></select></div>
             <div class="col-md-6"><label class="form-label fw-semibold" for="property-location">City / municipality</label><select id="property-location" name="locationID" class="form-select" required><?= property_location_options($locations, isset($propertyFormValues['locationID']) ? (int) $propertyFormValues['locationID'] : null) ?></select></div>
             <div class="col-md-6"><label class="form-label fw-semibold" for="property-barangay">Barangay <span class="text-muted fw-normal">(optional)</span></label><input id="property-barangay" type="text" maxlength="120" name="barangay" class="form-control" placeholder="Enter verified barangay" value="<?= htmlspecialchars((string) ($propertyFormValues['barangay'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"></div>
             
@@ -1636,63 +1660,5 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
     </div>
 </div>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    const revenueCanvas = document.getElementById('adminRevenueTrajectoryChart');
-    if (revenueCanvas && typeof Chart !== 'undefined') {
-        const labels = <?= json_encode(array_column($monthlySales, 'label')) ?>;
-        const revenues = <?= json_encode(array_column($monthlySales, 'revenue')) ?>;
-        const deals = <?= json_encode(array_column($monthlySales, 'sales')) ?>;
-
-        new Chart(revenueCanvas.getContext('2d'), {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Verified Revenue (₱)',
-                    data: revenues,
-                    borderColor: '#174a70',
-                    backgroundColor: 'rgba(23, 74, 112, 0.12)',
-                    fill: true,
-                    tension: 0.35,
-                    borderWidth: 3,
-                    pointRadius: 5,
-                    pointBackgroundColor: '#174a70',
-                    pointHoverRadius: 7
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            callback: function(value) {
-                                if (value >= 1000000) return '₱' + (value / 1000000).toFixed(1) + 'M';
-                                if (value >= 1000) return '₱' + (value / 1000).toFixed(0) + 'K';
-                                return '₱' + value;
-                            }
-                        }
-                    }
-                },
-                plugins: {
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                const idx = context.dataIndex;
-                                const val = Number(context.parsed.y).toLocaleString('en-US', { minimumFractionDigits: 2 });
-                                return ' Revenue: ₱' + val + ' (' + deals[idx] + ' completed deals)';
-                            }
-                        }
-                    }
-                }
-            }
-        });
-    }
-});
-</script>
 
 <?php include 'includes/footer.php'; ?>

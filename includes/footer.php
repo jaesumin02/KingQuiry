@@ -1,5 +1,5 @@
 <?php
-$chatWidgetPages = ['index.php', 'property_detail.php', 'client_dashboard.php'];
+$chatWidgetPages = ['index.php', 'property_detail.php', 'client_dashboard.php', 'agents.php', 'resources.php', 'about.php'];
 $currentScript = basename($_SERVER['SCRIPT_NAME'] ?? '');
 $currentPhpSelf = basename($_SERVER['PHP_SELF'] ?? '');
 $requestPath = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);

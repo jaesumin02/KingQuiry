@@ -91,7 +91,7 @@ include 'includes/header.php';
         </h2>
         <p class="text-muted small mb-4">Choose a strong password containing at least 8 characters.</p>
 
-        <form method="POST" action="change_password.php">
+        <form method="POST" action="change_password.php" data-confirm="Change your account password now?">
             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
 
             <div class="mb-3">

@@ -29,7 +29,7 @@ $modalUnreadCount = isset($unreadNotificationCount) ? (int)$unreadNotificationCo
             <div class="d-flex justify-content-between align-items-center px-4 py-2 bg-light border-bottom">
                 <span class="small text-muted fw-semibold"><?= count($modalNotifications) ?> notification<?= count($modalNotifications) === 1 ? '' : 's' ?></span>
                 <?php if ($modalUnreadCount > 0): ?>
-                    <form method="POST" action="notifications_action.php" class="m-0">
+                    <form method="POST" action="notifications_action.php" class="m-0" data-confirm="Mark all notifications as read?">
                         <input type="hidden" name="action" value="mark_all_read">
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                         <input type="hidden" name="redirect" value="<?= htmlspecialchars(basename($_SERVER['SCRIPT_NAME'] ?? 'index.php'), ENT_QUOTES, 'UTF-8') ?>">

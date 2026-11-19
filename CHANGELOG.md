@@ -3,6 +3,68 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-19 — Capstone Standardization: Business Rules, Analytics, UI Stabilization, and Code Quality
+
+- **Business Rules Enforcement**:
+  - Enforced and displayed the **7-day reservation grace period** across `client_dashboard.php`, `property_detail.php`, `transaction_tracking.php`, and `resources.php`.
+  - Standardized legal pathways: **Contract to Sell (CTS)** for installment purchases (requiring document verification) vs. **Deed of Absolute Sale (DOAS)** for Spot Cash (bypassing document verification directly to turnover payment confirmation).
+  - Explicitly disclosed that **title transfer expenses, registration fees, and Documentary Stamp Taxes (DST) are strictly shouldered by the buyer** across property listings, estimation calculators, chat responses, and resource guides.
+  - Added an interactive **Land Estimation & Acquisition Terms Calculator** to `property_detail.php` strictly adhering to `Total Asking Price = Lot Area (sq.m.) × Price per sq.m.`, showing instant DOAS vs. CTS down payment breakdowns.
+- **UI & Modal Layout Stabilization**:
+  - Fixed modal narrow-column squishing and horizontal button overflow (seen in transaction tracking) by adding automatic body relocation in `assets/js/app.js` (`document.body.appendChild(modal)` on `show.bs.modal`), isolating modals from parent CSS Grid or transform contexts.
+  - Standardized `.modal`, `.modal-dialog`, `.modal-content`, and `.btn` styles in `assets/css/style.css` with responsive max-widths (`min(94%, 860px)` for `.modal-lg`), word wrapping, and `white-space: normal` button wrapping.
+  - Enhanced SVG analytics chart styling with semantic classes (`.kq-chart-grid`, `.kq-chart-axis`, `.kq-chart-text`) with full dark/light theme contrast adaptation.
+- **Dashboard & Analytics Standardization**:
+  - Expanded `agent_dashboard.php` metrics to 6 stat cards, integrating active pipeline tracking and closed deal counts alongside appointments and customer inquiries.
+  - Completed Admin Agent Assignment Dispatch in `transaction_tracking.php` with assigned representative status badges in the main table and modal dispatch dropdown for allocating agents.
+  - Verified consistent status thresholds across properties (`Available`, `Reserved`, `Sold`), appointments (`Pending`, `Approved`, `Cancelled`), and transactions.
+- **Code & Database Quality**:
+  - Verified 100% PHP syntax linting with zero errors across all PHP files.
+  - Added automated test assertions to `tests/production_baseline_test.php` validating land estimation math, CTS document verification stages, and Spot Cash DOAS transitions. All tests passed.
+
+## 2026-11-19 — Portal Chat, Confirmations, and Dashboard Reliability
+
+- Show all available properties in the catalog by default and remove the
+  recommendation match-percentage badge.
+- Removed the seven shortcut buttons from Resources & Guides while retaining
+  clear section links and a Meet the Team button.
+- Made the chat widget available on the public guides, company, and agent pages.
+  Agent profile buttons now open a prefilled direct chat routed to that active
+  agent; the chat API validates the selected recipient.
+- Added confirmation prompts before key payment, listing, appointment,
+  transaction, review, and account changes. Existing delete-confirmation
+  modals remain in place; search, estimates, and ordinary chat messages are
+  not interrupted.
+- Replaced the admin dashboard’s CDN-dependent revenue chart with a
+  server-rendered SVG chart and deduplicated completed transactions in both
+  admin revenue summaries. Listing activity now compares available listings
+  with inquiries received in the last 30 days.
+- Removed the stale “Updated live” badge and redundant dashboard shortcuts.
+  Executed the payment-report function against connection-scoped temporary
+  tables only; no real payment was sent and no persistent records were added.
+
+## 2026-11-19 — Unified Schema, Property Navigation, and Public Guides
+
+- Moved the repeat-safe property listing inserts into
+  [database/schema.sql](database/schema.sql) and removed the separate listing
+  SQL file. Fresh setup now needs only the schema import.
+- Added six property categories across search, listings, maps, and estimate
+  forms; the catalog search links directly to the available-property results.
+- Simplified the main navigation to Home and Resources & Guides, removed the
+  top-level Properties button and the Browse Properties resource button as
+  requested, and removed unsupported Market Trends while gathering
+  FAQ, client feedback, team, and company links on the Resources & Guides page.
+- Expanded the FAQ with complete answers about search, listing photos,
+  viewings, tracking, payments, estimates, due diligence, and reviews.
+- Kept customer reviews private and made the Testimonials section link clients
+  to the existing completed-transaction review form.
+- Reworked the agent profile and directory layout; Help and Contact Us now use
+  the same neutral styling, turning orange only on hover. Added an About the
+  Team link in Resources & Guides that leads to the agent directory button.
+- Added ten licensed representative photos with visible credits and updated all
+  31 current available listings to use distinct images. Photos remain labeled
+  representative and are not presented as property-specific pictures.
+
 ## 2026-11-19 — Restored Local Database Connectivity and Property Listings
 
 - Added `KINGQUIRY_DB_PORT` support for local MySQL configurations and documented

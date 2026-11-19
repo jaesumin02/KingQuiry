@@ -610,23 +610,30 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
 }
 
 /* ══════════ CONTACT US BUTTON & MODAL STYLES ══════════ */
-.kq-contact-btn {
-    background: #d8ad63 !important;
-    border-color: #d8ad63 !important;
-    color: #12283e !important;
+.kq-contact-btn,
+.kq-help-btn {
+    background: transparent !important;
+    border-color: rgba(255, 255, 255, 0.55) !important;
+    color: #fff !important;
     font-weight: 700 !important;
     border-radius: 0.65rem !important;
-    box-shadow: 0 2px 8px rgba(216, 173, 99, 0.25);
+    box-shadow: none !important;
     transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
 }
 
 .kq-contact-btn:hover,
-.kq-contact-btn:focus {
-    background: #c59b52 !important;
-    border-color: #c59b52 !important;
-    color: #0c1c2c !important;
+.kq-help-btn:hover {
+    background: #f39c12 !important;
+    border-color: #f39c12 !important;
+    color: #12283e !important;
     transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(216, 173, 99, 0.45);
+    box-shadow: 0 4px 14px rgba(243, 156, 18, 0.35) !important;
+}
+
+.kq-contact-btn:focus-visible,
+.kq-help-btn:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 3px;
 }
 
 .kq-contact-btn-mobile {
@@ -1708,7 +1715,6 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
     color: #e2e8f0 !important;
 }
 
-.kq-help-btn,
 .kq-theme-toggle-btn {
     display: inline-flex;
     align-items: center;
@@ -1731,7 +1737,6 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
     padding: 0.48rem 0;
 }
 
-.kq-help-btn svg,
 .kq-theme-toggle-btn svg {
     color: #d8ad63;
     stroke: #d8ad63;
@@ -1739,8 +1744,6 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
     transition: stroke 0.18s ease, transform 0.18s ease;
 }
 
-.kq-help-btn:hover,
-.kq-help-btn:focus,
 .kq-theme-toggle-btn:hover,
 .kq-theme-toggle-btn:focus {
     background: linear-gradient(135deg, #d8ad63 0%, #c49643 100%) !important;
@@ -1750,8 +1753,6 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
     box-shadow: 0 4px 16px rgba(216, 173, 99, 0.4);
 }
 
-.kq-help-btn:hover svg,
-.kq-help-btn:focus svg,
 .kq-theme-toggle-btn:hover svg,
 .kq-theme-toggle-btn:focus svg {
     color: #102a43 !important;
@@ -1760,17 +1761,42 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
 }
 
 /* ══════════ MODAL DIALOG RESPONSIVENESS & STABILIZATION ══════════ */
+.modal {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 1055 !important;
+}
+
+.modal-dialog {
+    width: auto !important;
+    max-width: min(92%, 540px) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+
 .modal-dialog.modal-lg {
-    max-width: 820px;
-    width: calc(100% - 1.5rem);
-    margin-left: auto;
-    margin-right: auto;
+    max-width: min(94%, 860px) !important;
+    width: auto !important;
+}
+
+.modal-dialog.modal-xl {
+    max-width: min(96%, 1160px) !important;
+    width: auto !important;
 }
 
 .modal-content {
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
     border-radius: 1rem;
     overflow: hidden;
+    word-wrap: break-word;
+}
+
+.modal-body {
+    overflow-x: hidden;
+    word-wrap: break-word;
 }
 
 .modal-body form.d-grid {
@@ -1788,6 +1814,20 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
     width: 100% !important;
     display: block !important;
 }
+
+.modal-body .btn,
+.modal-footer .btn {
+    white-space: normal !important;
+    word-break: break-word;
+}
+
+/* ══════════ SVG ANALYTICS CHARTS ══════════ */
+.kq-chart-grid { stroke: #e5ebf0; }
+.kq-chart-axis { stroke: #aab6c2; }
+.kq-chart-text { fill: #687789; }
+[data-bs-theme="dark"] .kq-chart-grid { stroke: rgba(255, 255, 255, 0.12); }
+[data-bs-theme="dark"] .kq-chart-axis { stroke: rgba(255, 255, 255, 0.25); }
+[data-bs-theme="dark"] .kq-chart-text { fill: #94a3b8; }
 
 .btn {
     min-height: var(--kq-control-height, 44px);

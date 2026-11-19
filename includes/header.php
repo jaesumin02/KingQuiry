@@ -561,41 +561,18 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
             </div>
             <div class="collapse navbar-collapse justify-content-end order-xl-2" id="navbarNav">
                 <ul class="navbar-nav">
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="propertiesNavDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">Properties</a>
-                        <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3" aria-labelledby="propertiesNavDropdown">
-                            <li><a class="dropdown-item py-2" href="index.php#all-properties">All Properties</a></li>
-                            <li><a class="dropdown-item py-2" href="index.php#featured-properties">Featured Properties</a></li>
-                        </ul>
-                    </li>
-                    <?php if ($currentRole !== 'Admin'): ?>
-                        <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" id="resourcesNavDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">Resources &amp; Guides</a>
-                            <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3" aria-labelledby="resourcesNavDropdown">
-                                <li><a class="dropdown-item py-2" href="resources.php#buyers-guide">Buyer&apos;s Guide</a></li>
-                                <li><a class="dropdown-item py-2" href="resources.php#market-trends">Market Trends</a></li>
-                                <li><a class="dropdown-item py-2" href="resources.php#expert-advice">Expert Advice</a></li>
-                            </ul>
-                        </li>
-                        <li class="nav-item dropdown">
-                            <a class="nav-link dropdown-toggle" href="#" id="aboutNavDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">About Us</a>
-                            <ul class="dropdown-menu dropdown-menu-end shadow border-0 rounded-3" aria-labelledby="aboutNavDropdown">
-                                <li><a class="dropdown-item py-2" href="about.php">About Us</a></li>
-                                <li><a class="dropdown-item py-2" href="agents.php">Our Team</a></li>
-                            </ul>
-                        </li>
-                    <?php endif; ?>
+                    <li class="nav-item"><a class="nav-link" href="resources.php">Resources &amp; Guides</a></li>
                     <?php if($currentRole !== null): ?>
-                        <?php if ($currentRole === 'Client'): ?>
+                        <?php if ($currentRole === 'Client' && basename($_SERVER['SCRIPT_NAME'] ?? '') !== 'client_dashboard.php'): ?>
                             <li class="nav-item"><a class="nav-link" href="client_dashboard.php">Dashboard</a></li>
-                        <?php elseif ($currentRole === 'Sales Agent'): ?>
+                        <?php elseif ($currentRole === 'Sales Agent' && basename($_SERVER['SCRIPT_NAME'] ?? '') !== 'agent_dashboard.php'): ?>
                             <li class="nav-item"><a class="nav-link" href="agent_dashboard.php">Dashboard</a></li>
-                        <?php elseif ($currentRole === 'Admin'): ?>
+                        <?php elseif ($currentRole === 'Admin' && !$isAdminControlRoom): ?>
                             <li class="nav-item"><a class="nav-link" href="admin_dashboard.php">Dashboard</a></li>
                         <?php endif; ?>
                         <?php if($currentRole === 'Client'): ?>
                             <li class="nav-item ms-lg-2 kq-nav-actions-start">
-                                <button type="button" class="btn btn-warning fw-bold text-dark px-3 d-inline-flex align-items-center gap-2 kq-contact-btn" data-bs-toggle="modal" data-bs-target="#contactUsModal">
+                                <button type="button" class="btn fw-bold px-3 d-inline-flex align-items-center gap-2 kq-contact-btn" data-bs-toggle="modal" data-bs-target="#contactUsModal">
                                     <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
                                     <span>Contact Us</span>
                                 </button>
@@ -626,7 +603,7 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                                         <?php endif; ?>
                                     </div>
                                     <?php if ($unreadNotificationCount > 0): ?>
-                                        <form method="POST" action="notifications_action.php" class="m-0">
+                                        <form method="POST" action="notifications_action.php" class="m-0" data-confirm="Mark all notifications as read?">
                                             <input type="hidden" name="action" value="mark_all_read">
                                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                                             <input type="hidden" name="redirect" value="<?= htmlspecialchars(basename($_SERVER['SCRIPT_NAME'] ?? 'index.php'), ENT_QUOTES, 'UTF-8') ?>">
@@ -707,7 +684,7 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                         <li class="nav-item"><a class="nav-link" href="client_login.php">Sign in</a></li>
                         <li class="nav-item"><a class="nav-link btn btn-primary text-white ms-2 px-3" href="register.php">Register</a></li>
                         <li class="nav-item ms-lg-2 kq-nav-actions-start">
-                            <button type="button" class="btn btn-warning fw-bold text-dark px-3 d-inline-flex align-items-center gap-2 kq-contact-btn" data-bs-toggle="modal" data-bs-target="#contactUsModal">
+                            <button type="button" class="btn fw-bold px-3 d-inline-flex align-items-center gap-2 kq-contact-btn" data-bs-toggle="modal" data-bs-target="#contactUsModal">
                                 <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
                                 <span>Contact Us</span>
                             </button>
@@ -715,7 +692,7 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                     <?php endif; ?>
                     <!-- Help & Guidelines / User Manual -->
                     <li class="nav-item ms-lg-2">
-                        <button type="button" class="btn kq-help-btn d-inline-flex align-items-center gap-1.5" data-bs-toggle="modal" data-bs-target="#userManualModal" title="KingQuiry User Manual & Guidelines">
+                        <button type="button" class="btn fw-bold px-3 kq-help-btn d-inline-flex align-items-center gap-1.5" data-bs-toggle="modal" data-bs-target="#userManualModal" title="KingQuiry User Manual & Guidelines">
                             <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                             <span>Help</span>
                         </button>
