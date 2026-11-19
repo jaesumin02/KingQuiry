@@ -282,7 +282,7 @@ form validation and database CRUD operations are not listed as algorithms.
 4. Configure the database environment variables if needed:
    `KINGQUIRY_DB_HOST`, `KINGQUIRY_DB_PORT`, `KINGQUIRY_DB_USER`,
    `KINGQUIRY_DB_PASSWORD`, and `KINGQUIRY_DB_NAME`. Local defaults are host
-   `localhost`, port `3307`, user `root`, an empty password, and database
+   `localhost`, port `3306`, user `root`, an empty password, and database
    `kingquiry_db`; set `KINGQUIRY_DB_PORT` to match your MySQL server. Do not
    use those defaults for production.
 5. Put the project under XAMPP's web root and open it through the local Apache

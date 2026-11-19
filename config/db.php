@@ -6,7 +6,7 @@ $username = getenv('KINGQUIRY_DB_USER') ?: 'root';
 $password = getenv('KINGQUIRY_DB_PASSWORD') ?: '';
 $dbname = getenv('KINGQUIRY_DB_NAME') ?: 'kingquiry_db';
 $portValue = getenv('KINGQUIRY_DB_PORT');
-$port = filter_var($portValue !== false ? $portValue : '3307', FILTER_VALIDATE_INT, [
+$port = filter_var($portValue !== false ? $portValue : '3306', FILTER_VALIDATE_INT, [
     'options' => ['min_range' => 1, 'max_range' => 65535],
 ]);
 if ($port === false) {
