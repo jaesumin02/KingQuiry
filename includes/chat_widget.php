@@ -34,7 +34,7 @@ if (!empty($_SESSION['user']['userID']) && $widgetCurrentRole === 'Client') {
                            WHERE e.transactionID = t.transactionID AND e.changedBy IS NOT NULL
                            ORDER BY e.createdAt DESC, e.eventID DESC LIMIT 1
                        ),
-                       'Kings Land Sales Representative'
+                       'Kings Land Sales Agent'
                    ) AS agentName,
                    COALESCE(apptAgent.phone, inqAgent.phone, '0965 803 0933') AS agentPhone,
                    COALESCE(apptAgent.email, inqAgent.email, 'contact@kingsland.ph') AS agentEmail,
@@ -72,7 +72,7 @@ $widgetStageLabels = function_exists('property_transaction_stages') ? property_t
     'inquiry_received' => 'Inquiry Received',
     'contacting_client' => 'Contacting Client',
     'viewing_requested' => 'Viewing Requested',
-    'viewing_confirmed' => 'Viewing Confirmed',
+    'viewing_confirmed' => 'Viewing Approved',
     'viewing_completed' => 'Viewing Completed',
     'payment_in_process' => 'Payment In Process',
     'document_verification' => 'Document Verification',
@@ -90,7 +90,7 @@ $conversationsData = array_map(static function($t) use ($widgetStageLabels) {
         'stage' => $rawStage,
         'stage_label' => (string) ($widgetStageLabels[$rawStage] ?? ($rawStage !== '' ? ucfirst($rawStage) : 'Active')),
         'agent_id' => (int) ($t['agentID'] ?? 0),
-        'agent_name' => (string) ($t['agentName'] ?? 'Sales Representative'),
+        'agent_name' => (string) ($t['agentName'] ?? 'Sales Agent'),
         'agent_email' => (string) ($t['agentEmail'] ?? 'contact@kingsland.ph'),
         'agent_phone' => (string) ($t['agentPhone'] ?? '0965 803 0933'),
     ];
@@ -225,8 +225,8 @@ $conversationsData = array_map(static function($t) use ($widgetStageLabels) {
 
     /* Message Thread Container */
     #kingquiry-chat-messages {
-        flex: 1 1 auto;
-        min-height: 120px;
+        flex: 1 1 0;
+        min-height: 80px;
         overflow-y: auto;
         background: #f1f5f9;
         padding: 0.85rem;
@@ -261,7 +261,15 @@ $conversationsData = array_map(static function($t) use ($widgetStageLabels) {
         background: #ffffff;
         border-top: 1px solid #e2e8f0;
         padding: 0.65rem 0.85rem;
-        flex-shrink: 0;
+        flex: 0 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    #kingquiry-estimate-result {
+        white-space: pre-line;
+        line-height: 1.5;
     }
 
     /* Dark Mode Theme Support */
@@ -357,8 +365,8 @@ $conversationsData = array_map(static function($t) use ($widgetStageLabels) {
 <!-- Floating Messenger Chat Launcher Bubble (Bottom Corner) -->
 <button id="kingquiry-chat-launcher"
         type="button"
-        aria-label="Open KingQuiry client chat bubble"
-        title="Chat with KingQuiry &amp; Your Sales Representative"
+        aria-label="Open KingQuiry chat"
+        title="Chat with KingQuiry and your Sales Agent"
         aria-expanded="false"
         aria-controls="kingquiry-chat-panel">
     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -370,7 +378,7 @@ $conversationsData = array_map(static function($t) use ($widgetStageLabels) {
 <!-- Corner Bottom Floating Chat Panel (Exact UI from Design Screenshot) -->
 <section id="kingquiry-chat-panel"
          class="card border-0"
-         aria-label="KingQuiry customer chat"
+         aria-label="KingQuiry chat"
          aria-hidden="true"
          inert
          data-csrf="<?= htmlspecialchars($widgetCsrfToken, ENT_QUOTES, 'UTF-8') ?>">
@@ -386,9 +394,9 @@ $conversationsData = array_map(static function($t) use ($widgetStageLabels) {
             <div class="min-w-0">
                 <div class="d-flex align-items-center gap-1 flex-wrap">
                     <strong class="text-white text-truncate" style="font-size: 0.95rem;">
-                        Chat with <span id="kingquiry-chat-agent-name">Sales Representative</span>
+                        Chat with <span id="kingquiry-chat-agent-name">Sales Agent</span>
                     </strong>
-                    <span class="badge text-bg-light border text-primary small fw-semibold" id="kingquiry-chat-role-badge" style="font-size: 0.65rem;">Assigned Sales Representative</span>
+                    <span class="badge text-bg-light border text-primary small fw-semibold" id="kingquiry-chat-role-badge" style="font-size: 0.65rem;">Assigned Sales Agent</span>
                     <span class="badge text-bg-success text-white small" id="kingquiry-chat-online-badge" style="font-size: 0.65rem;">
                         <i class="bi bi-circle-fill me-1" style="font-size: 0.45rem;"></i>Online
                     </span>
@@ -441,7 +449,7 @@ $conversationsData = array_map(static function($t) use ($widgetStageLabels) {
             <span class="text-muted" id="kingquiry-channel-phone"><i class="bi bi-telephone me-1"></i>0965 803 0933</span>
         </div>
         <div class="text-muted" style="font-size: 0.7rem;">
-            <i class="bi bi-shield-check text-success me-1"></i>Verified KingQuiry Representative
+            <i class="bi bi-shield-check text-success me-1"></i>Verified KingQuiry Sales Agent
         </div>
     </div>
 
@@ -449,7 +457,7 @@ $conversationsData = array_map(static function($t) use ($widgetStageLabels) {
     <div id="kingquiry-chat-messages" class="d-flex flex-column gap-2" aria-live="polite">
         <div class="text-center text-muted small py-4" id="kingquiry-chat-loading">
             <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
-            Connecting to customer chat...
+            Connecting to KingQuiry chat...
         </div>
     </div>
 
@@ -490,7 +498,7 @@ $conversationsData = array_map(static function($t) use ($widgetStageLabels) {
                    type="text"
                    class="form-control"
                    maxlength="1000"
-                   placeholder="Write a message to your assigned sales agent..."
+                   placeholder="Write a message to your assigned Sales Agent..."
                    aria-label="Your message"
                    required
                    autocomplete="off">
@@ -538,7 +546,7 @@ $conversationsData = array_map(static function($t) use ($widgetStageLabels) {
     
     let activeTxId = conversationsData.length > 0 ? conversationsData[0].transaction_id : 0;
     let activeAgentId = conversationsData.length > 0 ? conversationsData[0].agent_id : 0;
-    let activeAgentName = conversationsData.length > 0 ? conversationsData[0].agent_name : 'Sales Representative';
+    let activeAgentName = conversationsData.length > 0 ? conversationsData[0].agent_name : 'Sales Agent';
     let activePropertyTitle = conversationsData.length > 0 ? conversationsData[0].property_title : '';
     
     let lastMessageId = 0;
@@ -608,7 +616,7 @@ $conversationsData = array_map(static function($t) use ($widgetStageLabels) {
 
             if (avatarEl) avatarEl.textContent = '👨‍💼';
             if (agentNameEl) agentNameEl.textContent = conv.agent_name;
-            if (roleBadgeEl) roleBadgeEl.textContent = 'Assigned Sales Representative';
+            if (roleBadgeEl) roleBadgeEl.textContent = 'Assigned Sales Agent';
             if (regardingEl) regardingEl.textContent = `Regarding: ${conv.property_title} (Transaction #KQT-${conv.transaction_id}) · ${conv.stage_label}`;
             if (channelEmailEl) channelEmailEl.innerHTML = `<i class="bi bi-envelope me-1"></i>${escapeHtml(conv.agent_email)}`;
             if (channelPhoneEl) channelPhoneEl.innerHTML = `<i class="bi bi-telephone me-1"></i>${escapeHtml(conv.agent_phone)}`;
@@ -659,7 +667,7 @@ $conversationsData = array_map(static function($t) use ($widgetStageLabels) {
                     <div>
                         <div class="d-flex align-items-center gap-2 mb-1 px-1">
                             <strong class="small text-truncate" style="font-size: 0.76rem;">${escapeHtml(isBot ? 'Assistant' : (message.agent_name || activeAgentName))}</strong>
-                            <span class="badge ${isBot ? 'text-bg-light border' : 'text-bg-primary-subtle text-primary border'} small" style="font-size: 0.62rem;">${isBot ? 'Automated' : 'Assigned Agent'}</span>
+                            <span class="badge ${isBot ? 'text-bg-light border' : 'text-bg-primary-subtle text-primary border'} small" style="font-size: 0.62rem;">${isBot ? 'Automated' : 'Assigned Sales Agent'}</span>
                             <span class="text-muted small" style="font-size: 0.68rem;">${timeStr}</span>
                         </div>
                         <div class="kq-chat-bubble-agent shadow-sm">${escapeHtml(message.body)}</div>
@@ -694,7 +702,7 @@ $conversationsData = array_map(static function($t) use ($widgetStageLabels) {
         panel.setAttribute('aria-hidden', String(!open));
         panel.inert = !open;
         launcher.setAttribute('aria-expanded', String(open));
-        launcher.setAttribute('aria-label', `${open ? 'Close' : 'Open'} KingQuiry customer chat bubble`);
+        launcher.setAttribute('aria-label', `${open ? 'Close' : 'Open'} KingQuiry chat`);
 
         if (open) {
             chatInput.focus();
@@ -864,7 +872,7 @@ $conversationsData = array_map(static function($t) use ($widgetStageLabels) {
         const targetAgentId = Number(agentId) || 0;
         const safeAgentName = typeof agentName === 'string' && agentName.trim() !== ''
             ? agentName.trim()
-            : 'the sales agent';
+            : 'the Sales Agent';
         const safePropertyTitle = typeof propertyTitle === 'string' ? propertyTitle.trim() : '';
         const prefill = `Hi, I would like to chat with ${safeAgentName}${safePropertyTitle ? ` about ${safePropertyTitle}` : ''}.`;
         await window.openChatWidget(prefill);
@@ -875,7 +883,7 @@ $conversationsData = array_map(static function($t) use ($widgetStageLabels) {
             activeAgentName = safeAgentName;
             activePropertyTitle = safePropertyTitle;
             if (agentNameEl) agentNameEl.textContent = safeAgentName;
-            if (roleBadgeEl) roleBadgeEl.textContent = 'Direct sales agent chat';
+            if (roleBadgeEl) roleBadgeEl.textContent = 'Direct Sales Agent chat';
             if (regardingEl) regardingEl.textContent = safePropertyTitle
                 ? `Regarding: ${safePropertyTitle}`
                 : `Direct message to ${safeAgentName}`;
@@ -1055,8 +1063,15 @@ $conversationsData = array_map(static function($t) use ($widgetStageLabels) {
                 if (!estimateMessage) {
                     throw new Error('The estimate response was not returned. Please try again.');
                 }
-                estimateResult.textContent = estimateMessage.body;
+                const locationSelect = estimateForm.querySelector('[name="location_id"]');
+                const locationName = locationSelect instanceof HTMLSelectElement
+                    ? locationSelect.selectedOptions[0]?.textContent.trim()
+                    : '';
+                estimateResult.textContent = locationName
+                    ? `Municipality: ${locationName}\n${estimateMessage.body}`
+                    : estimateMessage.body;
                 estimateResult.hidden = false;
+                estimateResult.scrollIntoView({ block: 'nearest' });
             } catch (error) {
                 estimateResult.classList.remove('alert-success');
                 estimateResult.classList.add('alert-warning');

@@ -3,6 +3,7 @@ include 'config/db.php';
 require_once 'includes/auth.php';
 require_once 'includes/admin_management.php';
 require_once 'includes/transaction_tracking.php';
+require_once 'includes/admin_analytics.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -13,16 +14,15 @@ require_role('Admin');
 ensure_admin_management_schema($conn);
 
 $stageLabels = property_transaction_stages();
+$adminMetrics = get_admin_summary_metrics($conn);
 
 $salesSummary = $conn->query(
-    "SELECT COUNT(*) AS verifiedSales,
-            COALESCE(SUM(salePrice), 0) AS actualRevenue,
-            COALESCE(AVG(salePrice), 0) AS averageSale
+    "SELECT COALESCE(AVG(salePrice), 0) AS averageSale
      FROM property_transactions
      WHERE currentStage = 'completed' AND salePrice IS NOT NULL"
 )->fetch_assoc();
-$verifiedSalesCount = (int) $salesSummary['verifiedSales'];
-$actualRevenue = (float) $salesSummary['actualRevenue'];
+$completedSalesCount = $adminMetrics['completed_sales'];
+$actualRevenue = $adminMetrics['actual_revenue'];
 $averageSale = (float) $salesSummary['averageSale'];
 
 $pipeline = $conn->query(
@@ -31,7 +31,7 @@ $pipeline = $conn->query(
      JOIN properties p ON p.propertyID = t.propertyID
      WHERE t.currentStage NOT IN ('completed', 'cancelled')"
 )->fetch_assoc();
-$activePipelineCount = (int) $pipeline['activeCases'];
+$activePipelineCount = $adminMetrics['active_pipeline'];
 $activePipelineAskingValue = (float) $pipeline['askingPriceValue'];
 
 $trackedSummary = $conn->query(
@@ -41,88 +41,36 @@ $trackedSummary = $conn->query(
 )->fetch_assoc();
 $totalTracked = (int) $trackedSummary['totalTracked'];
 $cancelledCases = (int) $trackedSummary['cancelledCases'];
-$conversionRate = $totalTracked > 0 ? ($verifiedSalesCount / $totalTracked) * 100 : 0.0;
+$conversionRate = $totalTracked > 0 ? ($completedSalesCount / $totalTracked) * 100 : 0.0;
 
-$paymentSummary = $conn->query(
-    "SELECT COALESCE(SUM(CASE WHEN status = 'Verified' THEN amount ELSE 0 END), 0) AS verifiedTotal,
-            COALESCE(SUM(CASE WHEN status = 'Pending' THEN amount ELSE 0 END), 0) AS pendingTotal
-     FROM payments"
-)->fetch_assoc();
-$verifiedCollected = (float) $paymentSummary['verifiedTotal'];
-$pendingCollected = (float) $paymentSummary['pendingTotal'];
-
-$outstandingSummary = $conn->query(
-    "SELECT COALESCE(SUM(GREATEST(t.salePrice - COALESCE(pay.paidTotal, 0), 0)), 0) AS outstanding
-     FROM property_transactions t
-     LEFT JOIN (
-        SELECT transactionID, SUM(amount) AS paidTotal
-        FROM payments
-        WHERE status = 'Verified'
-        GROUP BY transactionID
-     ) pay ON pay.transactionID = t.transactionID
-     WHERE t.currentStage = 'completed' AND t.salePrice IS NOT NULL"
-)->fetch_assoc();
-$outstandingBalance = (float) $outstandingSummary['outstanding'];
-
-$salesMonthStart = (new DateTimeImmutable('first day of this month'))->modify('-5 months');
-$salesRangeStart = $salesMonthStart->format('Y-m-d');
-$salesRangeEnd = $salesMonthStart->modify('+6 months')->format('Y-m-d');
-$monthlySales = [];
-for ($monthOffset = 0; $monthOffset < 6; $monthOffset++) {
-    $month = $salesMonthStart->modify('+' . $monthOffset . ' months');
-    $monthlySales[$month->format('Y-m')] = [
-        'label' => $month->format('M Y'),
-        'sales' => 0,
-        'revenue' => 0.0,
-    ];
-}
-$monthlySalesStmt = $conn->prepare(
-    "SELECT DATE_FORMAT(completions.completedAt, '%Y-%m') AS monthKey,
-            COUNT(*) AS sales,
-            COALESCE(SUM(t.salePrice), 0) AS revenue
-     FROM property_transactions t
-     JOIN (
-         SELECT transactionID, MAX(createdAt) AS completedAt
-         FROM property_transaction_events
-         WHERE stage = 'completed'
-         GROUP BY transactionID
-     ) completions ON completions.transactionID = t.transactionID
-     WHERE t.currentStage = 'completed'
-       AND t.salePrice IS NOT NULL
-       AND completions.completedAt >= ?
-       AND completions.completedAt < ?
-     GROUP BY monthKey"
+$verifiedTransactionIds = $conn->query(
+    "SELECT transactionID FROM payments WHERE status = 'Verified' AND transactionID IS NOT NULL
+     UNION
+     SELECT transactionID FROM property_transaction_payments WHERE status = 'confirmed'"
 );
-$monthlySalesStmt->bind_param('ss', $salesRangeStart, $salesRangeEnd);
-$monthlySalesStmt->execute();
-foreach ($monthlySalesStmt->get_result() as $row) {
-    $monthKey = (string) $row['monthKey'];
-    if (isset($monthlySales[$monthKey])) {
-        $monthlySales[$monthKey]['sales'] = (int) $row['sales'];
-        $monthlySales[$monthKey]['revenue'] = (float) $row['revenue'];
-    }
+$verifiedCollected = 0.0;
+while ($row = $verifiedTransactionIds->fetch_assoc()) {
+    $verifiedCollected += get_verified_transaction_payment_total($conn, (int) $row['transactionID']);
 }
-$revenueMaximum = max(1.0, ...array_column($monthlySales, 'revenue'));
-$salesBars = [];
-$plotLeft = 76;
-$plotWidth = 620;
-$plotBottom = 218;
-$plotHeight = 150;
-$slotWidth = $plotWidth / 6;
-foreach (array_values($monthlySales) as $index => $month) {
-    $barHeight = ($month['revenue'] / $revenueMaximum) * $plotHeight;
-    $salesBars[] = [
-        'x' => $plotLeft + ($index * $slotWidth) + 14,
-        'y' => $plotBottom - $barHeight,
-        'width' => $slotWidth - 28,
-        'height' => $barHeight,
-        'label' => $month['label'],
-        'revenue' => $month['revenue'],
-        'sales' => $month['sales'],
-        'center' => $plotLeft + ($index * $slotWidth) + ($slotWidth / 2),
-    ];
+
+$pendingSummary = $conn->query(
+    "SELECT
+        (SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'Pending')
+        + (SELECT COALESCE(SUM(amount), 0) FROM property_transaction_payments WHERE status IN ('pending', 'in_process'))
+        AS pendingTotal"
+)->fetch_assoc();
+$pendingCollected = (float) $pendingSummary['pendingTotal'];
+
+$completedTransactionRows = $conn->query(
+    "SELECT transactionID, salePrice
+     FROM property_transactions
+     WHERE currentStage = 'completed' AND salePrice IS NOT NULL"
+);
+$outstandingBalance = 0.0;
+while ($row = $completedTransactionRows->fetch_assoc()) {
+    $paidTotal = get_verified_transaction_payment_total($conn, (int) $row['transactionID']);
+    $outstandingBalance += max((float) $row['salePrice'] - $paidTotal, 0.0);
 }
-$hasMonthlySales = array_sum(array_column($monthlySales, 'sales')) > 0;
 
 $stageBreakdown = [];
 $stageResult = $conn->query(
@@ -217,9 +165,9 @@ include 'includes/header.php';
     <div class="col-6 col-lg-4 col-xl-2">
         <div class="card h-100 border-0 shadow-sm">
             <div class="card-body p-3">
-                <div class="page-eyebrow text-success" style="font-size: 0.68rem;">Verified Sales</div>
-                <h3 class="h3 mb-0 text-success"><?= number_format($verifiedSalesCount) ?></h3>
-                <small class="text-muted" style="font-size: 0.72rem;">Completed deals</small>
+                <div class="page-eyebrow text-success" style="font-size: 0.68rem;">Completed Sales</div>
+                <h3 class="h3 mb-0 text-success"><?= number_format($completedSalesCount) ?></h3>
+                <small class="text-muted" style="font-size: 0.72rem;">All completed transactions</small>
             </div>
         </div>
     </div>
@@ -253,45 +201,12 @@ include 'includes/header.php';
 </div>
 
     <div class="row g-3 mb-4">
-        <div class="col-lg-7">
-            <section class="card p-3 p-lg-4 h-100" aria-labelledby="sales-revenue-chart-title">
-                <div class="mb-3">
-                    <div class="page-eyebrow">Analytics</div>
-                    <h2 class="h5 fw-bold mb-1" id="sales-revenue-chart-title">Actual sales revenue — last six months</h2>
-                    <p class="small text-muted mb-0">Based on staff-recorded sale prices at successful completion.</p>
-                </div>
-                <div class="overflow-auto">
-                    <svg class="w-100" style="min-width: 620px;" viewBox="0 0 720 260" role="img" aria-labelledby="sales-revenue-chart-title sales-revenue-chart-description">
-                        <desc id="sales-revenue-chart-description">Bar chart of verified actual sale revenue for the last six months.</desc>
-                        <?php for ($gridLine = 0; $gridLine <= 4; $gridLine++):
-                            $gridY = $plotBottom - ($gridLine * ($plotHeight / 4));
-                            $gridValue = $revenueMaximum * $gridLine / 4;
-                        ?>
-                            <line class="kq-chart-grid" x1="<?= $plotLeft ?>" y1="<?= $gridY ?>" x2="<?= $plotLeft + $plotWidth ?>" y2="<?= $gridY ?>" stroke-width="1"/>
-                            <text class="kq-chart-text" x="<?= $plotLeft - 8 ?>" y="<?= $gridY + 4 ?>" text-anchor="end" font-size="11"><?= kq_e(kq_format_compact_peso($gridValue)) ?></text>
-                        <?php endfor; ?>
-                        <line class="kq-chart-axis" x1="<?= $plotLeft ?>" y1="<?= $plotBottom - $plotHeight ?>" x2="<?= $plotLeft ?>" y2="<?= $plotBottom ?>" stroke-width="1"/>
-                        <line class="kq-chart-axis" x1="<?= $plotLeft ?>" y1="<?= $plotBottom ?>" x2="<?= $plotLeft + $plotWidth ?>" y2="<?= $plotBottom ?>" stroke-width="1"/>
-                        <?php foreach ($salesBars as $bar): ?>
-                            <rect x="<?= number_format($bar['x'], 2, '.', '') ?>" y="<?= number_format($bar['y'], 2, '.', '') ?>" width="<?= number_format($bar['width'], 2, '.', '') ?>" height="<?= number_format($bar['height'], 2, '.', '') ?>" rx="6" fill="#17865b">
-                                <title><?= kq_e($bar['label'] . ': ' . kq_format_peso($bar['revenue']) . ' (' . $bar['sales'] . ' sale(s))') ?></title>
-                            </rect>
-                            <text x="<?= number_format($bar['center'], 2, '.', '') ?>" y="<?= number_format($bar['y'] - 8, 2, '.', '') ?>" text-anchor="middle" fill="#17865b" font-size="11" font-weight="700"><?= $bar['revenue'] > 0 ? kq_e(kq_format_compact_peso($bar['revenue'])) : '' ?></text>
-                            <text class="kq-chart-text" x="<?= number_format($bar['center'], 2, '.', '') ?>" y="245" text-anchor="middle" font-size="11"><?= kq_e($bar['label']) ?></text>
-                        <?php endforeach; ?>
-                    </svg>
-                </div>
-                <?php if (!$hasMonthlySales): ?>
-                    <p class="small text-muted mb-0 mt-2">No verified sales in this period. The chart updates automatically after a transaction is completed with a sale price.</p>
-                <?php endif; ?>
-            </section>
-        </div>
-        <div class="col-lg-5">
+        <div class="col-12">
             <section class="card p-3 p-lg-4 h-100" aria-labelledby="collections-summary-title">
                 <div class="mb-3">
                     <div class="page-eyebrow">Collections</div>
                     <h2 class="h5 fw-bold mb-1" id="collections-summary-title">Payment reconciliation</h2>
-                    <p class="small text-muted mb-0">Verified and pending payment records across all transactions.</p>
+                    <p class="small text-muted mb-0">Client-submitted reports and Admin-register payments across all transactions.</p>
                 </div>
                 <div class="d-grid gap-3">
                     <div class="border rounded-3 p-3 bg-light">
@@ -299,7 +214,7 @@ include 'includes/header.php';
                             <span class="fw-semibold">Verified collected</span>
                             <span class="fw-bold text-success"><?= kq_format_peso($verifiedCollected) ?></span>
                         </div>
-                        <div class="small text-muted">Confirmed collections on file.</div>
+                        <div class="small text-muted">Confirmed reports and verified Admin records, reconciled by transaction.</div>
                     </div>
                     <div class="border rounded-3 p-3 bg-light">
                         <div class="d-flex justify-content-between align-items-center mb-1">
@@ -315,7 +230,7 @@ include 'includes/header.php';
                         </div>
                         <div class="small text-muted">Recorded sale value minus verified payments.</div>
                     </div>
-                    <a href="admin_payments.php" class="btn btn-outline-primary">Open payment register</a>
+                    <a href="admin_payments.php" class="btn btn-outline-primary">Open payments</a>
                 </div>
             </section>
         </div>
@@ -352,7 +267,7 @@ include 'includes/header.php';
                 <div class="page-eyebrow">Transaction register</div>
                 <h2 class="h4 fw-bold mb-0"><?= number_format(count($transactions)) ?> transaction<?= count($transactions) === 1 ? '' : 's' ?> shown</h2>
             </div>
-            <form method="GET" class="d-flex flex-column flex-sm-row gap-2 align-items-stretch">
+            <form method="GET" action="admin_sales.php#sales-results" class="d-flex flex-column flex-sm-row gap-2 align-items-stretch">
                 <label class="visually-hidden" for="sales-search">Search transactions</label>
                 <input id="sales-search" type="search" name="q" class="form-control form-control-sm" value="<?= kq_e($search) ?>" placeholder="Search client, property, or ref">
                 <label class="visually-hidden" for="sales-stage-filter">Filter by stage</label>
@@ -362,12 +277,12 @@ include 'includes/header.php';
                         <option value="<?= kq_e($stageKey) ?>" <?= $stageFilter === $stageKey ? 'selected' : '' ?>><?= kq_e($stageLabel) ?></option>
                     <?php endforeach; ?>
                 </select>
-                <button type="submit" class="btn btn-sm btn-primary">Filter</button>
-                <?php if ($search !== '' || $stageFilter !== ''): ?><a href="admin_sales.php" class="btn btn-sm btn-outline-secondary">Clear</a><?php endif; ?>
+                <button type="submit" class="btn btn-sm btn-primary">Apply filters</button>
+                <?php if ($search !== '' || $stageFilter !== ''): ?><a href="admin_sales.php#sales-results" class="btn btn-sm btn-outline-secondary">Clear filters</a><?php endif; ?>
             </form>
         </div>
 
-        <div class="table-responsive">
+        <div id="sales-results" class="table-responsive">
             <table class="table align-middle">
                 <thead>
                     <tr>
@@ -432,7 +347,7 @@ include 'includes/header.php';
                             <td class="small text-nowrap"><?= kq_e($transaction['updatedAt']) ?></td>
                             <td>
                                 <div class="d-flex flex-wrap gap-2">
-                                    <a href="transaction_tracking.php#transactions" class="btn btn-sm btn-outline-primary">Tracker</a>
+                                    <a href="transaction_tracking.php#transactions" class="btn btn-sm btn-outline-primary">Transaction tracker</a>
                                     <a href="admin_payments.php?transaction=<?= (int) $transaction['transactionID'] ?>#record-payment" class="btn btn-sm btn-outline-success">Payment</a>
                                 </div>
                             </td>

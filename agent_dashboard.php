@@ -24,7 +24,7 @@ $locations = get_property_locations($conn);
 $statusMessage = isset($_GET['property_added'])
     ? 'The property listing has been published with its pinned location.'
     : (isset($_GET['updated'])
-        ? 'Viewing request and client tracking were updated.'
+        ? 'The viewing request and client tracking were updated.'
         : (isset($_GET['dismissed'])
             ? 'The taken viewing request was removed from your queue.'
             : (isset($_GET['claimed']) ? 'The inquiry was assigned to your account.' : '')));
@@ -65,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $appointmentID = filter_var($_POST['appointmentID'] ?? null, FILTER_VALIDATE_INT);
         $newStatus = is_string($_POST['status'] ?? null) ? $_POST['status'] : '';
         if ($appointmentID === false || $appointmentID <= 0 || !in_array($newStatus, ['Pending', 'Approved', 'Cancelled'], true)) {
-            $statusError = 'Choose a valid appointment and status.';
+            $statusError = 'Choose a valid viewing request and status.';
         } else {
             try {
                 update_appointment_tracking_status($conn, (int) $appointmentID, $newStatus, $currentAgentId);
@@ -74,8 +74,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } catch (InvalidArgumentException $exception) {
                 $statusError = $exception->getMessage();
             } catch (mysqli_sql_exception $exception) {
-                error_log('KingQuiry appointment status update failed: ' . $exception->getMessage());
-                $statusError = 'The appointment could not be updated. Please try again.';
+                error_log('KingQuiry viewing request status update failed: ' . $exception->getMessage());
+                $statusError = 'The viewing request could not be updated. Please try again.';
             }
         }
     } elseif (isset($_POST['add_property'])) {
@@ -312,19 +312,19 @@ include 'includes/header.php';
 
 <div class="kq-agent-shell">
     <div class="kq-portal-workspace">
-        <aside class="kq-portal-sidebar" aria-label="Agent dashboard navigation">
-            <button class="kq-menu-toggle" type="button" data-portal-menu-toggle data-menu-label="Agent menu" aria-label="Open Agent menu" aria-controls="agent-navigation" aria-expanded="false">
+        <aside class="kq-portal-sidebar" aria-label="Sales Agent dashboard navigation">
+            <button class="kq-menu-toggle" type="button" data-portal-menu-toggle data-menu-label="Sales Agent menu" aria-label="Open Sales Agent menu" aria-controls="agent-navigation" aria-expanded="false">
                 <span class="kq-menu-toggle-icon" aria-hidden="true"><span></span><span></span><span></span></span>
-                <span>Agent menu</span>
+                <span>Sales Agent menu</span>
             </button>
-            <div class="kq-portal-sidebar-heading">Agent menu</div>
-            <nav class="kq-portal-nav" id="agent-navigation" aria-label="Agent dashboard sections">
+            <div class="kq-portal-sidebar-heading">Sales Agent menu</div>
+            <nav class="kq-portal-nav" id="agent-navigation" aria-label="Sales Agent dashboard sections">
                 <a href="#agent-overview">Overview</a>
                 <a href="#appointments">Viewing requests</a>
                 <a href="#agent-inquiries">Inquiries</a>
                 <a href="#add-property">Publish a listing</a>
                 <a href="transaction_tracking.php">Transaction tracking</a>
-                <a href="admin_chat.php">💬 Customer chat inbox</a>
+                <a href="admin_chat.php">💬 Client chat inbox</a>
             </nav>
         </aside>
         <div class="kq-portal-main">
@@ -332,7 +332,7 @@ include 'includes/header.php';
         <img class="kq-official-logo kq-logo-dashboard kq-logo-on-dark" src="assets/images/kings-land-properties-logo-light.png" alt="4 Kings Realty Services">
         <div class="kq-dashboard-hero-copy">
             <div class="page-eyebrow">SALES AGENT WORKSPACE</div>
-            <h1 class="page-title h2 mb-1">Agent dashboard</h1>
+            <h1 class="page-title h2 mb-1">Sales Agent dashboard</h1>
             <p class="text-muted mb-0">Welcome, <?= htmlspecialchars($_SESSION['user']['fullname'], ENT_QUOTES, 'UTF-8') ?>. Manage viewing requests and share transaction updates.</p>
         </div>
     </header>
@@ -344,27 +344,27 @@ include 'includes/header.php';
     <div class="col-6 col-lg-4 col-xl-2">
         <div class="card h-100 border-0 shadow-sm">
             <div class="card-body p-3">
-                <div class="page-eyebrow" style="font-size: 0.68rem;">Appointments</div>
+                <div class="page-eyebrow" style="font-size: 0.68rem;">Viewing requests</div>
                 <h3 class="h3 mb-0"><?= (int) ($statsRow['total_appointments'] ?? 0) ?></h3>
-                <small class="text-muted" style="font-size: 0.72rem;">All site visits</small>
+                <small class="text-muted" style="font-size: 0.72rem;">Assigned and open requests</small>
             </div>
         </div>
     </div>
     <div class="col-6 col-lg-4 col-xl-2">
         <div class="card h-100 border-0 shadow-sm">
             <div class="card-body p-3">
-                <div class="page-eyebrow text-warning" style="font-size: 0.68rem;">Pending Action</div>
+                <div class="page-eyebrow text-warning" style="font-size: 0.68rem;">Pending viewing requests</div>
                 <h3 class="h3 mb-0 text-warning"><?= (int) ($statsRow['pending_appointments'] ?? 0) ?></h3>
-                <small class="text-muted" style="font-size: 0.72rem;">Needs review</small>
+                <small class="text-muted" style="font-size: 0.72rem;">Assigned or open requests</small>
             </div>
         </div>
     </div>
     <div class="col-6 col-lg-4 col-xl-2">
         <div class="card h-100 border-0 shadow-sm">
             <div class="card-body p-3">
-                <div class="page-eyebrow text-success" style="font-size: 0.68rem;">Confirmed</div>
+                <div class="page-eyebrow text-success" style="font-size: 0.68rem;">Approved viewing requests</div>
                 <h3 class="h3 mb-0 text-success"><?= (int) ($statsRow['approved_appointments'] ?? 0) ?></h3>
-                <small class="text-muted" style="font-size: 0.72rem;">Ready for tripping</small>
+                <small class="text-muted" style="font-size: 0.72rem;">Assigned and approved</small>
             </div>
         </div>
     </div>
@@ -373,7 +373,7 @@ include 'includes/header.php';
             <div class="card-body p-3">
                 <div class="page-eyebrow text-info" style="font-size: 0.68rem;">Inquiries</div>
                 <h3 class="h3 mb-0 text-info"><?= (int) ($statsRow['total_inquiries'] ?? 0) ?></h3>
-                <small class="text-muted" style="font-size: 0.72rem;">Messages to answer</small>
+                <small class="text-muted" style="font-size: 0.72rem;">Assigned and unclaimed inquiries</small>
             </div>
         </div>
     </div>
@@ -382,16 +382,16 @@ include 'includes/header.php';
             <div class="card-body p-3">
                 <div class="page-eyebrow text-primary" style="font-size: 0.68rem;">Active Pipeline</div>
                 <h3 class="h3 mb-0 text-primary"><?= (int) ($txStatsRow['active_transactions'] ?? 0) ?></h3>
-                <small class="text-muted" style="font-size: 0.72rem;"><a href="transaction_tracking.php" class="text-decoration-none">In progress &rarr;</a></small>
+                <small class="text-muted" style="font-size: 0.72rem;"><a href="transaction_tracking.php" class="text-decoration-none">Assigned transactions &rarr;</a></small>
             </div>
         </div>
     </div>
     <div class="col-6 col-lg-4 col-xl-2">
         <div class="card h-100 border-0 shadow-sm">
             <div class="card-body p-3">
-                <div class="page-eyebrow text-success" style="font-size: 0.68rem;">Closed Deals</div>
+                <div class="page-eyebrow text-success" style="font-size: 0.68rem;">Completed sales</div>
                 <h3 class="h3 mb-0 text-success"><?= (int) ($txStatsRow['completed_transactions'] ?? 0) ?></h3>
-                <small class="text-muted" style="font-size: 0.72rem;">Closed &amp; verified</small>
+                <small class="text-muted" style="font-size: 0.72rem;">Assigned completed transactions</small>
             </div>
         </div>
     </div>
@@ -451,7 +451,7 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
                             <span class="d-flex align-items-center gap-2 mb-1 flex-wrap">
                                 <span class="fw-bold <?= $isUnread ? 'text-primary' : 'text-dark' ?>" style="font-size: 0.95rem;"><?= htmlspecialchars($aNotif['title'], ENT_QUOTES, 'UTF-8') ?></span>
                                 <?php if ($isTakenNotif): ?>
-                                    <span class="badge bg-secondary small" style="font-size: 0.65rem;">Taken by another agent</span>
+                                    <span class="badge bg-secondary small" style="font-size: 0.65rem;">Taken by another Sales Agent</span>
                                 <?php elseif ($isUnread): ?>
                                     <span class="badge bg-danger small" style="font-size: 0.65rem;">New viewing request</span>
                                 <?php endif; ?>
@@ -513,7 +513,7 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
                                     </span>
                                 <?php elseif ($isTakenByMe): ?>
                                     <span class="badge rounded-pill text-bg-success px-2 py-1 shadow-sm">
-                                        Confirmed by You
+                                        Approved by you
                                     </span>
                                 <?php elseif ($appt['status'] === 'Cancelled'): ?>
                                     <span class="badge rounded-pill text-bg-danger px-2 py-1">Cancelled</span>
@@ -529,7 +529,7 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
                                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                                             <input type="hidden" name="dismiss_taken_viewing" value="1">
                                             <input type="hidden" name="appointmentID" value="<?= $apptId ?>">
-                                            <button type="button" class="btn btn-sm btn-outline-danger p-1 d-inline-flex align-items-center justify-content-center kq-dismiss-btn" data-confirm="Remove this viewing request taken by <?= htmlspecialchars($agentName, ENT_QUOTES, 'UTF-8') ?> from your queue?" title="Remove taken viewing (<?= htmlspecialchars($agentName) ?>) from your queue" aria-label="Remove taken viewing" style="width: 30px; height: 30px; border-radius: 50%;">
+                                            <button type="button" class="btn btn-sm btn-outline-danger p-1 d-inline-flex align-items-center justify-content-center kq-dismiss-btn" data-confirm="Remove this viewing request taken by <?= htmlspecialchars($agentName, ENT_QUOTES, 'UTF-8') ?> from your queue?" title="Remove viewing request taken by <?= htmlspecialchars($agentName) ?> from your queue" aria-label="Remove viewing request" style="width: 30px; height: 30px; border-radius: 50%;">
                                                 <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                                             </button>
                                         </form>
@@ -541,7 +541,7 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
                                         <select name="status" class="form-select form-select-sm" style="width: 130px;">
                                             <?php if ($appt['status'] === 'Pending'): ?>
                                                 <option value="Pending" selected>Pending</option>
-                                                <option value="Approved">Confirm (Approve)</option>
+                                                <option value="Approved">Approve</option>
                                                 <option value="Cancelled">Cancel</option>
                                             <?php elseif ($appt['status'] === 'Approved'): ?>
                                                 <option value="Approved" selected>Approved</option>
@@ -550,14 +550,14 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
                                                 <option value="Cancelled" selected>Cancelled</option>
                                             <?php endif; ?>
                                         </select>
-                                        <button type="submit" name="update_status" class="btn btn-sm btn-primary">Update</button>
+                                        <button type="submit" name="update_status" class="btn btn-sm btn-primary">Update status</button>
                                     </form>
                                 <?php endif; ?>
                             </td>
                         </tr>
                     <?php endwhile; ?>
                 <?php else: ?>
-                    <tr><td colspan="7" class="text-center text-muted">No appointments found.</td></tr>
+                    <tr><td colspan="7" class="text-center text-muted">No viewing requests found.</td></tr>
                 <?php endif; ?>
             </tbody>
         </table>
@@ -567,7 +567,7 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
 <section class="card p-3 p-lg-4" id="agent-inquiries">
     <div class="kq-panel-header mb-3">
         <div>
-            <div class="page-eyebrow">Customer questions</div>
+            <div class="page-eyebrow">Client inquiries</div>
             <h2 class="h4 fw-bold mb-0">Property inquiries</h2>
         </div>
         <span class="kq-badge-soft">Inbox</span>
@@ -613,7 +613,7 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
             <div class="page-eyebrow">Listing management</div>
             <h2 class="h4 fw-bold mb-0">Publish a new property</h2>
         </div>
-        <span class="kq-badge-soft">Agent tools</span>
+        <span class="kq-badge-soft">Sales Agent tools</span>
     </div>
     <p class="text-muted small mb-4">Add a new property to the KingQuiry catalog. Use the interactive map below to pin the exact location of the land.</p>
 

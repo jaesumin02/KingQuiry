@@ -7,7 +7,7 @@ function property_transaction_stages(): array
         'inquiry_received' => 'Inquiry received',
         'contacting_client' => 'Contacting client',
         'viewing_requested' => 'Viewing requested',
-        'viewing_confirmed' => 'Viewing confirmed',
+        'viewing_confirmed' => 'Viewing approved',
         'viewing_completed' => 'Viewing completed',
         'payment_in_process' => 'Payment in process',
         'document_verification' => 'Document verification',
@@ -68,7 +68,7 @@ function get_transaction_stage_notification(
     ?string $paymentMethod = null
 ): array {
     $cleanNote = trim($note);
-    $noteSection = $cleanNote !== '' ? "\n\nAgent update: " . $cleanNote : '';
+    $noteSection = $cleanNote !== '' ? "\n\nSales Agent update: " . $cleanNote : '';
 
     if ($newStage === 'cancelled') {
         return [
@@ -84,9 +84,9 @@ function get_transaction_stage_notification(
 
     if ($newStage === 'viewing_confirmed') {
         return [
-            'title' => 'Viewing schedule confirmed',
+            'title' => 'Viewing schedule approved',
             'message' => sprintf(
-                "Hello %s,\n\nYour property viewing for '%s' has been confirmed by your sales agent.%s\n\nPlease arrive on time for your scheduled site visit. Check your dashboard for details.",
+                "Hello %s,\n\nYour property viewing for '%s' has been approved by your Sales Agent.%s\n\nPlease arrive on time for your scheduled property viewing. Check your dashboard for details.",
                 $clientName,
                 $propertyTitle,
                 $noteSection
@@ -98,7 +98,7 @@ function get_transaction_stage_notification(
         return [
             'title' => 'Viewing completed — Next: Payment processing',
             'message' => sprintf(
-                "Hello %s,\n\nYour property viewing for '%s' has been successfully completed! Your sales agent has finished conducting the site visit.%s\n\nNext stage: Payment in process. Your agent will now coordinate payment terms and agreement paperwork.",
+                "Hello %s,\n\nYour property viewing for '%s' has been successfully completed! Your Sales Agent has completed the viewing.%s\n\nNext stage: Payment in process. Your Sales Agent will now coordinate payment terms and agreement paperwork.",
                 $clientName,
                 $propertyTitle,
                 $noteSection
@@ -110,7 +110,7 @@ function get_transaction_stage_notification(
         return [
             'title' => 'Payment processing in progress',
             'message' => sprintf(
-                "Hello %s,\n\nPayment processing is now underway for '%s'. Your sales agent is actively coordinating the payment terms, down payment / reservation, and paperwork.%s\n\nNext stage: Document verification.",
+                "Hello %s,\n\nPayment processing is now underway for '%s'. Your Sales Agent is actively coordinating the payment terms, down payment / reservation, and paperwork.%s\n\nNext stage: Document verification.",
                 $clientName,
                 $propertyTitle,
                 $noteSection
@@ -124,13 +124,13 @@ function get_transaction_stage_notification(
             ? 'Payment processing done — Document verification underway'
             : 'Document verification in progress';
         $intro = $prevWasPayment
-            ? sprintf("Payment is done processing by your sales agent for '%s'! The transaction has now advanced to Document Verification.", $propertyTitle)
+            ? sprintf("Payment is done processing by your Sales Agent for '%s'! The transaction has now advanced to Document Verification.", $propertyTitle)
             : sprintf("Your transaction for '%s' has advanced to Document Verification.", $propertyTitle);
 
         return [
             'title' => $title,
             'message' => sprintf(
-                "Hello %s,\n\n%s%s\n\nNext stage: Document verification. Your sales agent is reviewing property title deeds, tax declarations, and clearance documents.",
+                "Hello %s,\n\n%s%s\n\nNext stage: Document verification. Your Sales Agent is reviewing property title deeds, tax declarations, and clearance documents.",
                 $clientName,
                 $intro,
                 $noteSection
@@ -144,10 +144,10 @@ function get_transaction_stage_notification(
         
         if ($isSpotCash) {
             $title = 'Spot Cash payment processed — Payment confirmation underway';
-            $intro = sprintf("Your Spot Cash payment has been processed by your sales agent for '%s'! Since Spot Cash was selected, document verification was skipped, and your purchase has moved directly to Payment Confirmation and turnover preparation.", $propertyTitle);
+            $intro = sprintf("Your Spot Cash payment has been processed by your Sales Agent for '%s'! Since Spot Cash was selected, document verification was skipped, and your purchase has moved directly to Payment Confirmation and turnover preparation.", $propertyTitle);
         } elseif ($prevWasDoc) {
             $title = 'Document verification done — Payment confirmation underway';
-            $intro = sprintf("Document verification has been completed by your sales agent for '%s'! All required property legal documents, titles, and clearances have been verified.", $propertyTitle);
+            $intro = sprintf("Document verification has been completed by your Sales Agent for '%s'! All required property legal documents, titles, and clearances have been verified.", $propertyTitle);
         } else {
             $title = 'Payment confirmation in progress';
             $intro = sprintf("Your transaction for '%s' has advanced to Payment Confirmation.", $propertyTitle);
@@ -156,7 +156,7 @@ function get_transaction_stage_notification(
         return [
             'title' => $title,
             'message' => sprintf(
-                "Hello %s,\n\n%s%s\n\nNext stage: Payment confirmation. Your sales agent is finalizing official receipts, billing clearance, and turnover documents.",
+                "Hello %s,\n\n%s%s\n\nNext stage: Payment confirmation. Your Sales Agent is finalizing official receipts, billing clearance, and turnover documents.",
                 $clientName,
                 $intro,
                 $noteSection
@@ -169,7 +169,7 @@ function get_transaction_stage_notification(
         return [
             'title' => 'Transaction completed — Property is officially yours!',
             'message' => sprintf(
-                "Hello %s,\n\nCongratulations! Your property transaction for '%s' is officially completed and finalized, and the property is officially yours!\n\nVerified sale price: %s%s\n\nThank you for choosing 4 Kings Real Estate! You may now review your transaction summary and leave a 1-5 star rating for your sales agent on your client dashboard.",
+                "Hello %s,\n\nCongratulations! Your property transaction for '%s' is officially completed and finalized, and the property is officially yours!\n\nVerified sale price: %s%s\n\nThank you for choosing 4 Kings Real Estate! You can review your transaction summary on your Client dashboard.",
                 $clientName,
                 $propertyTitle,
                 $formattedPrice,
@@ -344,6 +344,62 @@ function get_verified_transaction_payment_total(mysqli $conn, int $transactionId
     return (float) $reconciledTotal;
 }
 
+function get_transaction_payment_records(mysqli $conn, array $transactionIds): array
+{
+    $transactionIds = array_values(array_unique(array_filter(
+        array_map('intval', $transactionIds),
+        static fn(int $transactionId): bool => $transactionId > 0
+    )));
+    if ($transactionIds === []) {
+        return [];
+    }
+
+    $transactionIdList = implode(',', $transactionIds);
+    $records = [];
+    $trackerRows = $conn->query(
+        "SELECT paymentID, transactionID, amount, paymentMethod, referenceNumber,
+                status, submittedAt, reviewNote
+         FROM property_transaction_payments
+         WHERE transactionID IN ($transactionIdList)
+         ORDER BY submittedAt DESC, paymentID DESC"
+    );
+    while ($payment = $trackerRows->fetch_assoc()) {
+        $payment['status'] = strtolower((string) $payment['status']);
+        $payment['sourceLabel'] = 'Client report';
+        $records[(int) $payment['transactionID']][] = $payment;
+    }
+
+    $registerRows = $conn->query(
+        "SELECT paymentID, transactionID, amount, paymentMethod, referenceNo AS referenceNumber,
+                status, paidAt AS submittedAt, note AS reviewNote
+         FROM payments
+         WHERE transactionID IN ($transactionIdList)
+         ORDER BY paidAt DESC, paymentID DESC"
+    );
+    while ($payment = $registerRows->fetch_assoc()) {
+        $payment['status'] = match ((string) $payment['status']) {
+            'Verified' => 'confirmed',
+            'Rejected' => 'rejected',
+            default => 'pending',
+        };
+        $payment['sourceLabel'] = 'Staff record';
+        $records[(int) $payment['transactionID']][] = $payment;
+    }
+
+    foreach ($records as &$transactionRecords) {
+        usort(
+            $transactionRecords,
+            static fn(array $left, array $right): int => strcmp(
+                (string) $right['submittedAt'],
+                (string) $left['submittedAt']
+            ) ?: ((int) $right['paymentID'] <=> (int) $left['paymentID'])
+        );
+    }
+    unset($transactionRecords);
+
+    return $records;
+}
+
 function assert_staff_transaction_access(mysqli $conn, array $transaction, int $actorId): void
 {
     $actorStmt = $conn->prepare('SELECT role, accountStatus FROM users WHERE userID = ? LIMIT 1');
@@ -359,7 +415,7 @@ function assert_staff_transaction_access(mysqli $conn, array $transaction, int $
         return;
     }
     if (!in_array($role, ['agent', 'sales agent'], true)) {
-        throw new InvalidArgumentException('Only an administrator or assigned sales agent can manage this transaction.');
+        throw new InvalidArgumentException('Only an Admin or the assigned Sales Agent can manage this transaction.');
     }
 
     $appointmentId = (int) ($transaction['appointmentID'] ?? 0);
@@ -483,16 +539,16 @@ function advance_property_transaction(
             $assignedAgentStmt->bind_param('i', $appointmentId);
             $assignedAgentStmt->execute();
             if ($appointmentId <= 0 || !$assignedAgentStmt->get_result()->fetch_assoc()) {
-                throw new InvalidArgumentException('Assign an active sales agent to the pending viewing before confirming it.');
+                throw new InvalidArgumentException('Assign an active Sales Agent to the pending viewing request before approving it.');
             }
         }
 
         $defaultNotes = [
-            'viewing_confirmed' => 'Sales team confirmed the requested property viewing schedule.',
-            'viewing_completed' => 'Sales team conducted and completed the property site visit with the client.',
-            'payment_in_process' => 'Payment processing initiated: Sales agent is coordinating payment terms and paperwork.',
-            'document_verification' => 'Payment processing completed. Sales agent is verifying property title deeds, clearances, and documents.',
-            'payment_confirmation' => 'Document verification completed. Sales agent is finalizing payment confirmation and receipts.',
+            'viewing_confirmed' => 'Sales Agent team approved the requested property viewing schedule.',
+            'viewing_completed' => 'Sales Agent team completed the property viewing with the Client.',
+            'payment_in_process' => 'Payment processing initiated: Sales Agent is coordinating payment terms and paperwork.',
+            'document_verification' => 'Payment processing completed. Sales Agent is verifying property title deeds, clearances, and documents.',
+            'payment_confirmation' => 'Document verification completed. Sales Agent is finalizing payment confirmation and receipts.',
             'completed' => 'Payment confirmation complete. Transaction finalized and property successfully turned over.',
             'cancelled' => 'Transaction was cancelled.',
         ];
@@ -780,7 +836,7 @@ function record_staff_face_to_face_payment(
 
         if ($isConfirmed) {
             $eventNote = sprintf(
-                'Agent recorded face-to-face payment and paperwork (Status: confirmed).%s',
+                'Sales Agent recorded face-to-face payment and paperwork (Status: confirmed).%s',
                 $note !== '' ? ' Note: ' . $note : ' All paperwork and payment confirmed.'
             );
         } else {
@@ -921,7 +977,7 @@ function record_staff_transaction_payment(
 
         $formattedAmount = number_format($amount, 2);
         $eventNote = sprintf(
-            'Agent recorded face-to-face payment of PHP %s via %s (Status: %s).%s',
+            'Sales Agent recorded face-to-face payment of PHP %s via %s (Status: %s).%s',
             $formattedAmount,
             $paymentMethod,
             $paymentStatus,
@@ -937,7 +993,7 @@ function record_staff_transaction_payment(
 
         $notificationSubject = 'Face-to-face payment recorded (' . ucfirst($paymentStatus) . ')';
         $notificationMessage = sprintf(
-            "Hello %s,\n\nYour agent recorded a payment of PHP %s for '%s' via %s during/following your viewing discussion.\nStatus: %s%s\n\nPlease check your client dashboard to view your transaction progress.",
+            "Hello %s,\n\nYour Sales Agent recorded a payment of PHP %s for '%s' via %s during/following your property viewing.\nStatus: %s%s\n\nPlease check your Client dashboard to view your transaction progress.",
             (string) ($transaction['fullname'] ?? 'there'),
             $formattedAmount,
             (string) ($transaction['title'] ?? 'the property'),
@@ -1033,7 +1089,7 @@ function review_property_transaction_payment(
 
         $notificationSubject = 'Property payment ' . $status;
         $notificationMessage = sprintf(
-            "Hello %s,\n\nYour payment of PHP %s for '%s' was %s by the sales team.%s\n\nPlease check your dashboard for the latest update.",
+            "Hello %s,\n\nYour payment of PHP %s for '%s' was %s by the Sales Agent team.%s\n\nPlease check your dashboard for the latest update.",
             (string) $payment['fullname'],
             $amount,
             (string) $payment['title'],
@@ -1081,7 +1137,7 @@ function update_appointment_tracking_status(
         $agentLockStmt->bind_param('i', $actorId);
         $agentLockStmt->execute();
         if (!$agentLockStmt->get_result()->fetch_assoc()) {
-            throw new InvalidArgumentException('An active sales-agent account is required to update viewing assignments.');
+            throw new InvalidArgumentException('An active Sales Agent account is required to update viewing assignments.');
         }
 
         $stmt = $conn->prepare(
@@ -1104,9 +1160,9 @@ function update_appointment_tracking_status(
         $currentStage = (string) $row['currentStage'];
         $transactionId = (int) $row['transactionID'];
         $assignedAgentId = !empty($row['agentID']) ? (int) $row['agentID'] : null;
-        $assignedAgentName = (string) ($row['agentName'] ?? 'another agent');
+        $assignedAgentName = (string) ($row['agentName'] ?? 'another Sales Agent');
 
-        // Check if viewing was already taken by another agent
+        // Check if viewing was already taken by another Sales Agent
         if ($assignedAgentId !== null && $assignedAgentId !== $actorId) {
             throw new InvalidArgumentException("This viewing request was already taken by {$assignedAgentName}.");
         }
@@ -1116,7 +1172,7 @@ function update_appointment_tracking_status(
             return;
         }
         if ($newStatus === 'Pending' && $currentStatus !== 'Pending') {
-            throw new InvalidArgumentException('A confirmed or cancelled viewing request cannot be changed back to pending.');
+            throw new InvalidArgumentException('An approved or cancelled viewing request cannot be changed back to pending.');
         }
 
         if ($newStatus === 'Approved') {
@@ -1124,7 +1180,7 @@ function update_appointment_tracking_status(
                 throw new InvalidArgumentException('The transaction has already advanced beyond the viewing confirmation step.');
             }
             $newStage = 'viewing_confirmed';
-            $note = 'Sales team confirmed the requested property viewing.';
+            $note = 'Sales Agent team approved the requested property viewing.';
         } elseif ($newStatus === 'Cancelled') {
             if (!in_array('cancelled', property_transaction_next_stages($currentStage), true)) {
                 throw new InvalidArgumentException('This transaction is already closed and cannot be cancelled.');

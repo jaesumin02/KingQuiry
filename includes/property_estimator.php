@@ -149,11 +149,23 @@ function fallback_weighted_median_estimate(array $comparables, float $area): arr
     ];
 }
 
-function estimate_property_value(mysqli $conn, float $area, string $propertyType, int $locationId): array
+function estimate_property_value(
+    mysqli $conn,
+    float $area,
+    string $propertyType,
+    int $locationId,
+    ?int $excludePropertyId = null
+): array
 {
     $allowedTypes = property_type_values();
 
-    if ($area <= 0 || $area > 1000000 || !in_array($propertyType, $allowedTypes, true) || $locationId <= 0) {
+    if (
+        $area <= 0
+        || $area > 1000000
+        || !in_array($propertyType, $allowedTypes, true)
+        || $locationId <= 0
+        || ($excludePropertyId !== null && $excludePropertyId <= 0)
+    ) {
         throw new InvalidArgumentException('Enter a valid land area, category, and location.');
     }
 
@@ -165,12 +177,20 @@ function estimate_property_value(mysqli $conn, float $area, string $propertyType
         throw new InvalidArgumentException('Choose a valid location from the list.');
     }
 
-    $result = $conn->query(
+    $comparableSql =
         "SELECT p.price, p.areaSqm, p.propertyType, p.locationID
          FROM properties p
          WHERE p.price > 0 AND p.areaSqm > 0 AND p.status = 'Available'
-           AND LEFT(p.title, 8) <> '[SAMPLE]'"
-    );
+           AND p.isDeleted = 0
+           AND LEFT(p.title, 8) <> '[SAMPLE]'";
+    if ($excludePropertyId === null) {
+        $result = $conn->query($comparableSql);
+    } else {
+        $comparableStmt = $conn->prepare($comparableSql . ' AND p.propertyID <> ?');
+        $comparableStmt->bind_param('i', $excludePropertyId);
+        $comparableStmt->execute();
+        $result = $comparableStmt->get_result();
+    }
 
     $comparables = [];
     $exactMatchCount = 0;

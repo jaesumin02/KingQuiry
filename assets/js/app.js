@@ -26,6 +26,25 @@ document.addEventListener('click', (event) => {
 }, true);
 
 document.addEventListener('DOMContentLoaded', () => {
+    const resultTargetIds = new Set([
+        'property-results',
+        'client-results',
+        'sales-results',
+        'payment-results',
+        'monthly-sales-chart'
+    ]);
+    const resultTargetId = window.location.hash.slice(1);
+    if (window.location.search !== '' && resultTargetIds.has(resultTargetId)) {
+        window.addEventListener('load', () => {
+            const resultTarget = document.getElementById(resultTargetId);
+            if (resultTarget) {
+                window.requestAnimationFrame(() => {
+                    resultTarget.scrollIntoView({ block: 'start', behavior: 'auto' });
+                });
+            }
+        }, { once: true });
+    }
+
     document.querySelectorAll('[data-portal-menu-toggle]').forEach((toggle) => {
         const sidebar = toggle.closest('.kq-admin-sidebar, .kq-portal-sidebar');
         const navigationId = toggle.getAttribute('aria-controls');
@@ -55,7 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     target.setAttribute('aria-current', 'location');
                 }
             }
-            if (target) {
+            if (target instanceof HTMLAnchorElement) {
                 setMenuOpen(false);
             }
         });

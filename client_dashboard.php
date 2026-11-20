@@ -3,7 +3,6 @@ include 'config/db.php';
 require_once 'includes/auth.php';
 require_once 'includes/location_directory.php';
 require_once 'includes/transaction_tracking.php';
-require_once 'includes/agent_feedback.php';
 require_once 'includes/rate_limit.php';
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -73,7 +72,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_client_payment
     }
 }
 
-ensure_agent_reviews_table($conn);
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_agent_review'])) {
+    http_response_code(410);
+    header('Content-Type: application/json');
+    echo json_encode(['success' => false, 'message' => 'Client reviews are no longer available.']);
+    exit();
+}
 
 include 'includes/header.php';
 ?>
@@ -434,7 +438,6 @@ $trackingStmt = $conn->prepare(
     "SELECT t.transactionID, t.propertyID, t.currentStage, t.salePrice, t.paymentMethod, t.createdAt, t.updatedAt,
             p.title, a.appointmentDate, a.appointmentTime,
             l.municipalityName, l.provinceName, p.location,
-            ar.reviewID, ar.rating AS clientRating,
             COALESCE(
                 apptAgent.fullname,
                 inqAgent.fullname,
@@ -445,7 +448,7 @@ $trackingStmt = $conn->prepare(
                     WHERE e.transactionID = t.transactionID AND e.changedBy IS NOT NULL
                     ORDER BY e.createdAt DESC, e.eventID DESC LIMIT 1
                 ),
-                'Kings Land Sales Representative'
+                'Kings Land Sales Agent'
             ) AS agentName,
             COALESCE(
                 apptAgent.phone,
@@ -484,25 +487,32 @@ $trackingStmt->bind_param('i', $clientID);
 $trackingStmt->execute();
 $trackingRows = $trackingStmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
-$totalTrackedProperties = count($trackingRows);
-$clientActivePipeline = 0;
-$clientCompletedSales = 0;
-foreach ($trackingRows as $tRow) {
-    $cStage = (string) ($tRow['currentStage'] ?? '');
-    if ($cStage === 'completed') {
-        $clientCompletedSales++;
-    } elseif ($cStage !== 'cancelled') {
-        $clientActivePipeline++;
-    }
-}
-$totalClientAppointments = count($appointmentRows);
-$pendingClientAppointments = 0;
-foreach ($appointmentRows as $aRow) {
-    if (($aRow['status'] ?? '') === 'Pending') {
-        $pendingClientAppointments++;
-    }
-}
-$totalClientInquiries = count($inquiryRows);
+$clientDashboardCountsStmt = $conn->prepare(
+    "SELECT
+        (SELECT COUNT(*) FROM property_transactions WHERE clientID = ?) AS trackedRequests,
+        (SELECT COUNT(*) FROM property_transactions WHERE clientID = ? AND currentStage NOT IN ('completed', 'cancelled')) AS activePipeline,
+        (SELECT COUNT(*) FROM property_transactions WHERE clientID = ? AND currentStage = 'completed') AS completedSales,
+        (SELECT COUNT(*) FROM appointments WHERE clientID = ?) AS viewingRequests,
+        (SELECT COUNT(*) FROM appointments WHERE clientID = ? AND status = 'Pending') AS pendingViewingRequests,
+        (SELECT COUNT(*) FROM feedbackinquiries WHERE clientID = ?) AS inquiries"
+);
+$clientDashboardCountsStmt->bind_param(
+    'iiiiii',
+    $clientID,
+    $clientID,
+    $clientID,
+    $clientID,
+    $clientID,
+    $clientID
+);
+$clientDashboardCountsStmt->execute();
+$clientDashboardCounts = $clientDashboardCountsStmt->get_result()->fetch_assoc();
+$totalTrackedRequests = (int) $clientDashboardCounts['trackedRequests'];
+$clientActivePipeline = (int) $clientDashboardCounts['activePipeline'];
+$clientCompletedSales = (int) $clientDashboardCounts['completedSales'];
+$totalClientAppointments = (int) $clientDashboardCounts['viewingRequests'];
+$pendingClientAppointments = (int) $clientDashboardCounts['pendingViewingRequests'];
+$totalClientInquiries = (int) $clientDashboardCounts['inquiries'];
 $trackingEvents = [];
 $paymentRowsByTransaction = [];
 if ($trackingRows !== []) {
@@ -519,95 +529,7 @@ if ($trackingRows !== []) {
     while ($event = $events->fetch_assoc()) {
         $trackingEvents[(int) $event['transactionID']][] = $event;
     }
-    $payments = $conn->query(
-        "SELECT paymentID, transactionID, amount, paymentMethod, referenceNumber, status,
-                submittedAt, reviewedAt, reviewNote
-         FROM property_transaction_payments
-         WHERE transactionID IN ($transactionIdList)
-         ORDER BY submittedAt DESC, paymentID DESC"
-    );
-    while ($payment = $payments->fetch_assoc()) {
-        $paymentRowsByTransaction[(int) $payment['transactionID']][] = $payment;
-    }
-}
-
-$reviewMessage = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_agent_review'])) {
-    $isAjax = !empty($_POST['is_ajax']);
-    if (!has_valid_csrf_token()) {
-        $reviewMessage = 'Your session expired. Refresh the page and try again.';
-        if ($isAjax) {
-            header('Content-Type: application/json');
-            echo json_encode(['success' => false, 'message' => $reviewMessage]);
-            exit();
-        }
-    } else {
-        $transactionId = filter_var($_POST['transactionID'] ?? null, FILTER_VALIDATE_INT);
-        $rating = filter_var($_POST['rating'] ?? null, FILTER_VALIDATE_INT);
-        $comment = is_string($_POST['comment'] ?? null) ? trim($_POST['comment']) : '';
-        $comment = mb_substr($comment, 0, 1000, 'UTF-8');
-
-        if ($transactionId === false || $transactionId <= 0 || $rating === false || $rating < 1 || $rating > 5) {
-            $reviewMessage = 'Choose a valid rating before submitting feedback.';
-            if ($isAjax) {
-                header('Content-Type: application/json');
-                echo json_encode(['success' => false, 'message' => $reviewMessage]);
-                exit();
-            }
-        } else {
-            $reviewCheck = $conn->prepare(
-                "SELECT transactionID FROM property_transactions WHERE transactionID = ? AND clientID = ? AND currentStage = 'completed'"
-            );
-            $reviewCheck->bind_param('ii', $transactionId, $clientID);
-            $reviewCheck->execute();
-            $reviewableTransaction = $reviewCheck->get_result()->fetch_assoc();
-
-            if (!$reviewableTransaction) {
-                $reviewMessage = 'This completed transaction is not eligible for a review.';
-                if ($isAjax) {
-                    header('Content-Type: application/json');
-                    echo json_encode(['success' => false, 'message' => $reviewMessage]);
-                    exit();
-                }
-            } else {
-                $latestAgent = $conn->prepare(
-                    "SELECT changedBy FROM property_transaction_events WHERE transactionID = ? AND changedBy IS NOT NULL ORDER BY createdAt DESC, eventID DESC LIMIT 1"
-                );
-                $latestAgent->bind_param('i', $transactionId);
-                $latestAgent->execute();
-                $latestAgentResult = $latestAgent->get_result()->fetch_assoc();
-                $agentId = $latestAgentResult !== null ? (int) $latestAgentResult['changedBy'] : null;
-
-                $insertReview = $conn->prepare(
-                    "INSERT INTO agent_reviews (transactionID, clientID, agentID, rating, comment)
-                     VALUES (?, ?, ?, ?, ?)"
-                );
-                $insertReview->bind_param('iiiss', $transactionId, $clientID, $agentId, $rating, $comment);
-                try {
-                    $insertReview->execute();
-                    if ($isAjax) {
-                        header('Content-Type: application/json');
-                        echo json_encode(['success' => true, 'message' => 'Thanks for the feedback', 'rating' => $rating]);
-                        exit();
-                    }
-                    header('Location: client_dashboard.php?review_submitted=1#client-reviews');
-                    exit();
-                } catch (mysqli_sql_exception $exception) {
-                    if ($exception->getCode() === 1062) {
-                        $reviewMessage = 'You have already provided feedback for this completed transaction.';
-                    } else {
-                        error_log('KingQuiry agent review insert failed: ' . $exception->getMessage());
-                        $reviewMessage = 'The review could not be saved. Please try again.';
-                    }
-                    if ($isAjax) {
-                        header('Content-Type: application/json');
-                        echo json_encode(['success' => false, 'message' => $reviewMessage]);
-                        exit();
-                    }
-                }
-            }
-        }
-    }
+    $paymentRowsByTransaction = get_transaction_payment_records($conn, $transactionIds);
 }
 
 $paymentSubmissionSuccess = isset($_SESSION['flash_payment_success'])
@@ -615,28 +537,6 @@ $paymentSubmissionSuccess = isset($_SESSION['flash_payment_success'])
     : '';
 unset($_SESSION['flash_payment_success']);
 
-$completedReviewRows = $conn->query(
-    "SELECT t.transactionID, t.updatedAt, p.title, p.location, l.municipalityName, l.provinceName,
-            ar.reviewID, ar.rating, ar.comment, ar.createdAt AS reviewDate,
-            COALESCE(agent.fullname, (
-                SELECT u2.fullname FROM property_transaction_events e
-                JOIN users u2 ON u2.userID = e.changedBy
-                WHERE e.transactionID = t.transactionID AND e.changedBy IS NOT NULL
-                ORDER BY e.createdAt DESC, e.eventID DESC LIMIT 1
-            ), 'Assigned Agent') AS agentName,
-            COALESCE(ar.agentID, (
-                SELECT e.changedBy FROM property_transaction_events e
-                WHERE e.transactionID = t.transactionID AND e.changedBy IS NOT NULL
-                ORDER BY e.createdAt DESC, e.eventID DESC LIMIT 1
-            )) AS targetAgentID
-     FROM property_transactions t
-     JOIN properties p ON p.propertyID = t.propertyID
-     LEFT JOIN property_locations l ON l.locationID = p.locationID
-     LEFT JOIN agent_reviews ar ON ar.transactionID = t.transactionID
-     LEFT JOIN users agent ON agent.userID = ar.agentID
-     WHERE t.clientID = $clientID AND t.currentStage = 'completed'
-     ORDER BY t.updatedAt DESC"
-);
 $stageLabels = property_transaction_stages();
 $progressStages = [
     'inquiry_received',
@@ -664,7 +564,6 @@ $progressStages = [
                 <a href="#notifications">Notifications</a>
                 <a href="#transaction-tracking">Transaction tracking</a>
                 <a href="#viewing-requests">Viewing requests</a>
-                <a href="#client-reviews">Reviews</a>
                 <a href="#client-inquiries">Inquiries</a>
             </nav>
         </aside>
@@ -678,26 +577,20 @@ $progressStages = [
         </div>
 </header>
 
-<?php if (!empty($reviewMessage)): ?>
-    <div class="alert alert-danger" role="alert"><?= htmlspecialchars($reviewMessage, ENT_QUOTES, 'UTF-8') ?></div>
-<?php endif; ?>
 <?php if ($paymentSubmissionError !== ''): ?>
     <div class="alert alert-danger" role="alert"><?= htmlspecialchars($paymentSubmissionError, ENT_QUOTES, 'UTF-8') ?></div>
 <?php endif; ?>
 <?php if ($paymentSubmissionSuccess !== ''): ?>
     <div class="alert alert-success" role="status"><?= htmlspecialchars($paymentSubmissionSuccess, ENT_QUOTES, 'UTF-8') ?></div>
 <?php endif; ?>
-<?php if (isset($_GET['review_submitted'])): ?>
-    <div class="alert alert-success" role="status">Thank you for your feedback. Your agent rating has been recorded.</div>
-<?php endif; ?>
 
 <div class="row g-3 mb-4">
     <div class="col-6 col-lg-4 col-xl-2">
         <div class="card h-100 border-0 shadow-sm">
             <div class="card-body p-3">
-                <div class="page-eyebrow" style="font-size: 0.68rem;">Properties</div>
-                <h3 class="h3 mb-0"><?= (int) $totalTrackedProperties ?></h3>
-                <small class="text-muted" style="font-size: 0.72rem;">Tracked requests</small>
+                <div class="page-eyebrow" style="font-size: 0.68rem;">Tracked requests</div>
+                <h3 class="h3 mb-0"><?= number_format($totalTrackedRequests) ?></h3>
+                <small class="text-muted" style="font-size: 0.72rem;">Your transaction records</small>
             </div>
         </div>
     </div>
@@ -706,25 +599,25 @@ $progressStages = [
             <div class="card-body p-3">
                 <div class="page-eyebrow text-primary" style="font-size: 0.68rem;">Active Pipeline</div>
                 <h3 class="h3 mb-0 text-primary"><?= (int) $clientActivePipeline ?></h3>
-                <small class="text-muted" style="font-size: 0.72rem;"><a href="#transaction-tracking" class="text-decoration-none">In progress &rarr;</a></small>
+                <small class="text-muted" style="font-size: 0.72rem;"><a href="#transaction-tracking" class="text-decoration-none">Your in-progress transactions &rarr;</a></small>
             </div>
         </div>
     </div>
     <div class="col-6 col-lg-4 col-xl-2">
         <div class="card h-100 border-0 shadow-sm">
             <div class="card-body p-3">
-                <div class="page-eyebrow text-info" style="font-size: 0.68rem;">Site Viewings</div>
+                <div class="page-eyebrow text-info" style="font-size: 0.68rem;">Viewing requests</div>
                 <h3 class="h3 mb-0 text-info"><?= (int) $totalClientAppointments ?></h3>
-                <small class="text-muted" style="font-size: 0.72rem;"><a href="#viewing-requests" class="text-decoration-none">Scheduled visits</a></small>
+                <small class="text-muted" style="font-size: 0.72rem;"><a href="#viewing-requests" class="text-decoration-none">Your viewing requests</a></small>
             </div>
         </div>
     </div>
     <div class="col-6 col-lg-4 col-xl-2">
         <div class="card h-100 border-0 shadow-sm">
             <div class="card-body p-3">
-                <div class="page-eyebrow text-warning" style="font-size: 0.68rem;">Pending Visits</div>
+                <div class="page-eyebrow text-warning" style="font-size: 0.68rem;">Pending viewing requests</div>
                 <h3 class="h3 mb-0 text-warning"><?= (int) $pendingClientAppointments ?></h3>
-                <small class="text-muted" style="font-size: 0.72rem;">Awaiting confirm</small>
+                <small class="text-muted" style="font-size: 0.72rem;">Awaiting confirmation</small>
             </div>
         </div>
     </div>
@@ -740,9 +633,9 @@ $progressStages = [
     <div class="col-6 col-lg-4 col-xl-2">
         <div class="card h-100 border-0 shadow-sm">
             <div class="card-body p-3">
-                <div class="page-eyebrow text-success" style="font-size: 0.68rem;">Completed</div>
+                <div class="page-eyebrow text-success" style="font-size: 0.68rem;">Completed sales</div>
                 <h3 class="h3 mb-0 text-success"><?= (int) $clientCompletedSales ?></h3>
-                <small class="text-muted" style="font-size: 0.72rem;">Closed &amp; owned</small>
+                <small class="text-muted" style="font-size: 0.72rem;">Your completed transactions</small>
             </div>
         </div>
     </div>
@@ -756,7 +649,7 @@ $progressStages = [
         </div>
         <span class="kq-badge-soft">Interactive Property Tracker</span>
     </div>
-    <div class="alert alert-info small mb-4" role="note">Click any property below to open its tracking window and view its <strong>Transaction Pipeline</strong>, <strong>Overall Progress</strong>, <strong>Payments &amp; Documents</strong>, and <strong>Transaction Updates</strong>.</div>
+    <div class="alert alert-info small mb-4" role="note">Click any property below to view its current status, overall progress, payment records, and transaction updates.</div>
     <?php if ($trackingRows !== []): ?>
         <div class="row g-3">
             <?php foreach ($trackingRows as $tracking):
@@ -810,44 +703,6 @@ $progressStages = [
                          aria-label="View tracking details for <?= htmlspecialchars($tracking['title'], ENT_QUOTES, 'UTF-8') ?>"
                          style="cursor: pointer; border-radius: 0.85rem; transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;">
                         
-                        <?php if ($stage === 'completed' && empty($tracking['reviewID'])): ?>
-                            <!-- TOP AGENT RATING BANNER -->
-                            <div class="kq-top-rating-banner p-2 px-3 rounded-3 mb-3 bg-warning-subtle border border-warning d-flex align-items-center justify-content-between flex-wrap gap-2"
-                                 id="topRatingBanner<?= $transactionId ?>"
-                                 onclick="event.stopPropagation();"
-                                 data-txid="<?= $transactionId ?>"
-                                 role="region"
-                                 aria-label="Rate your sales agent">
-                                <div class="d-flex align-items-center gap-2 flex-wrap">
-                                    <span class="fs-5">⭐</span>
-                                    <div>
-                                        <div class="small fw-bold text-dark">
-                                            Rate your sales agent (<?= htmlspecialchars($tracking['agentName'] ?? 'Assigned Agent', ENT_QUOTES, 'UTF-8') ?>):
-                                        </div>
-                                        <div class="small text-muted" style="font-size: 0.76rem;">Property purchase completed! Click 1–5 stars to rate:</div>
-                                    </div>
-                                </div>
-                                <div class="d-flex align-items-center gap-2">
-                                    <div class="kq-top-star-picker d-inline-flex gap-1"
-                                         data-txid="<?= $transactionId ?>"
-                                         data-agent="<?= htmlspecialchars($tracking['agentName'] ?? 'Assigned Agent', ENT_QUOTES, 'UTF-8') ?>"
-                                         data-csrf="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
-                                        <?php for ($s = 1; $s <= 5; $s++): ?>
-                                            <button type="button"
-                                                    class="btn p-0 border-0 bg-transparent kq-top-star-btn"
-                                                    data-rating="<?= $s ?>"
-                                                    data-txid="<?= $transactionId ?>"
-                                                    aria-label="Rate <?= $s ?> out of 5 stars"
-                                                    title="<?= $s ?> star<?= $s > 1 ? 's' : '' ?>">★</button>
-                                        <?php endfor; ?>
-                                    </div>
-                                    <span class="badge text-bg-light border text-muted small py-1 px-2 d-none d-sm-inline kq-top-rating-label" id="topRatingLabel<?= $transactionId ?>">
-                                        Click a star
-                                    </span>
-                                </div>
-                            </div>
-                        <?php endif; ?>
-
                         <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
                             <div class="d-flex align-items-start gap-3">
                                 <div class="rounded-3 p-3 d-flex align-items-center justify-content-center bg-primary-subtle text-primary flex-shrink-0" style="width: 52px; height: 52px;">
@@ -865,9 +720,9 @@ $progressStages = [
                                     <div class="small text-muted d-flex align-items-center gap-2 flex-wrap">
                                         <span><i class="bi bi-geo-alt me-1"></i><?= htmlspecialchars($location, ENT_QUOTES, 'UTF-8') ?></span>
                                         <?php if (!empty($tracking['appointmentDate'])): ?>
-                                            <span>· <i class="bi bi-calendar-event me-1"></i>Viewing: <?= htmlspecialchars($tracking['appointmentDate'] . ' at ' . substr($tracking['appointmentTime'], 0, 5), ENT_QUOTES, 'UTF-8') ?></span>
+                                            <span>· <i class="bi bi-calendar-event me-1"></i>Viewing schedule: <?= htmlspecialchars($tracking['appointmentDate'] . ' at ' . substr($tracking['appointmentTime'], 0, 5), ENT_QUOTES, 'UTF-8') ?></span>
                                         <?php endif; ?>
-                                        <span>· <i class="bi bi-person-badge me-1"></i>Agent: <strong><?= htmlspecialchars($tracking['agentName'], ENT_QUOTES, 'UTF-8') ?></strong></span>
+                                        <span>· <i class="bi bi-person-badge me-1"></i>Sales Agent: <strong><?= htmlspecialchars($tracking['agentName'], ENT_QUOTES, 'UTF-8') ?></strong></span>
                                     </div>
                                     <?php if ($stage === 'completed' && $tracking['salePrice'] !== null): ?>
                                         <div class="small fw-semibold text-success mt-1">
@@ -937,35 +792,26 @@ $progressStages = [
                                                 </div>
                                             </div>
                                         </div>
-                                        <?php if (empty($tracking['reviewID'])): ?>
-                                            <a href="#client-reviews" data-bs-dismiss="modal" class="btn btn-sm btn-warning text-dark fw-bold d-inline-flex align-items-center gap-1 shadow-sm modal-rate-btn-<?= $transactionId ?>">
-                                                <span>⭐</span> Rate sales agent
-                                            </a>
-                                        <?php else: ?>
-                                            <span class="badge bg-success text-white py-2 px-3 small modal-rate-btn-<?= $transactionId ?>">
-                                                ★ <?= (int) $tracking['clientRating'] ?>/5 Rated
-                                            </span>
-                                        <?php endif; ?>
                                     </div>
                                 <?php elseif (in_array($stage, ['viewing_completed', 'payment_in_process', 'document_verification', 'payment_confirmation'], true)): ?>
                                     <div class="alert alert-info small py-2 mb-3 d-flex align-items-start gap-2" role="status">
                                         <i class="bi bi-shield-check fs-5 text-primary flex-shrink-0 mt-1"></i>
                                         <div>
-                                            <strong>Viewing completed — Agent processing in progress:</strong>
+                                            <strong>Viewing completed — Sales Agent processing in progress:</strong>
                                             <?php if ($stage === 'payment_in_process'): ?>
                                                 <?php if ($isSpotCash): ?>
-                                                    Your site visit is complete. Your sales agent is processing your Spot Cash payment. Document verification is skipped for Spot Cash transactions, and your transaction advances directly to Payment Confirmation and deed preparation.
+                                                    Your property viewing is complete. Your Sales Agent is processing your Spot Cash payment. Document verification is skipped for Spot Cash transactions, and your transaction advances directly to Payment Confirmation and deed preparation.
                                                 <?php else: ?>
-                                                    Your site visit is complete. Your sales agent is actively inspecting and recording payment and paperwork details.
+                                                    Your property viewing is complete. Your Sales Agent is actively inspecting and recording payment and paperwork details.
                                                 <?php endif; ?>
                                             <?php elseif ($stage === 'document_verification'): ?>
-                                                Your sales agent is verifying required property legal documents, certificates, and clearance papers.
+                                                Your Sales Agent is verifying required property legal documents, certificates, and clearance papers.
                                             <?php elseif ($stage === 'payment_confirmation'): ?>
-                                                Paperwork and payments have been verified. Your sales agent is finalizing transaction turnover.
+                                                Paperwork and payments have been verified. Your Sales Agent is finalizing transaction turnover.
                                             <?php else: ?>
-                                                Your property viewing has concluded. Your sales agent is initiating the paperwork and payment processing.
+                                                Your property viewing has concluded. Your Sales Agent is initiating the paperwork and payment processing.
                                             <?php endif; ?>
-                                            <div class="mt-1 text-dark fw-semibold">No action needed from you. The agent will handle all remaining steps until the transaction is successfully completed.</div>
+                                            <div class="mt-1 text-dark fw-semibold">No action needed from you. Your Sales Agent will handle all remaining steps until the transaction is successfully completed.</div>
                                         </div>
                                     </div>
 
@@ -1012,7 +858,7 @@ $progressStages = [
                                                 👨‍💼
                                             </div>
                                             <div>
-                                                <span class="badge bg-primary text-white mb-1" style="font-size: 0.68rem;">Assigned Sales Representative</span>
+                                                <span class="badge bg-primary text-white mb-1" style="font-size: 0.68rem;">Assigned Sales Agent</span>
                                                 <h6 class="fw-bold mb-0 text-dark"><?= htmlspecialchars($tracking['agentName'], ENT_QUOTES, 'UTF-8') ?></h6>
                                                 <div class="small text-muted" style="font-size: 0.78rem;">
                                                     <span><i class="bi bi-envelope me-1"></i><?= htmlspecialchars($tracking['agentEmail'], ENT_QUOTES, 'UTF-8') ?></span>
@@ -1031,40 +877,7 @@ $progressStages = [
                                     </div>
                                 </div>
 
-                                <!-- 1. Transaction Pipeline Stepper -->
                                 <?php if ($stage !== 'cancelled'): ?>
-                                    <div class="border rounded-3 p-3 bg-light mb-3">
-                                        <div class="d-flex justify-content-between align-items-center mb-2">
-                                            <span class="small fw-bold text-dark"><i class="bi bi-diagram-3 me-1"></i> Transaction Pipeline</span>
-                                            <span class="badge text-bg-light border text-dark small fw-semibold">Stage <?= $stageIndex !== false ? ($stageIndex + 1) : 0 ?> of <?= count($txProgressStages) ?></span>
-                                        </div>
-                                        <div class="kq-stage-stepper d-flex flex-wrap gap-2">
-                                            <?php foreach ($txProgressStages as $idx => $stgKey):
-                                                $isPassed = ($stageIndex !== false && $idx < $stageIndex) || $stage === 'completed';
-                                                $isCurrent = ($stageIndex !== false && $idx === $stageIndex) && $stage !== 'completed';
-                                                $stgName = $stageLabels[$stgKey] ?? $stgKey;
-                                            ?>
-                                                <div class="kq-step-item d-flex align-items-center gap-1 px-2 py-1 rounded small <?= $isCurrent ? 'bg-primary text-white fw-bold shadow-sm' : ($isPassed ? 'bg-success text-white' : 'bg-white border text-dark') ?>" style="font-size: 0.78rem;">
-                                                    <?php if ($isPassed): ?>
-                                                        <i class="bi bi-check-circle-fill"></i>
-                                                    <?php elseif ($isCurrent): ?>
-                                                        <i class="bi bi-arrow-right-circle-fill"></i>
-                                                    <?php else: ?>
-                                                        <i class="bi bi-circle text-muted"></i>
-                                                    <?php endif; ?>
-                                                    <span><?= ($idx + 1) ?>. <?= htmlspecialchars($stgName, ENT_QUOTES, 'UTF-8') ?></span>
-                                                </div>
-                                            <?php endforeach; ?>
-                                        </div>
-                                        <?php if ($stageIndex !== false && $stageIndex >= 4 && $stage !== 'completed'): ?>
-                                            <div class="small text-dark mt-2 pt-2 border-top">
-                                                <i class="bi bi-info-circle text-primary me-1"></i>
-                                                <strong>Agent at work:</strong> Property viewing is complete. Your sales agent is handling all paperwork, verification, and payment confirmation. Please wait for the final completion update.
-                                            </div>
-                                        <?php endif; ?>
-                                    </div>
-
-                                    <!-- 2. Overall Progress -->
                                     <div class="border rounded-3 p-3 bg-white mb-3 shadow-none">
                                         <div class="d-flex justify-content-between align-items-center small mb-2">
                                             <span class="fw-bold text-dark"><i class="bi bi-speedometer2 me-1"></i> Overall Progress</span>
@@ -1096,6 +909,7 @@ $progressStages = [
                                                         <div>
                                                             <strong class="text-dark fs-6">₱<?= number_format((float) $payment['amount'], 2) ?></strong>
                                                             <span class="text-dark fw-medium">via <?= htmlspecialchars($payment['paymentMethod'], ENT_QUOTES, 'UTF-8') ?></span>
+                                                            <div class="text-muted small"><?= htmlspecialchars($payment['sourceLabel'], ENT_QUOTES, 'UTF-8') ?></div>
                                                             <?php if (!empty($payment['referenceNumber'])): ?>
                                                                 <div class="text-muted small mt-1">Reference / OR: <code><?= htmlspecialchars($payment['referenceNumber'], ENT_QUOTES, 'UTF-8') ?></code></div>
                                                             <?php endif; ?>
@@ -1187,11 +1001,6 @@ $progressStages = [
                                 </div>
                             </div>
 
-                            <div class="modal-footer bg-light p-2 justify-content-between">
-                                <a href="property_summary_pdf.php?property_id=<?= (int)$tracking['propertyID'] ?>" target="_blank" class="btn btn-sm btn-outline-primary">
-                                    <i class="bi bi-file-earmark-pdf me-1"></i> Download summary PDF
-                                </a>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -1200,7 +1009,7 @@ $progressStages = [
     <?php else: ?>
         <div class="rounded-3 border bg-light p-3 p-lg-4">
             <h3 class="h6 fw-bold mb-2">No property requests to track yet</h3>
-            <p class="text-muted mb-3">Send an inquiry or request a property viewing to create a tracking reference. The sales team will add dated updates here as your request moves forward.</p>
+            <p class="text-muted mb-3">Send an inquiry or request a property viewing to create a tracking reference. The Sales Agent team will add dated updates here as your request moves forward.</p>
             <a href="index.php" class="btn btn-primary">Browse properties</a>
         </div>
     <?php endif; ?>
@@ -1209,7 +1018,7 @@ $progressStages = [
 <section class="card p-3 p-lg-4 mb-4" id="viewing-requests">
     <div class="kq-panel-header mb-3">
         <div>
-            <div class="page-eyebrow">Appointments</div>
+            <div class="page-eyebrow">Viewing requests</div>
             <h2 class="h4 fw-bold mb-0">Viewing requests</h2>
         </div>
     </div>
@@ -1225,99 +1034,13 @@ $progressStages = [
                     <span class="badge rounded-pill <?= $status === 'Approved' ? 'text-bg-success' : ($status === 'Cancelled' ? 'text-bg-danger' : 'text-bg-warning') ?>"><?= htmlspecialchars($status, ENT_QUOTES, 'UTF-8') ?></span>
                 </div>
                 <div class="row g-3 small">
-                    <div class="col-sm-6"><span class="text-muted">Requested viewing</span><div class="fw-semibold"><?= htmlspecialchars($appt['appointmentDate'], ENT_QUOTES, 'UTF-8') ?> at <?= htmlspecialchars(substr($appt['appointmentTime'], 0, 5), ENT_QUOTES, 'UTF-8') ?></div></div>
+                    <div class="col-sm-6"><span class="text-muted">Viewing date and time</span><div class="fw-semibold"><?= htmlspecialchars($appt['appointmentDate'], ENT_QUOTES, 'UTF-8') ?> at <?= htmlspecialchars(substr($appt['appointmentTime'], 0, 5), ENT_QUOTES, 'UTF-8') ?></div></div>
                     <div class="col-sm-6"><span class="text-muted">Reference number</span><div class="fw-semibold">#KQ-<?= 1000 + (int) $appt['appointmentID'] ?></div></div>
-                </div>
-                <div class="mt-3">
-                    <a href="property_summary_pdf.php?property_id=<?= (int) $appt['propertyID'] ?>&appointment_id=<?= (int) $appt['appointmentID'] ?>" target="_blank" class="btn btn-outline-primary btn-sm">Download summary PDF</a>
                 </div>
             </article>
         <?php endforeach; ?>
     <?php else: ?>
         <div class="text-muted">You do not have any viewing requests yet. <a href="index.php">Browse available properties</a>.</div>
-    <?php endif; ?>
-</section>
-
-<section class="card p-3 p-lg-4 mb-4" id="client-reviews">
-    <div class="kq-panel-header mb-3">
-        <div>
-            <div class="page-eyebrow">Experience review</div>
-            <h2 class="h4 fw-bold mb-0">Rate your sales experience</h2>
-        </div>
-    </div>
-    <?php if ($completedReviewRows && $completedReviewRows->num_rows > 0): ?>
-        <div class="row g-3">
-            <?php while ($completedReview = $completedReviewRows->fetch_assoc()): ?>
-                <?php $completedLocation = !empty($completedReview['municipalityName']) ? $completedReview['municipalityName'] . ', ' . $completedReview['provinceName'] : $completedReview['location']; ?>
-                <div class="col-lg-6">
-                    <article class="border rounded-3 p-3 h-100">
-                        <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
-                            <div>
-                                <div class="small text-primary fw-semibold">#KQT-<?= (int) $completedReview['transactionID'] ?></div>
-                                <h3 class="h6 fw-bold mb-1"><?= htmlspecialchars($completedReview['title'], ENT_QUOTES, 'UTF-8') ?></h3>
-                                <div class="small text-muted"><?= htmlspecialchars($completedLocation, ENT_QUOTES, 'UTF-8') ?></div>
-                            </div>
-                            <?php if (!empty($completedReview['reviewID'])): ?>
-                                <span class="badge rounded-pill text-bg-success">Submitted</span>
-                            <?php else: ?>
-                                <span class="badge rounded-pill text-bg-light">Awaiting review</span>
-                            <?php endif; ?>
-                        </div>
-
-                        <div class="mb-2 small">
-                            <span class="text-muted">Assigned Sales Agent:</span>
-                            <strong class="text-dark"><i class="bi bi-person-badge text-primary me-1"></i><?= htmlspecialchars($completedReview['agentName'], ENT_QUOTES, 'UTF-8') ?></strong>
-                        </div>
-
-                        <?php if (!empty($completedReview['reviewID'])): ?>
-                            <div class="mb-2 d-flex align-items-center gap-2">
-                                <div class="fs-5 lh-1" style="color: #f59e0b;" aria-label="Rated <?= (int) $completedReview['rating'] ?> out of 5 stars">
-                                    <?php for ($starIndex = 1; $starIndex <= 5; $starIndex++): ?>
-                                        <?= $starIndex <= (int) $completedReview['rating'] ? '★' : '☆' ?>
-                                    <?php endfor; ?>
-                                </div>
-                                <span class="badge text-bg-warning text-dark fw-bold"><?= (int) $completedReview['rating'] ?> / 5 Stars</span>
-                            </div>
-                            <div class="small text-muted mb-2">Reviewed on <?= htmlspecialchars(date('M j, Y', strtotime((string) $completedReview['reviewDate'])), ENT_QUOTES, 'UTF-8') ?></div>
-                            <?php if (!empty($completedReview['comment'])): ?>
-                                <p class="mb-0 text-break small bg-light p-2 rounded-2"><?= htmlspecialchars($completedReview['comment'], ENT_QUOTES, 'UTF-8') ?></p>
-                            <?php else: ?>
-                                <p class="mb-0 text-muted small">No written comment provided.</p>
-                            <?php endif; ?>
-                        <?php else: ?>
-                            <form method="POST" class="mt-2 review-rating-form" data-txid="<?= (int) $completedReview['transactionID'] ?>" data-confirm="Submit this agent rating and feedback?">
-                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
-                                <input type="hidden" name="transactionID" value="<?= (int) $completedReview['transactionID'] ?>">
-                                
-                                <div class="mb-3">
-                                    <label class="form-label small fw-semibold d-block mb-1">Rate your sales agent (1 to 5 stars) <span class="text-danger">*</span></label>
-                                    <div class="d-flex align-items-center gap-2 flex-wrap">
-                                        <div class="star-rating-container d-inline-flex gap-1" id="star-box-<?= (int) $completedReview['transactionID'] ?>" style="font-size: 1.6rem; cursor: pointer; user-select: none;">
-                                            <?php for ($starIndex = 1; $starIndex <= 5; $starIndex++): ?>
-                                                <span class="star-rating-btn" data-rating="<?= $starIndex ?>" data-txid="<?= (int) $completedReview['transactionID'] ?>" style="color: #cbd5e1; transition: color 0.15s ease;" title="<?= $starIndex ?> star<?= $starIndex > 1 ? 's' : '' ?>">★</span>
-                                            <?php endfor; ?>
-                                        </div>
-                                        <input type="hidden" name="rating" id="rating-val-<?= (int) $completedReview['transactionID'] ?>" value="" required>
-                                        <span class="badge text-bg-light border text-muted small py-1 px-2" id="rating-label-<?= (int) $completedReview['transactionID'] ?>">
-                                            Click a star to rate
-                                        </span>
-                                    </div>
-                                </div>
-                                <div class="mb-3">
-                                    <label class="form-label small fw-semibold" for="agent-review-comment-<?= (int) $completedReview['transactionID'] ?>">Your feedback / comments</label>
-                                    <textarea id="agent-review-comment-<?= (int) $completedReview['transactionID'] ?>" name="comment" class="form-control form-control-sm" rows="3" maxlength="1000" placeholder="Share your experience working with <?= htmlspecialchars($completedReview['agentName'], ENT_QUOTES, 'UTF-8') ?> on your purchase."></textarea>
-                                </div>
-                                <button type="submit" name="submit_agent_review" class="btn btn-warning btn-sm text-dark fw-bold d-inline-flex align-items-center gap-1 shadow-sm">
-                                    <span>⭐</span> Submit Agent Rating
-                                </button>
-                            </form>
-                        <?php endif; ?>
-                    </article>
-                </div>
-            <?php endwhile; ?>
-        </div>
-    <?php else: ?>
-        <div class="text-muted">No completed sales are available for rating yet.</div>
     <?php endif; ?>
 </section>
 
@@ -1353,213 +1076,6 @@ $progressStages = [
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', () => {
-    const starLabels = {
-        1: '★☆☆☆☆ 1 Star - Poor',
-        2: '★★☆☆☆ 2 Stars - Fair',
-        3: '★★★☆☆ 3 Stars - Good',
-        4: '★★★★☆ 4 Stars - Very Good',
-        5: '★★★★★ 5 Stars - Excellent!'
-    };
-
-    document.querySelectorAll('.star-rating-container').forEach(container => {
-        const stars = container.querySelectorAll('.star-rating-btn');
-        const txid = stars[0]?.getAttribute('data-txid');
-        const input = document.getElementById('rating-val-' + txid);
-        const label = document.getElementById('rating-label-' + txid);
-
-        function highlightStars(val) {
-            stars.forEach(s => {
-                const sVal = parseInt(s.getAttribute('data-rating'), 10);
-                if (sVal <= val) {
-                    s.style.color = '#f59e0b';
-                } else {
-                    s.style.color = '#cbd5e1';
-                }
-            });
-        }
-
-        stars.forEach(star => {
-            const val = parseInt(star.getAttribute('data-rating'), 10);
-            star.addEventListener('mouseenter', () => {
-                highlightStars(val);
-                if (label) label.textContent = starLabels[val] || (val + ' Stars');
-            });
-
-            star.addEventListener('click', () => {
-                input.value = val;
-                highlightStars(val);
-                if (label) {
-                    label.textContent = starLabels[val] || (val + ' Stars');
-                    label.className = 'badge text-bg-warning text-dark fw-bold small py-1 px-2';
-                }
-            });
-        });
-
-        container.addEventListener('mouseleave', () => {
-            const currentVal = parseInt(input.value, 10) || 0;
-            highlightStars(currentVal);
-            if (label) {
-                if (currentVal > 0) {
-                    label.textContent = starLabels[currentVal] || (currentVal + ' Stars');
-                    label.className = 'badge text-bg-warning text-dark fw-bold small py-1 px-2';
-                } else {
-                    label.textContent = 'Click a star to rate';
-                    label.className = 'badge text-bg-light border text-muted small py-1 px-2';
-                }
-            }
-        });
-    });
-
-    // Top rating prompt inside tracking cards
-    document.querySelectorAll('.kq-top-star-picker').forEach(picker => {
-        const stars = picker.querySelectorAll('.kq-top-star-btn');
-        const txid = picker.getAttribute('data-txid');
-        const csrf = picker.getAttribute('data-csrf');
-        const label = document.getElementById('topRatingLabel' + txid);
-        const banner = document.getElementById('topRatingBanner' + txid);
-        let isSubmitting = false;
-
-        function setHover(val) {
-            stars.forEach(s => {
-                const sVal = parseInt(s.getAttribute('data-rating'), 10);
-                if (sVal <= val) {
-                    s.style.color = '#f59e0b';
-                    s.classList.add('is-active');
-                } else {
-                    s.style.color = '#cbd5e1';
-                    s.classList.remove('is-active');
-                }
-            });
-            if (label) {
-                if (val > 0) {
-                    label.textContent = starLabels[val] || (val + ' Stars');
-                    label.className = 'badge text-bg-warning text-dark fw-bold small py-1 px-2 d-none d-sm-inline';
-                } else {
-                    label.textContent = 'Click a star';
-                    label.className = 'badge text-bg-light border text-muted small py-1 px-2 d-none d-sm-inline';
-                }
-            }
-        }
-
-        stars.forEach(star => {
-            const val = parseInt(star.getAttribute('data-rating'), 10);
-            star.addEventListener('mouseenter', () => {
-                if (!isSubmitting) setHover(val);
-            });
-            star.addEventListener('focus', () => {
-                if (!isSubmitting) setHover(val);
-            });
-
-            star.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (isSubmitting) return;
-                if (!window.confirm('Submit this agent rating now?')) return;
-                isSubmitting = true;
-
-                stars.forEach(s => s.disabled = true);
-                if (label) {
-                    label.textContent = 'Submitting...';
-                    label.className = 'badge text-bg-secondary text-white small py-1 px-2 d-none d-sm-inline';
-                }
-
-                const formData = new FormData();
-                formData.append('submit_agent_review', '1');
-                formData.append('transactionID', txid);
-                formData.append('rating', val);
-                formData.append('comment', '');
-                formData.append('csrf_token', csrf);
-                formData.append('is_ajax', '1');
-
-                fetch('client_dashboard.php', {
-                    method: 'POST',
-                    body: formData,
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (data && data.success) {
-                        if (banner) {
-                            banner.innerHTML = `
-                                <div class="d-flex align-items-center justify-content-between w-100 py-1">
-                                    <div class="d-flex align-items-center gap-2 text-success fw-bold small">
-                                        <i class="bi bi-check-circle-fill fs-5"></i>
-                                        <span>Thanks for the feedback</span>
-                                    </div>
-                                    <span class="badge bg-success text-white small px-2 py-1">
-                                        ${val} ★ Submitted
-                                    </span>
-                                </div>
-                            `;
-                            banner.className = 'kq-top-rating-banner p-2 px-3 rounded-3 mb-3 bg-success-subtle border border-success d-flex align-items-center justify-content-between';
-
-                            // Disappear after a few seconds
-                            setTimeout(() => {
-                                banner.style.transition = 'opacity 0.6s ease, max-height 0.6s ease, margin 0.6s ease, padding 0.6s ease';
-                                banner.style.opacity = '0';
-                                banner.style.maxHeight = '0';
-                                banner.style.marginBottom = '0';
-                                banner.style.paddingTop = '0';
-                                banner.style.paddingBottom = '0';
-                                banner.style.border = 'none';
-                                banner.style.overflow = 'hidden';
-                                setTimeout(() => {
-                                    banner.remove();
-                                }, 600);
-                            }, 3000);
-                        }
-
-                        // Also update modal rate button if open or opened later
-                        const modalRateBtn = document.querySelector('.modal-rate-btn-' + txid);
-                        if (modalRateBtn) {
-                            modalRateBtn.outerHTML = `<span class="badge bg-success text-white py-2 px-3 small modal-rate-btn-${txid}">★ ${val}/5 Rated</span>`;
-                        }
-
-                        // Also update review section on client dashboard if present
-                        const reviewForm = document.querySelector(`.review-rating-form[data-txid="${txid}"]`);
-                        if (reviewForm) {
-                            const article = reviewForm.closest('article');
-                            if (article) {
-                                const statusBadge = article.querySelector('.badge.rounded-pill');
-                                if (statusBadge) {
-                                    statusBadge.className = 'badge rounded-pill text-bg-success';
-                                    statusBadge.textContent = 'Submitted';
-                                }
-                                reviewForm.outerHTML = `
-                                    <div class="mb-2 d-flex align-items-center gap-2">
-                                        <div class="fs-5 lh-1" style="color: #f59e0b;">
-                                            ${'★'.repeat(val)}${'☆'.repeat(5 - val)}
-                                        </div>
-                                        <span class="badge text-bg-warning text-dark fw-bold">${val} / 5 Stars</span>
-                                    </div>
-                                    <div class="small text-muted mb-2">Reviewed just now</div>
-                                `;
-                            }
-                        }
-                    } else {
-                        alert((data && data.message) ? data.message : 'Unable to submit rating. Please try again.');
-                        stars.forEach(s => s.disabled = false);
-                        isSubmitting = false;
-                        setHover(0);
-                    }
-                })
-                .catch(err => {
-                    console.error('Rating submit error:', err);
-                    alert('Network error while saving rating. Please try again.');
-                    stars.forEach(s => s.disabled = false);
-                    isSubmitting = false;
-                    setHover(0);
-                });
-            });
-        });
-
-        picker.addEventListener('mouseleave', () => {
-            if (!isSubmitting) setHover(0);
-        });
-    });
-});
-
 // ══════════ CLIENT-SIDE AGENT & SUPPORT CHAT TRIGGER ══════════
 function openClientAgentChat(transactionId) {
     // Hide tracking modal if currently open

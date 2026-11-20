@@ -266,6 +266,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['payment_action'])) {
                 exit();
             }
 
+            if ($action === 'review_client_report') {
+                $paymentId = filter_var($_POST['paymentID'] ?? null, FILTER_VALIDATE_INT);
+                $newStatus = is_string($_POST['status'] ?? null) ? $_POST['status'] : '';
+                $reviewNote = is_string($_POST['reviewNote'] ?? null) ? trim($_POST['reviewNote']) : '';
+                if ($paymentId === false || $paymentId <= 0 || !in_array($newStatus, ['confirmed', 'rejected'], true)) {
+                    throw new InvalidArgumentException('Choose a valid client payment report and review status.');
+                }
+
+                review_property_transaction_payment($conn, (int) $paymentId, $newStatus, $reviewNote, $actorId);
+                $statusFlash = $newStatus === 'confirmed' ? 'payment_verified' : 'payment_rejected';
+                header('Location: admin_payments.php?' . $statusFlash . '=1');
+                exit();
+            }
+
             if ($action === 'delete_payment') {
                 $paymentId = filter_var($_POST['paymentID'] ?? null, FILTER_VALIDATE_INT);
                 if ($paymentId === false || $paymentId <= 0) {
@@ -306,6 +320,14 @@ $paymentStats = $conn->query(
             COALESCE(SUM(CASE WHEN status = 'Verified' AND paidAt >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') THEN 1 ELSE 0 END), 0) AS monthVerifiedCount
      FROM payments"
 )->fetch_assoc();
+$clientReportStats = $conn->query(
+    "SELECT COUNT(*) AS totalReports,
+            COALESCE(SUM(CASE WHEN status = 'confirmed' THEN amount ELSE 0 END), 0) AS confirmedTotal,
+            COALESCE(SUM(CASE WHEN status IN ('pending', 'in_process') THEN amount ELSE 0 END), 0) AS pendingTotal,
+            COALESCE(SUM(CASE WHEN status = 'rejected' THEN amount ELSE 0 END), 0) AS rejectedTotal,
+            COALESCE(SUM(CASE WHEN status = 'confirmed' AND submittedAt >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') THEN 1 ELSE 0 END), 0) AS monthConfirmedCount
+     FROM property_transaction_payments"
+)->fetch_assoc();
 
 $collectionMonthStart = (new DateTimeImmutable('first day of this month'))->modify('-5 months');
 $collectionRangeStart = $collectionMonthStart->format('Y-m-d');
@@ -320,14 +342,28 @@ for ($monthOffset = 0; $monthOffset < 6; $monthOffset++) {
     ];
 }
 $monthlyCollectionStmt = $conn->prepare(
-    "SELECT DATE_FORMAT(paidAt, '%Y-%m') AS monthKey,
-            COALESCE(SUM(amount), 0) AS total,
-            COUNT(*) AS paymentCount
-     FROM payments
-     WHERE status = 'Verified' AND paidAt >= ? AND paidAt < ?
+    "SELECT monthKey, SUM(amount) AS total, SUM(paymentCount) AS paymentCount
+     FROM (
+         SELECT DATE_FORMAT(paidAt, '%Y-%m') AS monthKey, amount, 1 AS paymentCount
+         FROM payments
+         WHERE status = 'Verified' AND paidAt >= ? AND paidAt < ?
+         UNION ALL
+         SELECT DATE_FORMAT(COALESCE(reviewedAt, submittedAt), '%Y-%m') AS monthKey,
+                amount, 1 AS paymentCount
+         FROM property_transaction_payments
+         WHERE status = 'confirmed'
+           AND COALESCE(reviewedAt, submittedAt) >= ?
+           AND COALESCE(reviewedAt, submittedAt) < ?
+     ) verified_collections
      GROUP BY monthKey"
 );
-$monthlyCollectionStmt->bind_param('ss', $collectionRangeStart, $collectionRangeEnd);
+$monthlyCollectionStmt->bind_param(
+    'ssss',
+    $collectionRangeStart,
+    $collectionRangeEnd,
+    $collectionRangeStart,
+    $collectionRangeEnd
+);
 $monthlyCollectionStmt->execute();
 foreach ($monthlyCollectionStmt->get_result() as $row) {
     $monthKey = (string) $row['monthKey'];
@@ -412,8 +448,68 @@ if ($bindTypes !== '') {
 $paymentQuery->execute();
 $paymentResult = $paymentQuery->get_result();
 while ($row = $paymentResult->fetch_assoc()) {
+    $row['paymentSource'] = 'admin_register';
     $payments[] = $row;
 }
+
+$clientReportWhere = ['1 = 1'];
+$clientReportBindTypes = '';
+$clientReportBindValues = [];
+if ($search !== '') {
+    $clientReportWhere[] = '(u.fullname LIKE ? OR u.email LIKE ? OR pay.referenceNumber LIKE ? OR p.title LIKE ?)';
+    $like = '%' . $search . '%';
+    $clientReportBindTypes .= 'ssss';
+    array_push($clientReportBindValues, $like, $like, $like, $like);
+}
+if ($statusFilter !== '') {
+    $clientReportStatuses = match ($statusFilter) {
+        'Verified' => ['confirmed'],
+        'Rejected' => ['rejected'],
+        default => ['pending', 'in_process'],
+    };
+    $statusPlaceholders = implode(', ', array_fill(0, count($clientReportStatuses), '?'));
+    $clientReportWhere[] = "pay.status IN ($statusPlaceholders)";
+    $clientReportBindTypes .= str_repeat('s', count($clientReportStatuses));
+    array_push($clientReportBindValues, ...$clientReportStatuses);
+}
+$clientReportQuery = $conn->prepare(
+    "SELECT pay.paymentID, pay.transactionID, pay.clientID, pay.amount,
+            pay.paymentMethod, pay.referenceNumber AS referenceNo, pay.status,
+            pay.submittedAt AS paidAt, pay.reviewNote AS note,
+            u.fullname AS clientName, u.email AS clientEmail,
+            p.title AS propertyTitle, t.currentStage, t.salePrice
+     FROM property_transaction_payments pay
+     JOIN users u ON u.userID = pay.clientID
+     LEFT JOIN property_transactions t ON t.transactionID = pay.transactionID
+     LEFT JOIN properties p ON p.propertyID = t.propertyID
+     WHERE " . implode(' AND ', $clientReportWhere) . "
+     ORDER BY pay.submittedAt DESC, pay.paymentID DESC
+     LIMIT 300"
+);
+if ($clientReportBindTypes !== '') {
+    kq_bind_dynamic($clientReportQuery, $clientReportBindTypes, $clientReportBindValues);
+}
+$clientReportQuery->execute();
+$clientReportResult = $clientReportQuery->get_result();
+while ($row = $clientReportResult->fetch_assoc()) {
+    $row['paymentType'] = 'Client report';
+    $row['paymentSource'] = 'client_report';
+    $row['reviewable'] = $row['status'] === 'pending';
+    $row['status'] = match ((string) $row['status']) {
+        'confirmed' => 'Verified',
+        'rejected' => 'Rejected',
+        default => 'Pending',
+    };
+    $payments[] = $row;
+}
+usort(
+    $payments,
+    static fn(array $left, array $right): int => strcmp(
+        (string) $right['paidAt'],
+        (string) $left['paidAt']
+    ) ?: ((int) $right['paymentID'] <=> (int) $left['paymentID'])
+);
+$payments = array_slice($payments, 0, 300);
 
 $statusBadgeClasses = [
     'Pending' => 'text-bg-warning',
@@ -430,30 +526,34 @@ include 'includes/header.php';
     <div class="row g-3 mb-4">
         <div class="col-6 col-xl-3">
             <div class="kq-stat-card">
-                <div class="kq-stat-label">Verified collections</div>
+                <div class="kq-stat-label">Admin-register collections</div>
                 <div class="kq-stat-value"><?= kq_format_compact_peso((float) $paymentStats['verifiedTotal']) ?></div>
-                <div class="kq-stat-sub"><?= number_format((int) $paymentStats['totalPayments']) ?> payment record(s) in total.</div>
+                <div class="kq-stat-sub"><?= number_format((int) $paymentStats['totalPayments']) ?> Admin-register record(s).</div>
+                <div class="kq-stat-sub">Confirmed client reports: <?= kq_format_compact_peso((float) $clientReportStats['confirmedTotal']) ?></div>
             </div>
         </div>
         <div class="col-6 col-xl-3">
             <div class="kq-stat-card">
-                <div class="kq-stat-label">Pending verification</div>
+                <div class="kq-stat-label">Pending — Admin register</div>
                 <div class="kq-stat-value"><?= kq_format_compact_peso((float) $paymentStats['pendingTotal']) ?></div>
-                <div class="kq-stat-sub">Awaiting staff review and client confirmation.</div>
+                <div class="kq-stat-sub">Admin register: <?= kq_format_compact_peso((float) $paymentStats['pendingTotal']) ?></div>
+                <div class="kq-stat-sub">Client reports awaiting review: <?= kq_format_compact_peso((float) $clientReportStats['pendingTotal']) ?></div>
             </div>
         </div>
         <div class="col-6 col-xl-3">
             <div class="kq-stat-card">
-                <div class="kq-stat-label">Verified this month</div>
+                <div class="kq-stat-label">Verified this month — Admin register</div>
                 <div class="kq-stat-value"><?= kq_format_compact_peso((float) $paymentStats['monthVerifiedTotal']) ?></div>
-                <div class="kq-stat-sub"><?= number_format((int) $paymentStats['monthVerifiedCount']) ?> payment(s) verified this month.</div>
+                <div class="kq-stat-sub"><?= number_format((int) $paymentStats['monthVerifiedCount']) ?> Admin-register payment(s) verified this month.</div>
+                <div class="kq-stat-sub"><?= number_format((int) $clientReportStats['monthConfirmedCount']) ?> confirmed client report(s) submitted this month.</div>
             </div>
         </div>
         <div class="col-6 col-xl-3">
             <div class="kq-stat-card">
-                <div class="kq-stat-label">Rejected value</div>
+                <div class="kq-stat-label">Rejected — Admin register</div>
                 <div class="kq-stat-value"><?= kq_format_compact_peso((float) $paymentStats['rejectedTotal']) ?></div>
-                <div class="kq-stat-sub">Rejected records are kept for audit history.</div>
+                <div class="kq-stat-sub">Admin register: <?= kq_format_compact_peso((float) $paymentStats['rejectedTotal']) ?></div>
+                <div class="kq-stat-sub">Client reports: <?= kq_format_compact_peso((float) $clientReportStats['rejectedTotal']) ?></div>
             </div>
         </div>
     </div>
@@ -462,11 +562,11 @@ include 'includes/header.php';
         <div class="mb-3">
             <div class="page-eyebrow">Analytics</div>
             <h2 class="h5 fw-bold mb-1" id="collections-chart-title">Verified collections — last six months</h2>
-            <p class="small text-muted mb-0">Only payments marked Verified are included in this chart.</p>
+            <p class="small text-muted mb-0">Includes verified Admin-register payments and confirmed client-submitted reports.</p>
         </div>
         <div class="overflow-auto">
             <svg class="w-100" style="min-width: 620px;" viewBox="0 0 720 260" role="img" aria-labelledby="collections-chart-title collections-chart-description">
-                <desc id="collections-chart-description">Bar chart of verified payment collections for the last six months.</desc>
+                <desc id="collections-chart-description">Bar chart of verified collections from both payment sources for the last six months.</desc>
                 <?php for ($gridLine = 0; $gridLine <= 4; $gridLine++):
                     $gridY = $plotBottom - ($gridLine * ($plotHeight / 4));
                     $gridValue = $collectionMaximum * $gridLine / 4;
@@ -566,12 +666,17 @@ include 'includes/header.php';
     </section>
 
     <section class="card p-3 p-lg-4">
+        <div class="mb-3">
+            <div class="page-eyebrow">Shared payment activity</div>
+            <h2 class="h5 fw-bold mb-1">Payment records &amp; client reports</h2>
+            <p class="small text-muted mb-0"><?= number_format((int) $clientReportStats['totalReports']) ?> client-submitted report(s) in the system. Reports appear here for staff review and in Client and assigned Agent transaction views.</p>
+        </div>
         <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-3 mb-3">
             <div>
                 <div class="page-eyebrow">Payment register</div>
                 <h2 class="h4 fw-bold mb-0"><?= number_format(count($payments)) ?> payment<?= count($payments) === 1 ? '' : 's' ?> shown</h2>
             </div>
-            <form method="GET" class="d-flex flex-column flex-sm-row gap-2 align-items-stretch">
+            <form method="GET" action="admin_payments.php#payment-results" class="d-flex flex-column flex-sm-row gap-2 align-items-stretch">
                 <label class="visually-hidden" for="payment-search">Search payments</label>
                 <input id="payment-search" type="search" name="q" class="form-control form-control-sm" value="<?= kq_e($search) ?>" placeholder="Search client, reference, or property">
                 <label class="visually-hidden" for="payment-filter-status">Filter by payment status</label>
@@ -581,12 +686,12 @@ include 'includes/header.php';
                         <option value="<?= kq_e($option) ?>" <?= $statusFilter === $option ? 'selected' : '' ?>><?= kq_e($option) ?></option>
                     <?php endforeach; ?>
                 </select>
-                <button type="submit" class="btn btn-sm btn-primary">Filter</button>
-                <?php if ($search !== '' || $statusFilter !== ''): ?><a href="admin_payments.php" class="btn btn-sm btn-outline-secondary">Clear</a><?php endif; ?>
+                <button type="submit" class="btn btn-sm btn-primary">Apply filters</button>
+                <?php if ($search !== '' || $statusFilter !== ''): ?><a href="admin_payments.php#payment-results" class="btn btn-sm btn-outline-secondary">Clear filters</a><?php endif; ?>
             </form>
         </div>
 
-        <div class="table-responsive">
+        <div class="table-responsive" id="payment-results">
             <table class="table align-middle">
                 <thead>
                     <tr>
@@ -602,7 +707,8 @@ include 'includes/header.php';
                     <?php foreach ($payments as $payment): ?>
                         <tr>
                             <td class="small">
-                                <div class="fw-semibold">#KQP-<?= (int) $payment['paymentID'] ?></div>
+                                <div class="fw-semibold"><?= $payment['paymentSource'] === 'client_report' ? '#KQCR-' : '#KQP-' ?><?= (int) $payment['paymentID'] ?></div>
+                                <div class="text-muted"><?= $payment['paymentSource'] === 'client_report' ? 'Client report' : 'Admin register' ?></div>
                                 <div class="text-muted"><?= kq_e(date('M j, Y', strtotime((string) $payment['paidAt']))) ?></div>
                                 <div class="text-muted"><?= kq_e($payment['paymentType']) ?> · <?= kq_e($payment['paymentMethod']) ?></div>
                                 <?php if (!empty($payment['referenceNo'])): ?><div class="text-muted">Ref: <?= kq_e($payment['referenceNo']) ?></div><?php endif; ?>
@@ -625,39 +731,59 @@ include 'includes/header.php';
                             <td><span class="badge <?= $statusBadgeClasses[$payment['status']] ?? 'text-bg-secondary' ?>"><?= kq_e($payment['status']) ?></span></td>
                             <td>
                                 <div class="d-flex flex-wrap gap-2">
-                                    <?php if ($payment['status'] !== 'Verified'): ?>
+                                    <?php if ($payment['paymentSource'] === 'client_report' && !empty($payment['reviewable'])): ?>
+                                        <form method="POST" class="d-flex flex-wrap gap-2" data-confirm="Review this client-submitted payment report?">
+                                            <input type="hidden" name="csrf_token" value="<?= kq_e(csrf_token()) ?>">
+                                            <input type="hidden" name="payment_action" value="review_client_report">
+                                            <input type="hidden" name="paymentID" value="<?= (int) $payment['paymentID'] ?>">
+                                            <input type="text" name="reviewNote" class="form-control form-control-sm" maxlength="1000" placeholder="Optional note for client" aria-label="Optional payment review note">
+                                            <button type="submit" name="status" value="confirmed" class="btn btn-sm btn-success">Confirm payment</button>
+                                            <button type="submit" name="status" value="rejected" class="btn btn-sm btn-outline-danger">Reject payment</button>
+                                        </form>
+                                    <?php elseif ($payment['paymentSource'] === 'client_report'): ?>
+                                        <?php if ($payment['transactionID'] !== null): ?>
+                                            <a href="transaction_tracking.php#transactions" class="btn btn-sm btn-outline-primary">View transaction</a>
+                                        <?php else: ?>
+                                            <span class="small text-muted">Reviewed — no action needed</span>
+                                        <?php endif; ?>
+                                    <?php elseif ($payment['paymentSource'] === 'admin_register' && $payment['status'] !== 'Verified'): ?>
                                         <form method="POST" class="d-inline" data-confirm="Verify this payment record? The client will be notified.">
                                             <input type="hidden" name="csrf_token" value="<?= kq_e(csrf_token()) ?>">
                                             <input type="hidden" name="payment_action" value="update_status">
                                             <input type="hidden" name="paymentID" value="<?= (int) $payment['paymentID'] ?>">
                                             <input type="hidden" name="status" value="Verified">
-                                            <button type="submit" class="btn btn-sm btn-success">Verify</button>
+                                            <button type="submit" class="btn btn-sm btn-success">Verify payment</button>
                                         </form>
                                     <?php endif; ?>
-                                    <?php if ($payment['status'] !== 'Pending'): ?>
+                                    <?php if ($payment['paymentSource'] === 'admin_register' && $payment['status'] !== 'Pending'): ?>
                                         <form method="POST" class="d-inline" data-confirm="Return this payment record to pending verification?">
                                             <input type="hidden" name="csrf_token" value="<?= kq_e(csrf_token()) ?>">
                                             <input type="hidden" name="payment_action" value="update_status">
                                             <input type="hidden" name="paymentID" value="<?= (int) $payment['paymentID'] ?>">
                                             <input type="hidden" name="status" value="Pending">
-                                            <button type="submit" class="btn btn-sm btn-outline-warning">Mark pending</button>
+                                            <button type="submit" class="btn btn-sm btn-outline-warning">Mark as pending</button>
                                         </form>
                                     <?php endif; ?>
-                                    <?php if ($payment['status'] !== 'Rejected'): ?>
+                                    <?php if ($payment['paymentSource'] === 'admin_register' && $payment['status'] !== 'Rejected'): ?>
                                         <form method="POST" class="d-inline" data-confirm="Reject this payment record?">
                                             <input type="hidden" name="csrf_token" value="<?= kq_e(csrf_token()) ?>">
                                             <input type="hidden" name="payment_action" value="update_status">
                                             <input type="hidden" name="paymentID" value="<?= (int) $payment['paymentID'] ?>">
                                             <input type="hidden" name="status" value="Rejected">
-                                            <button type="submit" class="btn btn-sm btn-outline-secondary">Reject</button>
+                                            <button type="submit" class="btn btn-sm btn-outline-secondary">Reject payment</button>
                                         </form>
                                     <?php endif; ?>
-                                    <form method="POST" class="d-inline" onsubmit="return confirm('Remove this payment record permanently?');">
-                                        <input type="hidden" name="csrf_token" value="<?= kq_e(csrf_token()) ?>">
-                                        <input type="hidden" name="payment_action" value="delete_payment">
-                                        <input type="hidden" name="paymentID" value="<?= (int) $payment['paymentID'] ?>">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
-                                    </form>
+                                    <?php if ($payment['paymentSource'] === 'admin_register'): ?>
+                                        <form method="POST" class="d-inline" onsubmit="return confirm('Remove this payment record permanently?');">
+                                            <input type="hidden" name="csrf_token" value="<?= kq_e(csrf_token()) ?>">
+                                            <input type="hidden" name="payment_action" value="delete_payment">
+                                            <input type="hidden" name="paymentID" value="<?= (int) $payment['paymentID'] ?>">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">Remove payment</button>
+                                        </form>
+                                    <?php endif; ?>
+                                    <?php if ($payment['paymentSource'] === 'admin_register' && $payment['status'] === 'Verified' && $payment['transactionID'] !== null): ?>
+                                        <a href="transaction_tracking.php#transactions" class="btn btn-sm btn-outline-primary">View transaction</a>
+                                    <?php endif; ?>
                                 </div>
                             </td>
                         </tr>

@@ -6,13 +6,13 @@
                 <div class="d-inline-flex align-items-center justify-content-center rounded-circle bg-danger-subtle text-danger mb-3" style="width: 54px; height: 54px;">
                     <svg width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 </div>
-                <h5 class="fw-bold mb-2 text-dark" id="logoutConfirmModalLabel">Log Out?</h5>
-                <p class="text-muted small mb-4">Are you sure you want to log out of your account?</p>
+                <h5 class="fw-bold mb-2 text-dark" id="logoutConfirmModalLabel">Sign out?</h5>
+                <p class="text-muted small mb-4">Are you sure you want to sign out of your account?</p>
                 <div class="d-flex gap-2">
                     <button type="button" class="btn btn-outline-secondary w-50 fw-semibold" data-bs-dismiss="modal">Cancel</button>
                     <form method="POST" action="logout.php" class="w-50 m-0">
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
-                        <button type="submit" class="btn btn-danger w-100 fw-semibold">Log Out</button>
+                        <button type="submit" class="btn btn-danger w-100 fw-semibold">Sign out</button>
                     </form>
                 </div>
             </div>

@@ -17,7 +17,7 @@ $formSuccess = '';
 
 $flashMessages = [
     'client_added' => 'The client account has been created.',
-    'client_updated' => 'The client profile has been updated.',
+    'client_updated' => 'The client account has been updated.',
     'password_reset' => 'The client password has been reset.',
     'client_deleted' => 'The client account has been removed.',
     'status_updated' => 'The client account status has been updated.',
@@ -148,7 +148,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['client_action'])) {
                 kq_log_admin_action(
                     $conn,
                     $actorId,
-                    'Updated client profile for ' . $fullname . ' (#' . $clientId . ').'
+                    'Updated client account for ' . $fullname . ' (#' . $clientId . ').'
                 );
                 header('Location: admin_clients.php?client_updated=1');
                 exit();
@@ -220,7 +220,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['client_action'])) {
                 $linkedRecords = (int) ($checkStmt->get_result()->fetch_assoc()['linkedRecords'] ?? 0);
                 if ($linkedRecords > 0) {
                     throw new InvalidArgumentException(
-                        'This client has appointments, inquiries, transactions, or payments on record. Set the account to Inactive instead so history is preserved.'
+                        'This client has viewing requests, inquiries, transactions, or payments on record. Set the account to Inactive instead so history is preserved.'
                     );
                 }
 
@@ -397,8 +397,8 @@ include 'includes/header.php';
     <section class="card p-3 p-lg-4 mb-4" id="client-form">
         <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
             <div>
-                <div class="page-eyebrow"><?= $formMode === 'edit' ? 'Edit client' : 'New client' ?></div>
-                <h2 class="h4 fw-bold mb-0"><?= $formMode === 'edit' ? 'Update client profile' : 'Create a client account' ?></h2>
+                <div class="page-eyebrow"><?= $formMode === 'edit' ? 'Edit client account' : 'New client account' ?></div>
+                <h2 class="h4 fw-bold mb-0"><?= $formMode === 'edit' ? 'Edit client account' : 'Create a client account' ?></h2>
             </div>
             <?php if ($formMode === 'edit'): ?>
                 <a href="admin_clients.php" class="btn btn-sm btn-outline-secondary">Create a new client instead</a>
@@ -441,7 +441,7 @@ include 'includes/header.php';
                 </div>
             <?php endif; ?>
             <div class="col-12 d-flex flex-wrap gap-2">
-                <button type="submit" class="btn btn-primary px-4"><?= $formMode === 'edit' ? 'Save client profile' : 'Create client' ?></button>
+                <button type="submit" class="btn btn-primary px-4"><?= $formMode === 'edit' ? 'Save changes' : 'Create client account' ?></button>
                 <?php if ($formMode === 'edit'): ?><a href="admin_clients.php" class="btn btn-outline-secondary">Cancel</a><?php endif; ?>
             </div>
         </form>
@@ -469,7 +469,7 @@ include 'includes/header.php';
                 <div class="page-eyebrow">Client directory</div>
                 <h2 class="h4 fw-bold mb-0"><?= number_format(count($clients)) ?> client<?= count($clients) === 1 ? '' : 's' ?> shown</h2>
             </div>
-            <form method="GET" class="d-flex flex-column flex-sm-row gap-2 align-items-stretch">
+            <form method="GET" action="admin_clients.php#client-results" class="d-flex flex-column flex-sm-row gap-2 align-items-stretch">
                 <label class="visually-hidden" for="client-search">Search clients</label>
                 <input id="client-search" type="search" name="q" class="form-control form-control-sm" value="<?= kq_e($search) ?>" placeholder="Search name, email, or phone">
                 <label class="visually-hidden" for="client-filter-status">Filter by status</label>
@@ -478,12 +478,12 @@ include 'includes/header.php';
                     <option value="Active" <?= $statusFilter === 'Active' ? 'selected' : '' ?>>Active</option>
                     <option value="Inactive" <?= $statusFilter === 'Inactive' ? 'selected' : '' ?>>Inactive</option>
                 </select>
-                <button type="submit" class="btn btn-sm btn-primary">Filter</button>
-                <?php if ($search !== '' || $statusFilter !== ''): ?><a href="admin_clients.php" class="btn btn-sm btn-outline-secondary">Clear</a><?php endif; ?>
+                <button type="submit" class="btn btn-sm btn-primary">Apply filters</button>
+                <?php if ($search !== '' || $statusFilter !== ''): ?><a href="admin_clients.php#client-results" class="btn btn-sm btn-outline-secondary">Clear filters</a><?php endif; ?>
             </form>
         </div>
 
-        <div class="table-responsive">
+        <div class="table-responsive" id="client-results">
             <table class="table align-middle">
                 <thead>
                     <tr>
@@ -515,7 +515,7 @@ include 'includes/header.php';
                             </td>
                             <td class="small text-nowrap"><?= kq_e(date('M j, Y', strtotime((string) $client['createdAt']))) ?></td>
                             <td class="small">
-                                <span class="badge text-bg-light"><?= (int) $client['appointmentCount'] ?> viewing<?= (int) $client['appointmentCount'] === 1 ? '' : 's' ?></span>
+                                <span class="badge text-bg-light"><?= (int) $client['appointmentCount'] ?> viewing request<?= (int) $client['appointmentCount'] === 1 ? '' : 's' ?></span>
                                 <span class="badge text-bg-light"><?= (int) $client['inquiryCount'] ?> inquiry<?= (int) $client['inquiryCount'] === 1 ? '' : 'ies' ?></span>
                                 <span class="badge text-bg-light"><?= (int) $client['transactionCount'] ?> transaction<?= (int) $client['transactionCount'] === 1 ? '' : 's' ?></span>
                                 <?php if ((int) $client['activeTransactionCount'] > 0): ?>
@@ -542,7 +542,7 @@ include 'includes/header.php';
                                         <input type="hidden" name="accountStatus" value="<?= $client['accountStatus'] === 'Active' ? 'Inactive' : 'Active' ?>">
                                         <button type="submit" class="btn btn-sm btn-outline-secondary"><?= $client['accountStatus'] === 'Active' ? 'Deactivate' : 'Reactivate' ?></button>
                                     </form>
-                                    <form method="POST" class="d-inline" onsubmit="return confirm('Remove this client account? Accounts with appointments, inquiries, transactions, or payments cannot be deleted; deactivate them instead.');">
+                                    <form method="POST" class="d-inline" onsubmit="return confirm('Remove this client account? Accounts with viewing requests, inquiries, transactions, or payments cannot be deleted; deactivate them instead.');">
                                         <input type="hidden" name="csrf_token" value="<?= kq_e(csrf_token()) ?>">
                                         <input type="hidden" name="client_action" value="delete_client">
                                         <input type="hidden" name="userID" value="<?= (int) $client['userID'] ?>">

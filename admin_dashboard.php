@@ -3,9 +3,7 @@ include 'config/db.php';
 require_once 'includes/auth.php';
 require_once 'includes/location_directory.php';
 require_once 'includes/property_categories.php';
-require_once 'includes/property_estimator.php';
 require_once 'includes/property_images.php';
-require_once 'includes/agent_feedback.php';
 require_once 'includes/admin_management.php';
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -16,7 +14,6 @@ if (normalized_user_role($_SESSION['user'] ?? null) !== 'Admin') {
     exit();
 }
 
-ensure_agent_reviews_table($conn);
 ensure_admin_management_schema($conn);
 
 $locations = get_property_locations($conn);
@@ -24,11 +21,6 @@ $formError = '';
 $formSuccess = isset($_GET['property_added'])
     ? 'The property listing has been published.'
     : (isset($_GET['property_updated']) ? 'The property listing has been updated.' : '');
-$estimate = null;
-$estimateError = '';
-$inputSqm = '';
-$inputType = 'Residential';
-$estimateLocationId = 0;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!has_valid_csrf_token()) {
@@ -382,19 +374,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit();
             }
         }
-    } elseif (isset($_POST['run_prediction'])) {
-        $inputSqm = filter_var($_POST['sqm_input'] ?? null, FILTER_VALIDATE_FLOAT);
-        $inputType = is_string($_POST['property_type'] ?? null) ? $_POST['property_type'] : '';
-        $estimateLocationId = filter_var($_POST['locationID'] ?? null, FILTER_VALIDATE_INT);
-        if ($inputSqm === false || $estimateLocationId === false) {
-            $estimateError = 'Enter a valid land area and choose a location.';
-        } else {
-            try {
-                $estimate = estimate_property_value($conn, (float) $inputSqm, $inputType, (int) $estimateLocationId);
-            } catch (InvalidArgumentException | RuntimeException $exception) {
-                $estimateError = $exception->getMessage();
-            }
-        }
     }
 }
 
@@ -424,148 +403,8 @@ if (isset($_GET['property_status_updated'])) {
 }
 
 include 'includes/header.php';
-$totalProperties = $conn->query("SELECT COUNT(*) as count FROM properties WHERE isDeleted = 0")->fetch_assoc()['count'];
-$totalTrashedProperties = $conn->query("SELECT COUNT(*) as count FROM properties WHERE isDeleted = 1")->fetch_assoc()['count'];
-$totalUsers = $conn->query("SELECT COUNT(*) as count FROM users")->fetch_assoc()['count'];
-$totalAppointments = $conn->query("SELECT COUNT(*) as count FROM appointments")->fetch_assoc()['count'];
-$totalInquiries = $conn->query("SELECT COUNT(*) as count FROM feedbackinquiries")->fetch_assoc()['count'];
-
-$standardPropertyCategories = property_type_values();
-$propertyCategoryCounts = array_fill_keys($standardPropertyCategories, 0);
-foreach ($conn->query('SELECT propertyType, COUNT(*) AS total FROM properties WHERE isDeleted = 0 GROUP BY propertyType') as $row) {
-    $category = trim((string) $row['propertyType']);
-    if ($category === '') {
-        $category = 'Uncategorized';
-    }
-    if (!in_array($category, $standardPropertyCategories, true)) {
-        $category = 'Other / legacy';
-    }
-    $propertyCategoryCounts[$category] = ($propertyCategoryCounts[$category] ?? 0) + (int) $row['total'];
-}
-$propertyCategoryTotal = array_sum($propertyCategoryCounts);
-$propertyCategoryMaximum = max(1, ...array_values($propertyCategoryCounts));
-
-$appointmentStatusCounts = [
-    'Pending' => 0,
-    'Approved' => 0,
-    'Cancelled' => 0,
-];
-foreach ($conn->query('SELECT status, COUNT(*) AS total FROM appointments GROUP BY status') as $row) {
-    $status = trim((string) $row['status']);
-    if ($status === '') {
-        $status = 'Unspecified';
-    }
-    $appointmentStatusCounts[$status] = ($appointmentStatusCounts[$status] ?? 0) + (int) $row['total'];
-}
-$appointmentStatusTotal = array_sum($appointmentStatusCounts);
-$appointmentStatusMaximum = max(1, ...array_values($appointmentStatusCounts));
-
-$salesSummary = $conn->query(
-    "SELECT COUNT(*) AS verifiedSales, COALESCE(SUM(salePrice), 0) AS actualRevenue
-     FROM property_transactions
-     WHERE currentStage = 'completed' AND salePrice IS NOT NULL"
-)->fetch_assoc();
-$verifiedSalesCount = (int) $salesSummary['verifiedSales'];
-$actualRevenue = (float) $salesSummary['actualRevenue'];
-$activePipeline = $conn->query(
-    "SELECT COUNT(*) AS activeCases, COALESCE(SUM(p.price), 0) AS askingPriceValue
-     FROM property_transactions t
-     JOIN properties p ON p.propertyID = t.propertyID
-     WHERE t.currentStage NOT IN ('completed', 'cancelled')"
-)->fetch_assoc();
-$activePipelineCount = (int) $activePipeline['activeCases'];
-$activePipelineAskingValue = (float) $activePipeline['askingPriceValue'];
-
-$availablePropertiesRes = $conn->query("SELECT COUNT(*) AS total FROM properties WHERE status = 'Available' AND isDeleted = 0");
-$availableListingsCount = $availablePropertiesRes ? (int) $availablePropertiesRes->fetch_assoc()['total'] : 0;
-
-$recentInquiriesRes = $conn->query("SELECT COUNT(*) AS total FROM feedbackinquiries WHERE createdAt >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 30 DAY)");
-$recentInquiriesCount = $recentInquiriesRes ? (int) $recentInquiriesRes->fetch_assoc()['total'] : 0;
-
-$salesMonthStart = (new DateTimeImmutable('first day of this month'))->modify('-5 months');
-$salesRangeStart = $salesMonthStart->format('Y-m-d');
-$salesRangeEnd = $salesMonthStart->modify('+6 months')->format('Y-m-d');
-$monthlySales = [];
-for ($monthOffset = 0; $monthOffset < 6; $monthOffset++) {
-    $month = $salesMonthStart->modify('+' . $monthOffset . ' months');
-    $monthKey = $month->format('Y-m');
-    $monthlySales[$monthKey] = [
-        'label' => $month->format('M Y'),
-        'sales' => 0,
-        'revenue' => 0.0,
-    ];
-}
-$monthlySalesStmt = $conn->prepare(
-    "SELECT DATE_FORMAT(completions.completedAt, '%Y-%m') AS monthKey,
-            COUNT(*) AS sales,
-            COALESCE(SUM(t.salePrice), 0) AS revenue
-     FROM property_transactions t
-     JOIN (
-         SELECT transactionID, MAX(createdAt) AS completedAt
-         FROM property_transaction_events
-         WHERE stage = 'completed'
-         GROUP BY transactionID
-     ) completions ON completions.transactionID = t.transactionID
-     WHERE t.currentStage = 'completed'
-       AND t.salePrice IS NOT NULL
-       AND completions.completedAt >= ?
-       AND completions.completedAt < ?
-     GROUP BY monthKey"
-);
-$monthlySalesStmt->bind_param('ss', $salesRangeStart, $salesRangeEnd);
-$monthlySalesStmt->execute();
-foreach ($monthlySalesStmt->get_result() as $row) {
-    $monthKey = (string) $row['monthKey'];
-    if (isset($monthlySales[$monthKey])) {
-        $monthlySales[$monthKey]['sales'] = (int) $row['sales'];
-        $monthlySales[$monthKey]['revenue'] = (float) $row['revenue'];
-    }
-}
-$monthlyRevenueMaximum = max(1.0, ...array_column($monthlySales, 'revenue'));
-$hasMonthlySales = array_sum(array_column($monthlySales, 'sales')) > 0;
-$monthlyRevenueBars = [];
-$monthlyChartLeft = 76;
-$monthlyChartWidth = 620;
-$monthlyChartBottom = 218;
-$monthlyChartHeight = 150;
-$monthlyChartSlotWidth = $monthlyChartWidth / count($monthlySales);
-foreach (array_values($monthlySales) as $index => $month) {
-    $barHeight = ((float) $month['revenue'] / $monthlyRevenueMaximum) * $monthlyChartHeight;
-    $monthlyRevenueBars[] = [
-        'x' => $monthlyChartLeft + ($index * $monthlyChartSlotWidth) + 14,
-        'y' => $monthlyChartBottom - $barHeight,
-        'width' => $monthlyChartSlotWidth - 28,
-        'height' => $barHeight,
-        'center' => $monthlyChartLeft + ($index * $monthlyChartSlotWidth) + ($monthlyChartSlotWidth / 2),
-        'label' => $month['label'],
-        'revenue' => (float) $month['revenue'],
-        'sales' => (int) $month['sales'],
-    ];
-}
-
-$topSalesProperties = $conn->query(
-    "SELECT p.title, COUNT(*) AS sales, SUM(t.salePrice) AS revenue
-     FROM property_transactions t
-     JOIN properties p ON p.propertyID = t.propertyID
-     WHERE t.currentStage = 'completed' AND t.salePrice IS NOT NULL
-     GROUP BY p.propertyID, p.title
-     ORDER BY revenue DESC, sales DESC, p.title ASC
-     LIMIT 5"
-)->fetch_all(MYSQLI_ASSOC);
-$topSalesMaximum = $topSalesProperties === []
-    ? 1.0
-    : max(1.0, ...array_map(static fn(array $row): float => (float) $row['revenue'], $topSalesProperties));
-$agentFeedbackSummary = get_agent_feedback_summary($conn);
-$topAgents = get_agent_feedback_top_performers($conn, 5);
-$formatCompactPeso = static function (float $amount): string {
-    if ($amount >= 1000000) {
-        return '₱' . number_format($amount / 1000000, 1) . 'M';
-    }
-    if ($amount >= 1000) {
-        return '₱' . number_format($amount / 1000, 1) . 'K';
-    }
-    return '₱' . number_format($amount, 0);
-};
+require_once 'includes/admin_analytics.php';
+$adminMetrics = get_admin_summary_metrics($conn);
 
 $properties = $conn->query(
     "SELECT p.*, l.municipalityName, l.provinceName
@@ -621,28 +460,6 @@ $clientOverview = $conn->query(
      FROM users
      WHERE role = 'Client'"
 )->fetch_assoc();
-
-// ALGORITHM: Municipal inventory heuristic compares inquiries with available listings,
-// then recommends an inventory or marketing review using fixed thresholds.
-$demandPrescription = [];
-$demandRes = $conn->query("
-    SELECT l.municipalityName,
-           COUNT(DISTINCT i.inquiryID) AS totalInquiries,
-           COUNT(DISTINCT p.propertyID) AS availableListings
-    FROM property_locations l
-    LEFT JOIN properties p ON p.locationID = l.locationID AND p.status = 'Available' AND p.isDeleted = 0
-    LEFT JOIN feedbackinquiries i
-        ON i.propertyID = p.propertyID
-       AND i.createdAt >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 30 DAY)
-    WHERE l.isActive = 1
-    GROUP BY l.locationID, l.municipalityName
-    HAVING totalInquiries > 0 OR availableListings > 0
-    ORDER BY totalInquiries DESC, availableListings DESC
-    LIMIT 6
-");
-if ($demandRes) {
-    $demandPrescription = $demandRes->fetch_all(MYSQLI_ASSOC);
-}
 
 $auditLogsRes = $conn->query("
     SELECT a.logID, a.userID, a.action, a.timestamp, u.fullname, u.email, u.role
@@ -747,317 +564,28 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
 <?php if ($formError !== '' && !isset($_GET['edit_property']) && !isset($_POST['update_property'])): ?><div class="alert alert-danger mb-3" role="alert"><?= htmlspecialchars($formError, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
 
 <section class="mb-4" aria-labelledby="business-analytics-title">
-    <div class="kq-panel-header mb-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
         <div>
-            <div class="page-eyebrow">Live business analytics</div>
-            <h2 class="h4 fw-bold mb-0" id="business-analytics-title">Sales performance</h2>
+            <div class="page-eyebrow">Admin overview</div>
+            <h2 class="h4 fw-bold mb-0" id="business-analytics-title">Business at a glance</h2>
         </div>
     </div>
-    <div class="row g-3 mb-4">
-        <div class="col-6 col-lg-4 col-xl-2">
-            <div class="card h-100 border-0 shadow-sm">
-                <div class="card-body p-3">
-                    <div class="page-eyebrow" style="font-size: 0.68rem;">Active Listings</div>
-                    <h3 class="h3 mb-0"><?= (int) $availableListingsCount ?></h3>
-                    <small class="text-muted" style="font-size: 0.72rem;">Available properties</small>
-                </div>
-            </div>
-        </div>
-        <div class="col-6 col-lg-4 col-xl-2">
-            <div class="card h-100 border-0 shadow-sm">
-                <div class="card-body p-3">
-                    <div class="page-eyebrow text-warning" style="font-size: 0.68rem;">Pending Action</div>
-                    <h3 class="h3 mb-0 text-warning"><?= (int) ($appointmentStatusCounts['Pending'] ?? 0) ?></h3>
-                    <small class="text-muted" style="font-size: 0.72rem;">Viewings to review</small>
-                </div>
-            </div>
-        </div>
-        <div class="col-6 col-lg-4 col-xl-2">
-            <div class="card h-100 border-0 shadow-sm">
-                <div class="card-body p-3">
-                    <div class="page-eyebrow text-info" style="font-size: 0.68rem;">Inquiries (30d)</div>
-                    <h3 class="h3 mb-0 text-info"><?= (int) $recentInquiriesCount ?></h3>
-                    <small class="text-muted" style="font-size: 0.72rem;">Client inquiries</small>
-                </div>
-            </div>
-        </div>
-        <div class="col-6 col-lg-4 col-xl-2">
-            <div class="card h-100 border-0 shadow-sm">
-                <div class="card-body p-3">
-                    <div class="page-eyebrow text-primary" style="font-size: 0.68rem;">Active Pipeline</div>
-                    <h3 class="h3 mb-0 text-primary"><?= (int) $activePipelineCount ?></h3>
-                    <small class="text-muted" style="font-size: 0.72rem;"><a href="admin_sales.php" class="text-decoration-none">Transactions &rarr;</a></small>
-                </div>
-            </div>
-        </div>
-        <div class="col-6 col-lg-4 col-xl-2">
-            <div class="card h-100 border-0 shadow-sm">
-                <div class="card-body p-3">
-                    <div class="page-eyebrow text-success" style="font-size: 0.68rem;">Completed Sales</div>
-                    <h3 class="h3 mb-0 text-success"><?= (int) $verifiedSalesCount ?></h3>
-                    <small class="text-muted" style="font-size: 0.72rem;">Closed acquisitions</small>
-                </div>
-            </div>
-        </div>
-        <div class="col-6 col-lg-4 col-xl-2">
-            <div class="card h-100 border-0 shadow-sm">
-                <div class="card-body p-3">
-                    <div class="page-eyebrow text-success" style="font-size: 0.68rem;">Revenue Secured</div>
-                    <h3 class="h3 mb-0 text-success"><?= $formatCompactPeso($actualRevenue) ?></h3>
-                    <small class="text-muted" style="font-size: 0.72rem;">Verified actual sales</small>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <section class="card p-3 p-lg-4 mb-3" aria-labelledby="client-feedback-title">
-        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 mb-3">
-            <div>
-                <div class="page-eyebrow">Customer experience</div>
-                <h3 class="h5 fw-bold mb-0" id="client-feedback-title">Agent satisfaction score</h3>
-            </div>
-            <div class="small text-muted"><?= number_format($agentFeedbackSummary['review_count']) ?> submitted review<?= $agentFeedbackSummary['review_count'] === 1 ? '' : 's' ?></div>
-        </div>
-        <div class="row g-3 align-items-center">
-            <div class="col-md-4">
-                <div class="display-5 fw-bold mb-1"><?= number_format($agentFeedbackSummary['average_rating'], 1) ?> / 5</div>
-                <div class="text-warning fs-5" aria-label="Average rating of <?= number_format($agentFeedbackSummary['average_rating'], 1) ?> out of 5 stars">
-                    <?php for ($starIndex = 1; $starIndex <= 5; $starIndex++): ?>
-                        <?= $starIndex <= (int) round($agentFeedbackSummary['average_rating']) ? '★' : '☆' ?>
-                    <?php endfor; ?>
-                </div>
-                <div class="small text-muted mt-2">Average rating across all agent review submissions.</div>
-            </div>
-            <div class="col-md-8">
-                <?php if ($topAgents !== []): ?>
-                    <div class="table-responsive">
-                        <table class="table table-sm align-middle mb-0">
-                            <thead><tr><th>Agent</th><th>Reviews</th><th>Average</th></tr></thead>
-                            <tbody>
-                                <?php foreach ($topAgents as $agent): ?>
-                                    <tr>
-                                        <td><?= htmlspecialchars((string) $agent['fullname'], ENT_QUOTES, 'UTF-8') ?></td>
-                                        <td><?= (int) $agent['review_count'] ?></td>
-                                        <td><?= number_format((float) $agent['average_rating'], 1) ?> / 5</td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                <?php else: ?>
-                    <div class="text-muted small">No ratings have been submitted yet. Once a completed transaction is reviewed, this summary will appear here.</div>
-                <?php endif; ?>
-            </div>
-        </div>
-    </section>
-
     <div class="row g-3">
-        <div class="col-lg-7">
-            <section class="card h-100 p-3 p-lg-4" aria-labelledby="monthly-sales-title">
-                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-                    <div>
-                        <h3 class="h5 fw-bold mb-1" id="monthly-sales-title">Monthly actual sales revenue</h3>
-                        <p class="small text-muted mb-0">Verified completed sales, grouped by month</p>
-                    </div>
-                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle small fw-bold">Verified sales data</span>
-                </div>
-                <div class="overflow-auto">
-                    <svg class="w-100" style="min-width: 620px;" viewBox="0 0 720 260" role="img" aria-labelledby="monthly-sales-title monthly-sales-chart-description">
-                        <desc id="monthly-sales-chart-description">Bar chart of verified actual sale revenue for the last six months.</desc>
-                        <?php for ($gridLine = 0; $gridLine <= 4; $gridLine++):
-                            $gridY = $monthlyChartBottom - ($gridLine * ($monthlyChartHeight / 4));
-                            $gridValue = $monthlyRevenueMaximum * $gridLine / 4;
-                        ?>
-                            <line class="kq-chart-grid" x1="<?= $monthlyChartLeft ?>" y1="<?= $gridY ?>" x2="<?= $monthlyChartLeft + $monthlyChartWidth ?>" y2="<?= $gridY ?>" stroke-width="1"/>
-                            <text class="kq-chart-text" x="<?= $monthlyChartLeft - 8 ?>" y="<?= $gridY + 4 ?>" text-anchor="end" font-size="11"><?= htmlspecialchars($formatCompactPeso($gridValue), ENT_QUOTES, 'UTF-8') ?></text>
-                        <?php endfor; ?>
-                        <line class="kq-chart-axis" x1="<?= $monthlyChartLeft ?>" y1="<?= $monthlyChartBottom - $monthlyChartHeight ?>" x2="<?= $monthlyChartLeft ?>" y2="<?= $monthlyChartBottom ?>" stroke-width="1"/>
-                        <line class="kq-chart-axis" x1="<?= $monthlyChartLeft ?>" y1="<?= $monthlyChartBottom ?>" x2="<?= $monthlyChartLeft + $monthlyChartWidth ?>" y2="<?= $monthlyChartBottom ?>" stroke-width="1"/>
-                        <?php foreach ($monthlyRevenueBars as $bar): ?>
-                            <rect x="<?= number_format($bar['x'], 2, '.', '') ?>" y="<?= number_format($bar['y'], 2, '.', '') ?>" width="<?= number_format($bar['width'], 2, '.', '') ?>" height="<?= number_format($bar['height'], 2, '.', '') ?>" rx="6" fill="#17865b">
-                                <title><?= htmlspecialchars($bar['label'] . ': ' . $formatCompactPeso($bar['revenue']) . ' (' . $bar['sales'] . ' completed sale(s))', ENT_QUOTES, 'UTF-8') ?></title>
-                            </rect>
-                            <text x="<?= number_format($bar['center'], 2, '.', '') ?>" y="<?= number_format($bar['y'] - 8, 2, '.', '') ?>" text-anchor="middle" fill="#17865b" font-size="11" font-weight="700"><?= $bar['revenue'] > 0 ? htmlspecialchars($formatCompactPeso($bar['revenue']), ENT_QUOTES, 'UTF-8') : '' ?></text>
-                            <text class="kq-chart-text" x="<?= number_format($bar['center'], 2, '.', '') ?>" y="245" text-anchor="middle" font-size="11"><?= htmlspecialchars($bar['label'], ENT_QUOTES, 'UTF-8') ?></text>
-                        <?php endforeach; ?>
-                    </svg>
-                </div>
-                <?php if (!$hasMonthlySales): ?>
-                    <p class="small text-muted mb-0 mt-2">No verified sales with a recorded sale price in this period yet. The chart will reflect completed transactions with a recorded sale price.</p>
-                <?php endif; ?>
-            </section>
-        </div>
-        <div class="col-lg-5">
-            <section class="card h-100 p-3 p-lg-4" aria-labelledby="top-sales-title">
-                <div class="mb-3">
-                    <h3 class="h5 fw-bold mb-1" id="top-sales-title">Top-selling properties</h3>
-                    <p class="small text-muted mb-0">Ranked by verified recorded sale revenue</p>
-                </div>
-                <?php if ($topSalesProperties === []): ?>
-                    <div class="border rounded-3 p-3 bg-light" role="status">
-                        <div class="d-flex justify-content-between small fw-semibold text-muted mb-2"><span>Verified sale revenue</span><span>₱0</span></div>
-                        <div class="progress" role="progressbar" aria-label="Top-selling property sales revenue" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="height: .65rem;">
-                            <div class="progress-bar bg-success" style="width: 0%"></div>
-                        </div>
-                        <p class="small text-muted mb-0 mt-3">No verified sales have been recorded yet. Top-selling properties will appear here automatically after staff completes a tracked sale and records its actual price.</p>
-                    </div>
-                <?php else: ?>
-                    <ol class="list-unstyled d-grid gap-3 mb-0" aria-label="Top-selling properties by actual sale revenue">
-                        <?php foreach ($topSalesProperties as $rank => $propertySale):
-                            $revenue = (float) $propertySale['revenue'];
-                            $barPercent = (int) round(($revenue / $topSalesMaximum) * 100);
-                        ?>
-                            <li>
-                                <div class="d-flex justify-content-between align-items-start gap-3 small mb-1">
-                                    <span class="fw-semibold text-break"><?= ($rank + 1) ?>. <?= htmlspecialchars($propertySale['title'], ENT_QUOTES, 'UTF-8') ?></span>
-                                    <span class="text-end text-nowrap">₱<?= number_format($revenue, 2) ?><span class="d-block text-muted"><?= number_format((int) $propertySale['sales']) ?> sale(s)</span></span>
-                                </div>
-                                <div class="progress" role="progressbar" aria-label="<?= htmlspecialchars($propertySale['title'], ENT_QUOTES, 'UTF-8') ?> sales revenue" aria-valuenow="<?= $barPercent ?>" aria-valuemin="0" aria-valuemax="100" style="height: .55rem;">
-                                    <div class="progress-bar bg-success" style="width: <?= $barPercent ?>%"></div>
-                                </div>
-                            </li>
-                        <?php endforeach; ?>
-                    </ol>
-                <?php endif; ?>
-            </section>
-        </div>
+        <div class="col-6 col-lg-4 col-xl-2"><div class="card h-100"><div class="card-body p-3"><div class="page-eyebrow">Available listings</div><h3 class="h3 mb-0"><?= number_format($adminMetrics['available_listings']) ?></h3><small class="text-muted">Not deleted</small></div></div></div>
+        <div class="col-6 col-lg-4 col-xl-2"><div class="card h-100"><div class="card-body p-3"><div class="page-eyebrow text-warning">Pending viewing requests</div><h3 class="h3 mb-0 text-warning"><?= number_format($adminMetrics['pending_viewing_requests']) ?></h3><small class="text-muted">Awaiting review</small></div></div></div>
+        <div class="col-6 col-lg-4 col-xl-2"><div class="card h-100"><div class="card-body p-3"><div class="page-eyebrow text-info">Inquiries (30 days)</div><h3 class="h3 mb-0 text-info"><?= number_format($adminMetrics['recent_inquiries']) ?></h3><small class="text-muted">All client inquiries</small></div></div></div>
+        <div class="col-6 col-lg-4 col-xl-2"><div class="card h-100"><div class="card-body p-3"><div class="page-eyebrow text-primary">Active pipeline</div><h3 class="h3 mb-0 text-primary"><?= number_format($adminMetrics['active_pipeline']) ?></h3><small class="text-muted"><a href="admin_sales.php" class="text-decoration-none">Transactions &rarr;</a></small></div></div></div>
+        <div class="col-6 col-lg-4 col-xl-2"><div class="card h-100"><div class="card-body p-3"><div class="page-eyebrow text-success">Completed sales</div><h3 class="h3 mb-0 text-success"><?= number_format($adminMetrics['completed_sales']) ?></h3><small class="text-muted">All completed transactions</small></div></div></div>
+        <div class="col-6 col-lg-4 col-xl-2"><div class="card h-100"><div class="card-body p-3"><div class="page-eyebrow text-success">Actual revenue</div><h3 class="h3 mb-0 text-success"><?= htmlspecialchars(format_admin_compact_peso($adminMetrics['actual_revenue']), ENT_QUOTES, 'UTF-8') ?></h3><small class="text-muted">Recorded sale prices</small></div></div></div>
     </div>
-
-    <section class="card p-3 p-lg-4 mt-3" aria-labelledby="inventory-insights-title">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-            <div>
-                <span class="badge bg-warning-subtle text-dark border border-warning fw-bold mb-1">Inventory insights</span>
-                <h3 class="h5 fw-bold mb-0" id="inventory-insights-title">Listing activity by municipality</h3>
-                <p class="small text-muted mb-0">Compare inquiries received in the last 30 days with currently available listings.</p>
-            </div>
-            <span class="badge text-bg-light border text-secondary small py-2 px-3">Municipal summary</span>
-        </div>
-        <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0">
-                <thead>
-                    <tr class="table-light">
-                        <th>Municipality / Location</th>
-                        <th class="text-center">Recent Inquiries (30d)</th>
-                        <th class="text-center">Available Listings</th>
-                        <th>Demand / Supply Status</th>
-                        <th>Suggested next step</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if ($demandPrescription !== []): ?>
-                        <?php foreach ($demandPrescription as $dem):
-                            $inq = (int) $dem['totalInquiries'];
-                            $avail = (int) $dem['availableListings'];
-                            if ($inq > $avail) {
-                                $statusBadge = '<span class="badge bg-danger-subtle text-danger border border-danger-subtle fw-bold">High inquiry activity</span>';
-                                $prescription = '<strong>Review inventory:</strong> Compare available listings and verify pricing against similar properties.';
-                            } elseif ($avail > 3 && $inq === 0) {
-                                $statusBadge = '<span class="badge bg-warning-subtle text-dark border border-warning-subtle fw-semibold">No recent inquiries</span>';
-                                $prescription = '<strong>Review marketing:</strong> Check listing details, visibility, and current buyer interest.';
-                            } else {
-                                $statusBadge = '<span class="badge bg-success-subtle text-success border border-success-subtle fw-semibold">Activity within range</span>';
-                                $prescription = '<strong>Monitor activity:</strong> Continue reviewing inquiries and available inventory.';
-                            }
-                        ?>
-                            <tr>
-                                <td class="fw-bold text-dark"><?= htmlspecialchars($dem['municipalityName'], ENT_QUOTES, 'UTF-8') ?></td>
-                                <td class="text-center"><span class="badge text-bg-light border px-2 py-1"><?= $inq ?></span></td>
-                                <td class="text-center"><span class="badge text-bg-light border px-2 py-1"><?= $avail ?></span></td>
-                                <td><?= $statusBadge ?></td>
-                                <td class="small text-muted"><?= $prescription ?></td>
-                            </tr>
-                        <?php endforeach; ?>
-                    <?php else: ?>
-                        <tr><td colspan="5" class="text-center text-muted py-3">These insights appear when listings and inquiry records are available.</td></tr>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-        </div>
-    </section>
 </section>
-
-<div class="row g-3 mb-4">
-    <div class="col-lg-7">
-        <section class="card p-3 p-lg-4 h-100" aria-labelledby="property-category-chart-title">
-            <div class="mb-3">
-                <h2 class="h5 fw-bold mb-1" id="property-category-chart-title">Listings by property type</h2>
-                <p class="small text-muted mb-0"><?= number_format((int) $propertyCategoryTotal) ?> listing(s) across all categories</p>
-            </div>
-            <?php if ($propertyCategoryTotal === 0): ?>
-                <p class="small text-muted mb-0 py-3">Category data will appear here when listings are added.</p>
-            <?php else: ?>
-                <div class="d-grid gap-3" role="list" aria-label="Property listing counts by category">
-                    <?php foreach ($propertyCategoryCounts as $category => $count):
-                        $percentage = (int) round(((int) $count / $propertyCategoryMaximum) * 100);
-                        $barClass = [
-                            'Residential' => 'bg-primary',
-                            'Commercial' => 'bg-success',
-                            'Farmlot' => 'bg-warning',
-                            'Beachlot' => 'bg-info',
-                            'Condo' => 'bg-purple text-white',
-                            'House and Lot' => 'bg-primary',
-                            'Townhouse' => 'bg-info',
-                            'Apartment' => 'bg-purple text-white',
-                            'Warehouse' => 'bg-warning',
-                            'Office Space' => 'bg-success',
-                            'Resort' => 'bg-info',
-                            'Other / legacy' => 'bg-secondary',
-                        ][$category] ?? 'bg-secondary';
-                    ?>
-                        <div role="listitem">
-                            <div class="d-flex justify-content-between gap-3 small mb-1">
-                                <span class="text-break"><?= htmlspecialchars((string) $category, ENT_QUOTES, 'UTF-8') ?></span>
-                                <strong><?= number_format((int) $count) ?></strong>
-                            </div>
-                            <div class="progress" role="progressbar" aria-label="<?= htmlspecialchars((string) $category, ENT_QUOTES, 'UTF-8') ?> listings" aria-valuenow="<?= $percentage ?>" aria-valuemin="0" aria-valuemax="100" style="height: .65rem;">
-                                <div class="progress-bar <?= $barClass ?>" style="width: <?= $percentage ?>%"></div>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-            <?php endif; ?>
-        </section>
-    </div>
-    <div class="col-lg-5">
-        <section class="card p-3 p-lg-4 h-100" aria-labelledby="appointment-status-chart-title">
-            <div class="mb-3">
-                <h2 class="h5 fw-bold mb-1" id="appointment-status-chart-title">Viewing request status</h2>
-                <p class="small text-muted mb-0"><?= number_format((int) $appointmentStatusTotal) ?> request(s) in total</p>
-            </div>
-            <?php if ($appointmentStatusTotal === 0): ?>
-                <p class="small text-muted mb-0 py-3">Request status data will appear here when a client books a viewing.</p>
-            <?php else: ?>
-                <div class="d-grid gap-3" role="list" aria-label="Viewing request counts by status">
-                    <?php foreach ($appointmentStatusCounts as $status => $count):
-                        $percentage = (int) round(((int) $count / $appointmentStatusMaximum) * 100);
-                        $barClass = [
-                            'Pending' => 'bg-warning',
-                            'Approved' => 'bg-success',
-                            'Cancelled' => 'bg-secondary',
-                        ][$status] ?? 'bg-primary';
-                    ?>
-                        <div role="listitem">
-                            <div class="d-flex justify-content-between gap-3 small mb-1">
-                                <span class="text-break"><?= htmlspecialchars((string) $status, ENT_QUOTES, 'UTF-8') ?></span>
-                                <strong><?= number_format((int) $count) ?></strong>
-                            </div>
-                            <div class="progress" role="progressbar" aria-label="<?= htmlspecialchars((string) $status, ENT_QUOTES, 'UTF-8') ?> viewing requests" aria-valuenow="<?= $percentage ?>" aria-valuemin="0" aria-valuemax="100" style="height: .65rem;">
-                                <div class="progress-bar <?= $barClass ?>" style="width: <?= $percentage ?>%"></div>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-            <?php endif; ?>
-        </section>
-    </div>
-</div>
 
 <section class="card p-3 p-lg-4 mb-4 shadow-sm" id="property-list">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3 pb-3 border-bottom">
         <div>
             <div class="page-eyebrow mb-1">Current inventory</div>
-            <h2 class="h4 fw-bold mb-0">Property list</h2>
-            <p class="text-muted small mb-0">Active property listings visible across the KingQuiry catalog and customer portals.</p>
+            <h2 class="h4 fw-bold mb-0">Property listings</h2>
+            <p class="text-muted small mb-0">Active property listings visible across the KingQuiry catalog and client portals.</p>
         </div>
         <div class="d-flex flex-wrap align-items-center gap-2">
             <span class="badge bg-primary px-3 py-2 fs-6 fw-bold" id="activePropsCountBadge"><?= number_format($properties->num_rows) ?> active listings</span>
@@ -1310,47 +838,6 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
         </div>
     </div>
 </div>
-
-<section class="card p-4 p-lg-5 mb-4">
-    <div class="page-eyebrow mb-2">Comparable listing analysis</div>
-    <h2 class="h4 fw-bold mb-2">Property price estimate</h2>
-    <p class="text-muted small mb-4">Uses available listing prices and the selected land area, category, and municipality to provide an indicative range. This is a planning reference, not a formal appraisal.</p>
-    <form method="POST" class="row g-3 align-items-end">
-        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
-        <div class="col-md-3">
-            <label class="form-label fw-semibold" for="estimate-area">Land area (sq.m.)</label>
-            <input id="estimate-area" type="number" min="1" max="1000000" step="any" name="sqm_input" class="form-control" required placeholder="e.g. 500" value="<?= htmlspecialchars((string) ($inputSqm ?: ''), ENT_QUOTES, 'UTF-8') ?>">
-        </div>
-        <div class="col-md-3">
-            <label class="form-label fw-semibold" for="estimate-type">Category</label>
-            <select id="estimate-type" name="property_type" class="form-select" required>
-                <?php foreach (property_type_labels() as $propertyType => $propertyLabel): ?>
-                    <option value="<?= htmlspecialchars($propertyType, ENT_QUOTES, 'UTF-8') ?>" <?= $inputType === $propertyType ? 'selected' : '' ?>><?= htmlspecialchars($propertyLabel, ENT_QUOTES, 'UTF-8') ?></option>
-                <?php endforeach; ?>
-            </select>
-        </div>
-        <div class="col-md-3">
-            <label class="form-label fw-semibold" for="estimate-location">Municipality / city</label>
-            <select id="estimate-location" name="locationID" class="form-select" required>
-                <?= property_location_options($locations, $estimateLocationId > 0 ? (int) $estimateLocationId : null) ?>
-            </select>
-        </div>
-        <div class="col-md-3">
-            <button type="submit" name="run_prediction" class="btn btn-primary w-100">Calculate estimate</button>
-        </div>
-    </form>
-
-    <?php if ($estimate): ?>
-        <div class="alert alert-success mt-4 mb-0" role="status">
-            <h3 class="h6 fw-bold mb-2">Indicative estimate for <?= htmlspecialchars($estimate['location_name'], ENT_QUOTES, 'UTF-8') ?></h3>
-            <p class="mb-1"><strong><?= number_format((float) $inputSqm, 2) ?> sq.m.</strong>: <strong class="text-dark">₱<?= number_format($estimate['low_estimate'], 2) ?>–₱<?= number_format($estimate['high_estimate'], 2) ?></strong></p>
-            <p class="small mb-0">Based on <?= $estimate['comparable_count'] ?> available listing(s), including <?= $estimate['exact_match_count'] ?> in the same category and municipality. This range is indicative only.</p>
-        </div>
-    <?php endif; ?>
-    <?php if ($estimateError !== ''): ?>
-        <div class="alert alert-warning mt-4 mb-0" role="alert"><?= htmlspecialchars($estimateError, ENT_QUOTES, 'UTF-8') ?></div>
-    <?php endif; ?>
-</section>
 
 <section class="card p-4 p-lg-5 mb-4" id="properties">
     <div class="page-eyebrow mb-2">Inventory management</div>

@@ -163,7 +163,7 @@ function notify_agents_new_viewing(
 
     $notifTitle = 'New viewing requested';
     $notifMessage = sprintf(
-        "Client %s requested a site visit for '%s' on %s at %s.",
+        "Client %s submitted a viewing request for '%s' on %s at %s.",
         $clientName,
         $propertyTitle,
         $formattedDate,

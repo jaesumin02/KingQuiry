@@ -126,7 +126,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_payment_review
     }
 } elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['assign_agent_to_transaction'])) {
     if ($role !== 'Admin') {
-        $formError = 'Only an administrator can assign sales agents to transactions.';
+        $formError = 'Only an Admin can assign Sales Agents to transactions.';
     } else {
         $transactionId = filter_var($_POST['transactionID'] ?? null, FILTER_VALIDATE_INT);
         $assignedAgentId = filter_var($_POST['assignedAgentID'] ?? null, FILTER_VALIDATE_INT);
@@ -134,7 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_payment_review
         if (!has_valid_csrf_token()) {
             $formError = 'Your session expired. Refresh the page and try again.';
         } elseif ($transactionId === false || $transactionId <= 0 || $assignedAgentId === false || $assignedAgentId <= 0) {
-            $formError = 'Choose a valid transaction and active sales agent.';
+            $formError = 'Choose a valid transaction and active Sales Agent.';
         } else {
             try {
                 // Verify active agent
@@ -143,7 +143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_payment_review
                 $agentStmt->execute();
                 $agent = $agentStmt->get_result()->fetch_assoc();
                 if (!$agent) {
-                    throw new InvalidArgumentException('Selected agent is not active or not a licensed sales agent.');
+                    throw new InvalidArgumentException('The selected Sales Agent is inactive or is not authorized.');
                 }
 
                 // Get transaction details
@@ -188,7 +188,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_payment_review
                 send_property_notification(
                     $conn,
                     (int) $tRow['clientID'],
-                    'Assigned Agent Update',
+                    'Sales Agent assigned',
                     'Sales Agent ' . $agent['fullname'] . ' has been assigned to assist you with your property transaction #KQT-' . $transactionId . '.',
                     'client_dashboard.php#transaction-tracking',
                     'agent_assigned'
@@ -253,16 +253,7 @@ $eventsByTransaction = [];
 if ($transactionRows !== []) {
     $transactionIds = array_map(static fn(array $row): int => (int) $row['transactionID'], $transactionRows);
     $transactionIdList = implode(',', $transactionIds);
-    $paymentRows = $conn->query(
-        "SELECT paymentID, transactionID, clientID, amount, paymentMethod, referenceNumber,
-                status, submittedAt, reviewNote
-         FROM property_transaction_payments
-         WHERE transactionID IN ($transactionIdList)
-         ORDER BY submittedAt DESC, paymentID DESC"
-    );
-    while ($payment = $paymentRows->fetch_assoc()) {
-        $paymentRowsByTransaction[(int) $payment['transactionID']][] = $payment;
-    }
+    $paymentRowsByTransaction = get_transaction_payment_records($conn, $transactionIds);
 
     $eventsQuery = $conn->query(
         "SELECT e.eventID, e.transactionID, e.stage, e.note, e.createdAt,
@@ -330,17 +321,17 @@ include 'includes/header.php';
                             <div class="mt-2 fw-semibold"><?= htmlspecialchars($transaction['title'], ENT_QUOTES, 'UTF-8') ?></div>
                             <div class="small text-muted"><?= htmlspecialchars($location, ENT_QUOTES, 'UTF-8') ?></div>
                             <?php if (!empty($transaction['appointmentDate'])): ?>
-                                <div class="small text-muted">Viewing: <?= htmlspecialchars($transaction['appointmentDate'] . ' ' . substr($transaction['appointmentTime'], 0, 5), ENT_QUOTES, 'UTF-8') ?></div>
+                                <div class="small text-muted">Viewing schedule: <?= htmlspecialchars($transaction['appointmentDate'] . ' ' . substr($transaction['appointmentTime'], 0, 5), ENT_QUOTES, 'UTF-8') ?></div>
                             <?php endif; ?>
                             <?php if (!empty($transaction['inquiryID'])): ?>
                                 <div class="small text-muted">Inquiry #<?= (int) $transaction['inquiryID'] ?></div>
                             <?php endif; ?>
                             <div class="small mt-1">
-                                <span class="text-muted">Assigned agent: </span>
+                                <span class="text-muted">Assigned Sales Agent: </span>
                                 <?php if (!empty($transaction['assignedAgentName']) && $transaction['assignedAgentName'] !== 'Unassigned'): ?>
                                     <span class="badge text-bg-light border text-dark fw-semibold">👤 <?= htmlspecialchars($transaction['assignedAgentName'], ENT_QUOTES, 'UTF-8') ?></span>
                                 <?php else: ?>
-                                    <span class="badge text-bg-warning text-dark">⚠️ Unassigned agent</span>
+                                    <span class="badge text-bg-warning text-dark">⚠️ Unassigned Sales Agent</span>
                                 <?php endif; ?>
                             </div>
                             <?php if ($currentStage === 'completed' && $transaction['salePrice'] !== null): ?>
@@ -360,7 +351,7 @@ include 'includes/header.php';
                             <span class="badge rounded-pill <?= $stageBadgeClass ?>"><?= htmlspecialchars($stageLabels[$currentStage] ?? 'Status unavailable', ENT_QUOTES, 'UTF-8') ?></span>
                             <?php if ($currentStage === 'payment_in_process'): ?>
                                 <div class="small text-muted mt-1" style="max-width: 170px; font-size: 0.75rem; line-height: 1.25;">
-                                    <i class="bi bi-clock-history"></i> Agent inspecting / filling payment form
+                                    <i class="bi bi-clock-history"></i> Sales Agent reviewing payment information
                                 </div>
                             <?php endif; ?>
                         </td>
@@ -383,7 +374,7 @@ include 'includes/header.php';
                     </tr>
                 <?php endforeach; ?>
             <?php else: ?>
-                <tr><td colspan="5" class="text-center text-muted py-4">No tracked inquiries or viewings yet. New client requests will appear here.</td></tr>
+                <tr><td colspan="5" class="text-center text-muted py-4">No tracked inquiries or viewing requests yet. New client requests will appear here.</td></tr>
             <?php endif; ?>
             </tbody>
         </table>
@@ -460,7 +451,7 @@ include 'includes/header.php';
                                 </div>
                             <?php endif; ?>
                             <div class="small mt-2 pt-2 border-top d-flex justify-content-between align-items-center flex-wrap gap-2">
-                                <span class="text-muted">Assigned Representative:</span>
+                                <span class="text-muted">Assigned Sales Agent:</span>
                                 <strong>👤 <?= htmlspecialchars($transaction['assignedAgentName'] ?? 'Unassigned', ENT_QUOTES, 'UTF-8') ?></strong>
                             </div>
                         </div>
@@ -469,7 +460,7 @@ include 'includes/header.php';
                         <?php if ($role === 'Admin'): ?>
                             <div class="card p-3 mb-3 border shadow-none bg-white rounded-3">
                                 <div class="d-flex align-items-center justify-content-between mb-2">
-                                    <span class="small fw-bold text-dark"><i class="bi bi-person-gear me-1"></i> Agent Assignment Dispatch</span>
+                                    <span class="small fw-bold text-dark"><i class="bi bi-person-gear me-1"></i> Sales Agent assignment</span>
                                     <span class="badge <?= (!empty($transaction['assignedAgentName']) && $transaction['assignedAgentName'] !== 'Unassigned') ? 'text-bg-success' : 'text-bg-warning text-dark' ?>">
                                         <?= htmlspecialchars($transaction['assignedAgentName'] ?? 'Unassigned', ENT_QUOTES, 'UTF-8') ?>
                                     </span>
@@ -478,7 +469,7 @@ include 'includes/header.php';
                                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                                     <input type="hidden" name="transactionID" value="<?= $tId ?>">
                                     <select name="assignedAgentID" class="form-select form-select-sm" required>
-                                        <option value="">-- Choose Sales Agent to Assign --</option>
+                                        <option value="">-- Choose a Sales Agent --</option>
                                         <?php foreach ($activeAgentsList as $actAgent): ?>
                                             <option value="<?= (int) $actAgent['userID'] ?>" <?= ((int) ($transaction['assignedAgentID'] ?? 0) === (int) $actAgent['userID']) ? 'selected' : '' ?>>
                                                 <?= htmlspecialchars($actAgent['fullname'], ENT_QUOTES, 'UTF-8') ?> (<?= htmlspecialchars($actAgent['email'], ENT_QUOTES, 'UTF-8') ?>)
@@ -486,67 +477,18 @@ include 'includes/header.php';
                                         <?php endforeach; ?>
                                     </select>
                                     <button type="submit" name="assign_agent_to_transaction" class="btn btn-sm btn-outline-primary text-nowrap fw-semibold">
-                                        Dispatch Agent
+                                        Assign Sales Agent
                                     </button>
                                 </form>
                             </div>
                         <?php endif; ?>
 
-                        <!-- Post-Viewing Stages Pipeline Stepper -->
-                        <?php
-                        $postViewingPipeline = [
-                            'viewing_requested'   => '1. Viewing requested',
-                            'viewing_confirmed'   => '2. Viewing confirmed',
-                            'viewing_completed'   => '3. Viewing completed',
-                            'payment_in_process'  => '4. Payment in process',
-                            'document_verification' => '5. Document verification',
-                            'payment_confirmation' => '6. Payment confirmation',
-                            'completed'           => '7. Completed',
-                        ];
-                        if ($isTxSpotCash) {
-                            $postViewingPipeline = [
-                                'viewing_requested'   => '1. Viewing requested',
-                                'viewing_confirmed'   => '2. Viewing confirmed',
-                                'viewing_completed'   => '3. Viewing completed',
-                                'payment_in_process'  => '4. Payment in process',
-                                'payment_confirmation' => '5. Payment confirmation',
-                                'completed'           => '6. Completed',
-                            ];
-                        }
-                        $pipelineKeys = array_keys($postViewingPipeline);
-                        $currentStageIdx = array_search($currentStage, $pipelineKeys, true);
-                        ?>
-                        <div class="border rounded-3 p-3 bg-white mb-3">
-                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                <span class="small fw-bold text-dark"><i class="bi bi-diagram-3 me-1"></i> Transaction Pipeline</span>
-                                <span class="badge text-bg-light border text-dark small fw-semibold">Step <?= $currentStageIdx !== false ? ($currentStageIdx + 1) : 0 ?> of <?= count($postViewingPipeline) ?></span>
-                            </div>
-                            <div class="d-flex flex-wrap gap-1">
-                                <?php foreach ($postViewingPipeline as $pKey => $pLabel):
-                                    $stepIdx = array_search($pKey, $pipelineKeys, true);
-                                    $isPassed = ($currentStageIdx !== false && $stepIdx < $currentStageIdx) || $currentStage === 'completed';
-                                    $isCurrent = ($currentStageIdx !== false && $pKey === $currentStage) && $currentStage !== 'completed';
-                                ?>
-                                    <div class="d-flex align-items-center gap-1 px-2 py-1 rounded small <?= $isCurrent ? 'bg-primary text-white fw-bold shadow-sm' : ($isPassed ? 'bg-success text-white' : 'bg-light border text-secondary') ?>" style="font-size: 0.74rem;">
-                                        <?php if ($isPassed): ?>
-                                            <span>✓</span>
-                                        <?php elseif ($isCurrent): ?>
-                                            <span>●</span>
-                                        <?php else: ?>
-                                            <span>○</span>
-                                        <?php endif; ?>
-                                        <span><?= htmlspecialchars($pLabel, ENT_QUOTES, 'UTF-8') ?></span>
-                                    </div>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-
                         <!-- Stage Guidance Alert -->
                         <?php
                         $stageGuidance = [
-                            'viewing_requested' => 'Client requested a site visit. Confirm or approve the viewing schedule.',
-                            'viewing_confirmed' => 'Viewing is confirmed! Conduct the property site visit on schedule, then mark "Viewing completed".',
-                            'viewing_completed' => 'Site visit was completed! Next, proceed to "Payment in process" once client settles the reservation deposit.',
+                            'viewing_requested' => 'The client requested a property viewing. Approve the viewing request.',
+                            'viewing_confirmed' => 'The viewing is confirmed. Conduct the property viewing as scheduled, then mark it as completed.',
+                            'viewing_completed' => 'The property viewing is complete. Proceed to "Payment in process" once the client settles the reservation deposit.',
                             'payment_in_process' => $isTxSpotCash
                                 ? '⚡ Spot Cash selected: Document verification is bypassed. Prepare Deed of Absolute Sale (DOAS). Note: Title transfer and registration taxes are shouldered by the buyer.'
                                 : '⏳ 7-Day Reservation Policy Active: Buyer has 7 days to complete down payment and IDs. Prepare Contract to Sell (CTS) for installment terms (or DOAS if Spot Cash). Note: Title transfer is shouldered by the buyer.',
@@ -560,20 +502,20 @@ include 'includes/header.php';
                         <div class="alert alert-info small py-2 px-3 mb-3 d-flex align-items-start gap-2" role="status">
                             <span class="fs-5">ℹ️</span>
                             <div>
-                                <strong>Agent Next Action:</strong> <?= htmlspecialchars($guidanceText, ENT_QUOTES, 'UTF-8') ?>
+                                <strong>Sales Agent next action:</strong> <?= htmlspecialchars($guidanceText, ENT_QUOTES, 'UTF-8') ?>
                             </div>
                         </div>
 
                         <!-- Unified Advance Milestone Form -->
                         <?php if ($nextStages !== []):
                             $stageOptionLabels = [
-                                'viewing_completed'     => '✓ 1. Mark Viewing as Completed (Site visit conducted on site)',
+                                'viewing_completed'     => '✓ 1. Mark viewing as completed (property viewing conducted)',
                                 'payment_in_process'    => '💳 2. Payment in Process (Processing payment & paperwork)',
                                 'document_verification' => '📑 3. Document Verification (Payment is done processing)',
                                 'payment_confirmation'  => '✅ 4. Payment Confirmation (Documents verified / Spot Cash)',
                                 'completed'             => '🏆 5. Mark as Successful / Completed (Final turnover & sale finalized)',
                                 'cancelled'             => '❌ Cancel Transaction',
-                                'viewing_confirmed'     => '📅 Confirm Viewing Schedule',
+                                'viewing_confirmed'     => '📅 Confirm viewing schedule',
                                 'contacting_client'     => '📞 Contacting Client',
                             ];
                             $defaultNextStage = $nextStages[0] ?? '';
@@ -697,21 +639,21 @@ include 'includes/header.php';
                                                 <?= htmlspecialchars(ucfirst($payment['status']), ENT_QUOTES, 'UTF-8') ?>
                                             </span>
                                         </div>
-                                        <div class="text-muted small">Submitted <?= htmlspecialchars($payment['submittedAt'], ENT_QUOTES, 'UTF-8') ?></div>
+                                        <div class="text-muted small"><?= htmlspecialchars($payment['sourceLabel'], ENT_QUOTES, 'UTF-8') ?> · Recorded <?= htmlspecialchars($payment['submittedAt'], ENT_QUOTES, 'UTF-8') ?></div>
                                         <?php if (!empty($payment['referenceNumber'])): ?>
                                             <div>Reference: <?= htmlspecialchars($payment['referenceNumber'], ENT_QUOTES, 'UTF-8') ?></div>
                                         <?php endif; ?>
                                         <?php if (!empty($payment['reviewNote'])): ?>
                                             <div class="text-muted"><?= htmlspecialchars($payment['reviewNote'], ENT_QUOTES, 'UTF-8') ?></div>
                                         <?php endif; ?>
-                                        <?php if ($payment['status'] === 'pending'): ?>
+                                        <?php if ($payment['status'] === 'pending' && $payment['sourceLabel'] === 'Client report'): ?>
                                             <form method="POST" class="d-grid gap-2 mt-2">
                                                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                                                 <input type="hidden" name="paymentID" value="<?= (int) $payment['paymentID'] ?>">
                                                 <input id="modal-payment-review-note-<?= (int) $payment['paymentID'] ?>" type="text" name="reviewNote" class="form-control form-control-sm" maxlength="1000" placeholder="Optional note for client">
                                                 <div class="d-flex gap-2">
-                                                    <button type="submit" name="paymentStatus" value="confirmed" class="btn btn-sm btn-success" data-confirm="Confirm this client payment report?">Confirm</button>
-                                                    <button type="submit" name="paymentStatus" value="rejected" class="btn btn-sm btn-outline-danger" data-confirm="Reject this client payment report?">Reject</button>
+                                                    <button type="submit" name="paymentStatus" value="confirmed" class="btn btn-sm btn-success" data-confirm="Confirm this client payment report?">Confirm payment</button>
+                                                    <button type="submit" name="paymentStatus" value="rejected" class="btn btn-sm btn-outline-danger" data-confirm="Reject this client payment report?">Reject payment</button>
                                                 </div>
                                                 <input type="hidden" name="submit_payment_review" value="1">
                                             </form>
@@ -757,7 +699,7 @@ include 'includes/header.php';
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const stageNotePlaceholders = {
-        'viewing_completed': 'e.g. Conducted site visit with client on site. Client confirmed interest in proceeding.',
+        'viewing_completed': 'e.g. Completed the property viewing with the client. The client confirmed interest in proceeding.',
         'payment_in_process': 'e.g. Reservation deposit agreed; preparing down payment paperwork.',
         'document_verification': 'e.g. Payment is done processing; title deed and documents verified.',
         'payment_confirmation': 'e.g. All legal clearances verified; finalizing official receipts.',

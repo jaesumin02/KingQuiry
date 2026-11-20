@@ -6,7 +6,11 @@ function kq_admin_pages(): array
     return [
         'admin_dashboard.php' => [
             'title' => 'Admin dashboard',
-            'subtitle' => 'A clear overview of listings and customer activity.',
+            'subtitle' => 'A clear overview of listings and client activity.',
+        ],
+        'admin_reports.php' => [
+            'title' => 'Reports & analytics',
+            'subtitle' => 'Review revenue, inventory, viewing requests, and inquiry activity.',
         ],
         'admin_sales.php' => [
             'title' => 'Sales & transactions',
@@ -25,8 +29,8 @@ function kq_admin_pages(): array
             'subtitle' => 'Record each verified milestone so clients can follow their request through completion.',
         ],
         'admin_chat.php' => [
-            'title' => 'Customer inbox',
-            'subtitle' => 'Reply to client questions and land-estimate requests from your customer inbox.',
+            'title' => 'Client inbox',
+            'subtitle' => 'Reply to client questions and land-estimate requests from your inbox.',
         ],
     ];
 }

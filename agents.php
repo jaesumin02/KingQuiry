@@ -40,16 +40,16 @@ include __DIR__ . '/includes/header.php';
 
 <section class="rounded-4 p-4 p-lg-5 mb-4 text-white" style="background: linear-gradient(125deg, #102a43, #174a70);">
     <div class="page-eyebrow text-warning">Kings Land Properties</div>
-    <h1 class="display-6 fw-bold mb-2"><?= $agent ? 'Meet ' . htmlspecialchars((string) $agent['fullname'], ENT_QUOTES, 'UTF-8') : 'Connect with our agents' ?></h1>
-    <p class="mb-0 text-white-50">Browse active sales-agent contacts and reach out directly about available properties and viewing requests.</p>
+    <h1 class="display-6 fw-bold mb-2"><?= $agent ? 'Meet ' . htmlspecialchars((string) $agent['fullname'], ENT_QUOTES, 'UTF-8') : 'Connect with our Sales Agents' ?></h1>
+    <p class="mb-0 text-white-50">Browse active Sales Agent profiles and reach out directly about available properties and viewing requests.</p>
 </section>
 
 <?php if ($agentId > 0 && !$agent): ?>
-    <div class="alert alert-warning" role="status">This agent profile is unavailable. Please choose an active agent from the directory.</div>
-    <a class="btn btn-primary" href="agents.php">Browse agents</a>
+    <div class="alert alert-warning" role="status">This Sales Agent profile is unavailable. Please choose an active Sales Agent from the directory.</div>
+    <a class="btn btn-primary" href="agents.php">Browse Sales Agents</a>
 <?php elseif ($agents === []): ?>
     <div class="card p-4 p-lg-5 text-center">
-        <h2 class="h4 fw-bold">No active agent profiles are available</h2>
+        <h2 class="h4 fw-bold">No active Sales Agent profiles are available</h2>
         <p class="text-muted mb-3">Browse current listings or contact Kings Land Properties for assistance.</p>
         <a class="btn btn-primary align-self-center" href="index.php#all-properties">Browse properties</a>
     </div>
@@ -57,16 +57,16 @@ include __DIR__ . '/includes/header.php';
     <?php if ($agent): ?>
         <div class="card p-3 p-md-4 p-lg-5">
             <div class="mb-4">
-                <a class="btn btn-sm btn-outline-secondary" href="agents.php">&larr; Back to all agents</a>
+                <a class="btn btn-sm btn-outline-secondary" href="agents.php">&larr; Back to all Sales Agents</a>
             </div>
             <div class="row align-items-center g-4">
                 <div class="col-12 col-lg-8">
                     <div class="d-flex align-items-center gap-3 gap-md-4">
                         <span class="d-inline-flex flex-shrink-0 rounded-circle align-items-center justify-content-center bg-primary-subtle text-primary fw-bold" style="width: 76px; height: 76px; font-size: 1.8rem;" aria-hidden="true"><?= htmlspecialchars(strtoupper(substr((string) $agent['fullname'], 0, 1)), ENT_QUOTES, 'UTF-8') ?></span>
                         <div class="min-w-0">
-                            <div class="page-eyebrow">Sales agent profile</div>
+                            <div class="page-eyebrow">Sales Agent profile</div>
                             <h2 class="h3 fw-bold mb-2 text-break"><?= htmlspecialchars((string) $agent['fullname'], ENT_QUOTES, 'UTF-8') ?></h2>
-                            <p class="text-muted mb-0">Contact this agent to ask about available property listings or arrange a viewing.</p>
+                            <p class="text-muted mb-0">Contact this Sales Agent to ask about available property listings or arrange a viewing.</p>
                         </div>
                     </div>
                 </div>
@@ -77,18 +77,18 @@ include __DIR__ . '/includes/header.php';
                 ?>
                 <div class="col-12 col-lg-4">
                     <div class="rounded-3 border bg-light p-3 p-md-4 h-100">
-                        <div class="page-eyebrow mb-2">Contact this agent</div>
+                        <div class="page-eyebrow mb-2">Contact this Sales Agent</div>
                         <div class="d-grid gap-2">
                             <button type="button" class="btn btn-primary"
                                     data-kq-chat-agent="<?= htmlspecialchars((string) $agent['fullname'], ENT_QUOTES, 'UTF-8') ?>"
                                     data-kq-chat-agent-id="<?= (int) $agent['userID'] ?>"
                                     data-kq-chat-agent-email="<?= $emailIsValid ? htmlspecialchars((string) $agent['email'], ENT_QUOTES, 'UTF-8') : '' ?>"
-                                    data-kq-chat-agent-phone="<?= $phoneIsCallable ? htmlspecialchars((string) $agent['phone'], ENT_QUOTES, 'UTF-8') : '' ?>">Chat with agent</button>
+                                    data-kq-chat-agent-phone="<?= $phoneIsCallable ? htmlspecialchars((string) $agent['phone'], ENT_QUOTES, 'UTF-8') : '' ?>">Chat with Sales Agent</button>
                             <?php if ($emailIsValid): ?>
-                                <a class="btn btn-outline-primary" href="mailto:<?= htmlspecialchars((string) $agent['email'], ENT_QUOTES, 'UTF-8') ?>?subject=KingQuiry%20property%20inquiry">Email agent</a>
+                                <a class="btn btn-outline-primary" href="mailto:<?= htmlspecialchars((string) $agent['email'], ENT_QUOTES, 'UTF-8') ?>?subject=KingQuiry%20property%20inquiry">Email Sales Agent</a>
                             <?php endif; ?>
                             <?php if ($phoneIsCallable): ?>
-                                <a class="btn btn-outline-primary" href="tel:<?= htmlspecialchars($phoneHref, ENT_QUOTES, 'UTF-8') ?>">Call agent</a>
+                                <a class="btn btn-outline-primary" href="tel:<?= htmlspecialchars($phoneHref, ENT_QUOTES, 'UTF-8') ?>">Call Sales Agent</a>
                             <?php endif; ?>
                             <?php if (!$emailIsValid && !$phoneIsCallable): ?>
                                 <p class="small text-muted mb-0">Direct contact details are not currently available for this profile.</p>
@@ -112,13 +112,13 @@ include __DIR__ . '/includes/header.php';
                     </div>
                 <?php endif; ?>
             </div>
-            <p class="small text-muted mt-4 mb-0">Direct chat messages are sent to the selected agent through KingQuiry. Email and phone links open outside the site. Do not send passwords, payment credentials, or sensitive identity documents.</p>
+            <p class="small text-muted mt-4 mb-0">Direct chat messages are sent to the selected Sales Agent through KingQuiry. Email and phone links open outside the site. Do not send passwords, payment credentials, or sensitive identity documents.</p>
         </div>
     <?php else: ?>
         <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-3">
             <div>
                 <div class="page-eyebrow">Our team</div>
-                <h2 class="h3 fw-bold mb-0">Active sales agents</h2>
+                <h2 class="h3 fw-bold mb-0">Active Sales Agents</h2>
             </div>
             <span class="text-muted small"><?= count($agents) ?> profile<?= count($agents) === 1 ? '' : 's' ?></span>
         </div>
@@ -134,29 +134,29 @@ include __DIR__ . '/includes/header.php';
                             <span class="d-inline-flex rounded-circle align-items-center justify-content-center bg-primary-subtle text-primary fw-bold" style="width: 52px; height: 52px;" aria-hidden="true"><?= htmlspecialchars(strtoupper(substr((string) $listedAgent['fullname'], 0, 1)), ENT_QUOTES, 'UTF-8') ?></span>
                             <div>
                                 <h3 class="h5 fw-bold mb-1"><?= htmlspecialchars((string) $listedAgent['fullname'], ENT_QUOTES, 'UTF-8') ?></h3>
-                                <div class="small text-muted">Sales agent</div>
+                                <div class="small text-muted">Sales Agent</div>
                             </div>
                         </div>
                         <p class="text-muted small flex-grow-1">Ask about available listings, property details, or arranging a viewing.</p>
                         <div class="d-grid gap-2 mt-auto">
-                            <a class="btn btn-sm btn-outline-primary" href="agents.php?id=<?= (int) $listedAgent['userID'] ?>">View profile</a>
+                            <a class="btn btn-sm btn-outline-primary" href="agents.php?id=<?= (int) $listedAgent['userID'] ?>">View Sales Agent profile</a>
                             <button type="button" class="btn btn-sm btn-outline-primary"
                                     data-kq-chat-agent="<?= htmlspecialchars((string) $listedAgent['fullname'], ENT_QUOTES, 'UTF-8') ?>"
                                     data-kq-chat-agent-id="<?= (int) $listedAgent['userID'] ?>"
                                     data-kq-chat-agent-email="<?= $emailIsValid ? htmlspecialchars((string) $listedAgent['email'], ENT_QUOTES, 'UTF-8') : '' ?>"
-                                    data-kq-chat-agent-phone="<?= $phoneIsCallable ? htmlspecialchars((string) $listedAgent['phone'], ENT_QUOTES, 'UTF-8') : '' ?>">Chat with agent</button>
+                                    data-kq-chat-agent-phone="<?= $phoneIsCallable ? htmlspecialchars((string) $listedAgent['phone'], ENT_QUOTES, 'UTF-8') : '' ?>">Chat with Sales Agent</button>
                             <?php if ($emailIsValid): ?>
-                                <a class="btn btn-sm btn-primary" href="mailto:<?= htmlspecialchars((string) $listedAgent['email'], ENT_QUOTES, 'UTF-8') ?>?subject=KingQuiry%20property%20inquiry">Email agent</a>
+                                <a class="btn btn-sm btn-primary" href="mailto:<?= htmlspecialchars((string) $listedAgent['email'], ENT_QUOTES, 'UTF-8') ?>?subject=KingQuiry%20property%20inquiry">Email Sales Agent</a>
                             <?php endif; ?>
                             <?php if ($phoneIsCallable): ?>
-                                <a class="btn btn-sm btn-primary" href="tel:<?= htmlspecialchars($phoneHref, ENT_QUOTES, 'UTF-8') ?>">Call agent</a>
+                                <a class="btn btn-sm btn-primary" href="tel:<?= htmlspecialchars($phoneHref, ENT_QUOTES, 'UTF-8') ?>">Call Sales Agent</a>
                             <?php endif; ?>
                         </div>
                     </article>
                 </div>
             <?php endforeach; ?>
         </div>
-        <p class="small text-muted mt-3 mb-0">Use Chat with agent for an in-site message or the email and phone links for direct contact. Agent availability should be confirmed.</p>
+        <p class="small text-muted mt-3 mb-0">Use Chat with Sales Agent for an in-site message or the email and phone links for direct contact. Sales Agent availability should be confirmed.</p>
     <?php endif; ?>
 <?php endif; ?>
 

@@ -156,7 +156,7 @@ function kq_build_catalog_url(array $changes = []): string
         unset($params['per_page']);
     }
     $query = http_build_query($params);
-    return 'index.php' . ($query !== '' ? '?' . $query : '');
+    return 'index.php' . ($query !== '' ? '?' . $query : '') . '#property-results';
 }
 
 function kq_pagination_pages(int $currentPage, int $totalPages): array
@@ -422,7 +422,7 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0 || $sor
 
         <!-- Centered Search Bar at the bottom of hero text -->
         <div class="hero-search-wrapper">
-            <form method="GET" action="index.php#all-properties" id="property-search-form">
+            <form method="GET" action="index.php#property-results" id="property-search-form">
                 <?php if ($sort !== 'newest'): ?>
                     <input type="hidden" name="sort" value="<?= htmlspecialchars($sort, ENT_QUOTES, 'UTF-8') ?>">
                 <?php endif; ?>
@@ -509,10 +509,10 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0 || $sor
                 <div class="col-md-6 col-xl-4">
                     <article class="card h-100 overflow-hidden">
                         <?php if ($hasFeaturedImage): ?>
-                            <img src="assets/images/<?= rawurlencode($featuredImage) ?>" class="property-card-image" alt="<?= htmlspecialchars($featuredImageCredit ? 'Representative image for ' . $featuredProperty['title'] : (string) $featuredProperty['title'], ENT_QUOTES, 'UTF-8') ?>" loading="lazy">
+                            <img src="assets/images/<?= rawurlencode($featuredImage) ?>" class="property-card-image" alt="<?= htmlspecialchars($featuredImageCredit ? 'Illustrative photo for ' . $featuredProperty['title'] : (string) $featuredProperty['title'], ENT_QUOTES, 'UTF-8') ?>" loading="lazy">
                             <?php if ($featuredImageCredit): ?>
                                 <div class="small text-muted px-3 py-2" style="font-size: .72rem; line-height: 1.35;">
-                                    Representative image. <a href="<?= htmlspecialchars($featuredImageCredit['sourceUrl'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer"><?= htmlspecialchars($featuredImageCredit['title'] . ' by ' . $featuredImageCredit['creator'], ENT_QUOTES, 'UTF-8') ?></a>,
+                                    Image credit: <a href="<?= htmlspecialchars($featuredImageCredit['sourceUrl'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer"><?= htmlspecialchars($featuredImageCredit['title'] . ' by ' . $featuredImageCredit['creator'], ENT_QUOTES, 'UTF-8') ?></a>,
                                     <a href="<?= htmlspecialchars($featuredImageCredit['licenseUrl'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer"><?= htmlspecialchars($featuredImageCredit['license'], ENT_QUOTES, 'UTF-8') ?></a>.
                                 </div>
                             <?php endif; ?>
@@ -563,7 +563,6 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0 || $sor
                 <div class="page-eyebrow">Your activity</div>
                 <h2 class="h5 fw-bold mb-0">Recent viewing requests</h2>
             </div>
-            <a href="client_dashboard.php" class="btn btn-sm btn-outline-primary">View dashboard</a>
         </div>
         <?php if ($myAppointments && $myAppointments->num_rows > 0): ?>
             <?php while($appt = $myAppointments->fetch_assoc()): ?>
@@ -582,7 +581,7 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0 || $sor
                 </div>
             <?php endwhile; ?>
         <?php else: ?>
-            <div class="text-muted">No viewing requests yet. Open a listing to schedule a visit.</div>
+            <div class="text-muted">No viewing requests yet. Open a listing to request a property viewing.</div>
         <?php endif; ?>
     </section>
 <?php endif; ?>
@@ -603,7 +602,7 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0 || $sor
             <?php endif; ?>
         </div>
 
-        <form method="GET" action="index.php" class="d-flex flex-wrap align-items-center justify-content-start justify-content-md-end gap-2.5 m-0" id="catalog-controls-form">
+        <form method="GET" action="index.php#property-results" class="d-flex flex-wrap align-items-center justify-content-start justify-content-md-end gap-2.5 m-0" id="catalog-controls-form">
             <?php if ($search !== ''): ?>
                 <input type="hidden" name="search" value="<?= htmlspecialchars($search, ENT_QUOTES, 'UTF-8') ?>">
             <?php endif; ?>
@@ -620,8 +619,8 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0 || $sor
                 </label>
                 <select id="catalog-sort" name="sort" class="form-select form-select-sm kq-toolbar-select" onchange="this.form.submit()">
                     <option value="newest" <?= $sort === 'newest' ? 'selected' : '' ?>>Newest First</option>
-                    <option value="price_asc" <?= $sort === 'price_asc' ? 'selected' : '' ?>>Price: Low to High (Ascending)</option>
-                    <option value="price_desc" <?= $sort === 'price_desc' ? 'selected' : '' ?>>Price: High to Low (Descending)</option>
+                    <option value="price_asc" <?= $sort === 'price_asc' ? 'selected' : '' ?>>Lowest price</option>
+                    <option value="price_desc" <?= $sort === 'price_desc' ? 'selected' : '' ?>>Highest price</option>
                     <option value="name_asc" <?= $sort === 'name_asc' ? 'selected' : '' ?>>Title: A to Z</option>
                     <option value="name_desc" <?= $sort === 'name_desc' ? 'selected' : '' ?>>Title: Z to A</option>
                 </select>
@@ -647,7 +646,7 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0 || $sor
 </div>
 
 <!-- ═══════════════════ ALL AVAILABLE LAND & PROPERTIES ═══════════════════ -->
-<div class="row g-4 mb-5">
+<div class="row g-4 mb-5" id="property-results">
     <?php if ($visibleProperties !== []): ?>
         <?php foreach ($visibleProperties as $row): ?>
             <?php
@@ -661,14 +660,21 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0 || $sor
             $propertyTitle = (string) $row['title'];
             $isSampleListing = str_starts_with($propertyTitle, '[SAMPLE] ');
             $displayTitle = $isSampleListing ? substr($propertyTitle, 9) : $propertyTitle;
+            $cardDescription = trim((string) ($row['description'] ?? ''));
+            if ($cardDescription === '') {
+                $cardDescription = trim((string) ($row['landCharacteristics'] ?? ''));
+            }
+            if ($cardDescription === '') {
+                $cardDescription = 'Contact our team for more property details.';
+            }
             ?>
             <div class="col-md-6 col-xl-4">
                 <article class="card property-card h-100" id="prop-card-<?= (int) $row['propertyID'] ?>">
                     <?php if ($hasImage): ?>
-                        <img src="assets/images/<?= rawurlencode($imageName) ?>" class="card-img-top property-card-image" alt="<?= htmlspecialchars($imageCredit ? 'Representative image for ' . $displayTitle : $displayTitle, ENT_QUOTES, 'UTF-8') ?>">
+                        <img src="assets/images/<?= rawurlencode($imageName) ?>" class="card-img-top property-card-image" alt="<?= htmlspecialchars($imageCredit ? 'Illustrative photo for ' . $displayTitle : $displayTitle, ENT_QUOTES, 'UTF-8') ?>">
                         <?php if ($imageCredit): ?>
                             <div class="small text-muted px-3 py-2" style="font-size: .72rem; line-height: 1.35;">
-                                Representative image. <a href="<?= htmlspecialchars($imageCredit['sourceUrl'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer"><?= htmlspecialchars($imageCredit['title'] . ' by ' . $imageCredit['creator'], ENT_QUOTES, 'UTF-8') ?></a>,
+                                Image credit: <a href="<?= htmlspecialchars($imageCredit['sourceUrl'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer"><?= htmlspecialchars($imageCredit['title'] . ' by ' . $imageCredit['creator'], ENT_QUOTES, 'UTF-8') ?></a>,
                                 <a href="<?= htmlspecialchars($imageCredit['licenseUrl'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer"><?= htmlspecialchars($imageCredit['license'], ENT_QUOTES, 'UTF-8') ?></a>.
                             </div>
                         <?php endif; ?>
@@ -689,7 +695,7 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0 || $sor
                         <?php if (!empty($row['areaSqm'])): ?>
                             <div class="small text-muted mb-2"><?= number_format((float) $row['areaSqm'], 2) ?> sq.m. <?= $row['propertyType'] === 'Condo' ? 'floor area' : 'lot' ?></div>
                         <?php endif; ?>
-                        <p class="text-muted small mb-3"><?= htmlspecialchars($row['landCharacteristics'] ?: 'Contact our team for property characteristics.', ENT_QUOTES, 'UTF-8') ?></p>
+                        <p class="property-card-description text-muted small mb-3"><?= htmlspecialchars($cardDescription, ENT_QUOTES, 'UTF-8') ?></p>
                         <div class="border-top pt-3 mt-auto">
                             <div class="property-price">₱<?= number_format((float) $row['price'], 2) ?></div>
                             <?php if ($isSampleListing): ?>

@@ -8,14 +8,13 @@ include __DIR__ . '/includes/header.php';
 <section class="rounded-4 p-4 p-lg-5 mb-4 text-white" style="background: linear-gradient(125deg, #102a43, #174a70);">
     <div class="page-eyebrow text-warning">Kings Land Properties</div>
     <h1 class="display-6 fw-bold mb-2">About Kings Land Properties</h1>
-    <p class="mb-0 text-white-50">Discover KingQuiry, our company background, client services, private feedback options, and answers to common questions.</p>
+    <p class="mb-0 text-white-50">Discover KingQuiry, our company background, client services, and answers to common questions.</p>
 </section>
 
 <nav class="card p-3 mb-4 shadow-sm" aria-label="About Us sections">
     <div class="d-flex flex-wrap gap-2">
         <a class="btn btn-sm btn-outline-primary" href="#company">Company Background</a>
         <a class="btn btn-sm btn-outline-primary" href="#service-history">Service History</a>
-        <a class="btn btn-sm btn-outline-primary" href="#testimonials">Testimonials</a>
         <a class="btn btn-sm btn-outline-primary" href="#faqs">Frequently Asked Questions</a>
         <a class="btn btn-sm btn-outline-primary" href="#team">About the Team</a>
     </div>
@@ -34,26 +33,9 @@ include __DIR__ . '/includes/header.php';
     <ul class="mb-0 text-muted ps-3">
         <li class="mb-2">Browsing available property listings and requesting property details.</li>
         <li class="mb-2">Submitting viewing requests and following their status.</li>
-        <li class="mb-2">Contacting active sales agents through the contact details on their profiles.</li>
+        <li class="mb-2">Contacting active Sales Agents through the contact details on their profiles.</li>
         <li>Following transaction updates and reporting offline payments for staff verification.</li>
     </ul>
-</section>
-
-<section class="card p-4 p-lg-5 mb-4 shadow-sm" id="testimonials">
-    <div class="page-eyebrow">About Us</div>
-    <h2 class="h3 fw-bold mb-3">Testimonials</h2>
-    <div class="rounded-3 p-3 border bg-light">
-        <p class="mb-2 fw-semibold">Client reviews are private and are not published as public testimonials.</p>
-        <p class="small text-muted mb-3">Clients can leave feedback for a completed transaction from the Reviews section of their dashboard. Submitted feedback stays within the account and staff review system.</p>
-        <?php if (normalized_user_role($_SESSION['user'] ?? null) === 'Client'): ?>
-            <a class="btn btn-primary" href="client_dashboard.php#client-reviews">Go to my reviews</a>
-        <?php else: ?>
-            <div class="d-flex flex-wrap gap-2">
-                <a class="btn btn-primary" href="client_login.php">Client sign in</a>
-                <a class="btn btn-outline-primary" href="register.php">Create client account</a>
-            </div>
-        <?php endif; ?>
-    </div>
 </section>
 
 <?php
@@ -66,7 +48,7 @@ $faqItems = [
     [
         'id' => 'faq-photos',
         'question' => 'Do the listing photos always show the exact property?',
-        'answer' => 'A photo marked “Representative image” illustrates the property category and may not show the exact property being offered. Ask the agent for current property-specific photos and confirm the listing details before arranging a visit or making a decision.',
+        'answer' => 'Some listing photos are illustrative and may not show the exact property being offered. The image credit identifies the photo source. Ask a Sales Agent for current property-specific photos and confirm the listing details before arranging a property viewing or making a decision.',
     ],
     [
         'id' => 'faq-account',
@@ -76,12 +58,12 @@ $faqItems = [
     [
         'id' => 'faq-viewing',
         'question' => 'How do I request a property viewing, and when is it confirmed?',
-        'answer' => 'Sign in as a client, open a real listing marked Available, and submit a future date and time using Request a viewing. The request is initially Pending; it is not a confirmed appointment until the sales team updates its status. Check your client dashboard for the latest status and messages.',
+        'answer' => 'Sign in as a Client, open a real listing marked Available, and submit a future date and time using Request a viewing. The request is initially Pending; it is not approved until a Sales Agent or Admin updates its status. Check your Client dashboard for the latest status and messages.',
     ],
     [
         'id' => 'faq-tracking',
         'question' => 'Where can I check the status of an inquiry or transaction?',
-        'answer' => 'Sign in and open your client dashboard. The transaction-tracking area shows recorded status updates for your viewing request, inquiry, or transaction. If information is unclear, contact the assigned sales agent using the details shown for your transaction.',
+        'answer' => 'Sign in and open your Client dashboard. The transaction-tracking area shows recorded status updates for your viewing request, inquiry, or transaction. If information is unclear, contact the assigned Sales Agent using the details shown for your transaction.',
     ],
     [
         'id' => 'faq-payment',
@@ -91,7 +73,7 @@ $faqItems = [
     [
         'id' => 'faq-price',
         'question' => 'Are listing prices and property estimates guaranteed?',
-        'answer' => 'No. Ask the sales team to confirm a real listing’s current availability and asking price. Any estimate shown by the site is indicative only, based on available listing information, and is not a formal appraisal, valuation, financing offer, or guarantee of a sale price.',
+        'answer' => 'No. Ask a Sales Agent to confirm a real listing’s current availability and asking price. Any estimate shown by the site is indicative only, based on available listing information, and is not a formal appraisal, valuation, financing offer, or guarantee of a sale price.',
     ],
     [
         'id' => 'faq-documents',
@@ -100,13 +82,8 @@ $faqItems = [
     ],
     [
         'id' => 'faq-agent',
-        'question' => 'How do I contact an agent?',
-        'answer' => 'Open Resources & Guides and choose About the Team, or visit the agent directory directly. Select View profile to see the active agent’s available contact details. Email and phone calls are handled outside KingQuiry; do not share passwords or payment credentials.',
-    ],
-    [
-        'id' => 'faq-review',
-        'question' => 'When can I leave a review about my agent?',
-        'answer' => 'After a transaction is marked completed, its client can submit one agent rating and optional written feedback from the Reviews section of the client dashboard. Reviews remain within the account and staff review system and are not displayed publicly as testimonials.',
+        'question' => 'How do I contact a Sales Agent?',
+        'answer' => 'Open Resources & Guides and choose About the Team, or visit the Sales Agent directory directly. Select View profile to see the active Sales Agent’s available contact details. Email and phone calls are handled outside KingQuiry; do not share passwords or payment credentials.',
     ],
 ];
 ?>
@@ -131,10 +108,10 @@ $faqItems = [
 
 <section class="card p-4 p-lg-5 mb-4 shadow-sm text-center" id="team">
     <div class="page-eyebrow">About the Team</div>
-    <h2 class="h4 fw-bold mb-2">Connect with our active agents</h2>
-    <p class="text-muted mb-3 mx-auto" style="max-width: 620px;">Our dedicated team of sales agents is ready to assist you with inquiries, scheduling viewing appointments, and guiding you through your property purchase.</p>
+    <h2 class="h4 fw-bold mb-2">Connect with our active Sales Agents</h2>
+    <p class="text-muted mb-3 mx-auto" style="max-width: 620px;">Our dedicated Sales Agent team is ready to assist you with inquiries, property viewings, and guidance through your property purchase.</p>
     <div>
-        <a class="btn btn-primary px-4 fw-semibold" href="agents.php">Meet the Agents</a>
+        <a class="btn btn-primary px-4 fw-semibold" href="agents.php">Meet the Sales Agents</a>
     </div>
 </section>
 

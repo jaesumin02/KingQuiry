@@ -15,8 +15,8 @@ include __DIR__ . '/includes/header.php';
     <p class="text-muted">Use this checklist as a starting point. Confirm legal, tax, financing, and property-specific matters with the appropriate licensed professionals and government offices.</p>
     <ol class="mb-0">
         <li class="mb-2"><strong>Define your needs and budget.</strong> Consider intended use, location, land or floor area, and expenses beyond the asking price.</li>
-        <li class="mb-2"><strong>Review the listing details.</strong> Ask the agent to confirm availability, boundaries, access, utilities, and which details are verified.</li>
-        <li class="mb-2"><strong>Arrange a site visit.</strong> Use the property page to request a viewing and confirm the schedule with the assigned agent.</li>
+        <li class="mb-2"><strong>Review the listing details.</strong> Ask a Sales Agent to confirm availability, boundaries, access, utilities, and which details are verified.</li>
+        <li class="mb-2"><strong>Request a property viewing.</strong> Use the property page to request a viewing and check the schedule status with your assigned Sales Agent.</li>
         <li class="mb-2"><strong>Conduct independent due diligence.</strong> Have qualified professionals verify ownership, title, taxes, land use, boundaries, and any restrictions before paying or signing.</li>
         <li><strong>Keep written records.</strong> Retain agreements, receipts, official references, and the names of the people you contacted.</li>
     </ol>
@@ -91,20 +91,19 @@ include __DIR__ . '/includes/header.php';
 <section class="card p-4 p-lg-5 mb-4" id="pricing-plans">
     <div class="page-eyebrow">Pricing &amp; Listings</div>
     <h2 class="h3 fw-bold">Listing prices</h2>
-    <p class="text-muted">Catalog prices are asking prices. Contact an agent to confirm current availability, final pricing, and any payment terms before proceeding.</p>
-    <p class="mb-3">KingQuiry does not accept online plan purchases or property payments. Ask an active agent to confirm any property price and the official payment process before proceeding.</p>
-    <a class="btn btn-primary" href="agents.php">Contact an agent</a>
+    <p class="text-muted">Catalog prices are asking prices. Contact a Sales Agent to confirm current availability, final pricing, and any payment terms before proceeding.</p>
+    <p class="mb-3">KingQuiry does not accept online plan purchases or property payments. Ask an active Sales Agent to confirm any property price and the official payment process before proceeding.</p>
+    <a class="btn btn-primary" href="agents.php">Contact a Sales Agent</a>
 </section>
 
 <section class="card p-4 p-lg-5 mb-4 shadow-sm text-center">
     <div class="page-eyebrow">Kings Land Properties</div>
     <h2 class="h4 fw-bold mb-2">Need more information?</h2>
-    <p class="text-muted mb-3 mx-auto" style="max-width: 600px;">Read about Kings Land Properties, find answers to common questions, or review our private client-feedback process.</p>
+    <p class="text-muted mb-3 mx-auto" style="max-width: 600px;">Read about Kings Land Properties, find answers to common questions, or contact the Sales Agent team.</p>
     <div class="d-flex flex-wrap justify-content-center gap-2">
         <a class="btn btn-outline-primary" href="about.php#company">About Us</a>
         <a class="btn btn-outline-primary" href="about.php#faqs">Read FAQs</a>
-        <a class="btn btn-primary px-4 fw-semibold" href="about.php#testimonials">Client feedback</a>
-        <a class="btn btn-outline-primary" href="agents.php">Meet the Team</a>
+        <a class="btn btn-outline-primary" href="agents.php">Meet the Sales Agents</a>
     </div>
 </section>
 

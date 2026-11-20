@@ -112,6 +112,7 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
             background: #102a43 !important;
             backdrop-filter: blur(12px);
         }
+        #property-results { scroll-margin-top: 6rem; }
         .kq-live-clock {
             text-align: right;
             font-variant-numeric: tabular-nums;
@@ -292,6 +293,14 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
         .property-card { overflow: hidden; transition: transform .22s ease, box-shadow .22s ease; }
         .property-card:hover { transform: translateY(-4px); box-shadow: 0 18px 38px rgba(22,48,76,.13); }
         .property-card-image { height: 225px; object-fit: cover; background: #e8edf2; }
+        .property-card-description {
+            display: -webkit-box;
+            min-height: 4.5em;
+            overflow: hidden;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 3;
+            line-clamp: 3;
+        }
         .catalog-hero {
             overflow: hidden;
             position: relative;
@@ -480,7 +489,7 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
         .navbar .navbar-nav .kq-contact-btn { justify-content: flex-start; }
         .navbar .navbar-nav .kq-help-btn { justify-content: flex-start; width: 100%; }
         .navbar .navbar-nav .kq-theme-toggle-btn { justify-content: center; width: 100%; }
-        @media (min-width: 1200px) {
+        @media (min-width: 1400px) {
             .navbar .navbar-collapse {
                 max-height: none;
                 min-width: 0;
@@ -544,13 +553,13 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
     </style>
 </head>
 <body<?= $isAdminControlRoom || $isAuthPage ? ' class="' . ($isAdminControlRoom ? 'admin-control-room ' : '') . ($isAuthPage ? 'kq-auth-body' : '') . '"' : '' ?>>
-    <nav class="navbar navbar-expand-xl navbar-dark bg-dark shadow-sm">
+    <nav class="navbar navbar-expand-xxl navbar-dark bg-dark shadow-sm">
         <div class="container-fluid px-3 px-sm-4 px-xl-5">
             <a class="navbar-brand" href="index.php" aria-label="Home - KingQuiry by 4 Kings Realty Services">
                 <img class="kq-official-logo kq-logo-navbar kq-logo-on-dark" src="assets/images/kings-land-properties-logo-light.png" alt="4 Kings Realty Services">
                 <span class="kq-navbar-wordmark">Home</span>
             </a>
-            <div class="d-flex align-items-center gap-2 order-xl-3 ms-xl-3">
+            <div class="d-flex align-items-center gap-2 order-xxl-3 ms-xxl-3">
                 <div class="kq-live-clock" id="kq-live-clock" data-server-epoch-ms="<?= (int) $clockEpochMs ?>" aria-label="Current time in the Philippines">
                     <time class="kq-live-clock-date" id="kq-live-clock-date" datetime="<?= htmlspecialchars($clockNow->format(DateTimeInterface::ATOM), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($clockNow->format('l, F j, Y'), ENT_QUOTES, 'UTF-8') ?></time>
                     <time class="kq-live-clock-time" id="kq-live-clock-time" datetime="<?= htmlspecialchars($clockNow->format(DateTimeInterface::ATOM), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($clockNow->format('h:i:s A'), ENT_QUOTES, 'UTF-8') ?></time>
@@ -559,17 +568,20 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                     <span class="navbar-toggler-icon"></span>
                 </button>
             </div>
-            <div class="collapse navbar-collapse justify-content-end order-xl-2" id="navbarNav">
+            <div class="collapse navbar-collapse justify-content-end order-xxl-2" id="navbarNav">
                 <ul class="navbar-nav">
                     <li class="nav-item"><a class="nav-link" href="resources.php">Resources &amp; Guides</a></li>
+                    <?php
+                    $dashboardRoute = $currentRole === 'Client'
+                        ? 'client_dashboard.php'
+                        : ($currentRole === 'Sales Agent' ? 'agent_dashboard.php' : ($currentRole === 'Admin' ? 'admin_dashboard.php' : null));
+                    ?>
+                    <?php if ($dashboardRoute !== null): ?>
+                        <li class="nav-item">
+                            <a class="nav-link<?= $currentPageName === $dashboardRoute ? ' active' : '' ?>" href="<?= htmlspecialchars($dashboardRoute, ENT_QUOTES, 'UTF-8') ?>"<?= $currentPageName === $dashboardRoute ? ' aria-current="page"' : '' ?>>Dashboard</a>
+                        </li>
+                    <?php endif; ?>
                     <?php if($currentRole !== null): ?>
-                        <?php if ($currentRole === 'Client' && basename($_SERVER['SCRIPT_NAME'] ?? '') !== 'client_dashboard.php'): ?>
-                            <li class="nav-item"><a class="nav-link" href="client_dashboard.php">Dashboard</a></li>
-                        <?php elseif ($currentRole === 'Sales Agent' && basename($_SERVER['SCRIPT_NAME'] ?? '') !== 'agent_dashboard.php'): ?>
-                            <li class="nav-item"><a class="nav-link" href="agent_dashboard.php">Dashboard</a></li>
-                        <?php elseif ($currentRole === 'Admin' && !$isAdminControlRoom): ?>
-                            <li class="nav-item"><a class="nav-link" href="admin_dashboard.php">Dashboard</a></li>
-                        <?php endif; ?>
                         <?php if($currentRole === 'Client'): ?>
                             <li class="nav-item ms-lg-2 kq-nav-actions-start">
                                 <button type="button" class="btn fw-bold px-3 d-inline-flex align-items-center gap-2 kq-contact-btn" data-bs-toggle="modal" data-bs-target="#contactUsModal">
@@ -675,14 +687,14 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                                 <li>
                                     <button type="button" class="dropdown-item d-flex align-items-center gap-2 py-2 text-danger fw-semibold" data-bs-toggle="modal" data-bs-target="#logoutConfirmModal">
                                         <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                                        <span>Log Out</span>
+                                        <span>Sign out</span>
                                     </button>
                                 </li>
                             </ul>
                         </li>
                     <?php else: ?>
                         <li class="nav-item"><a class="nav-link" href="client_login.php">Sign in</a></li>
-                        <li class="nav-item"><a class="nav-link btn btn-primary text-white ms-2 px-3" href="register.php">Register</a></li>
+                        <li class="nav-item"><a class="nav-link btn btn-primary text-white ms-2 px-3" href="register.php">Create account</a></li>
                         <li class="nav-item ms-lg-2 kq-nav-actions-start">
                             <button type="button" class="btn fw-bold px-3 d-inline-flex align-items-center gap-2 kq-contact-btn" data-bs-toggle="modal" data-bs-target="#contactUsModal">
                                 <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>

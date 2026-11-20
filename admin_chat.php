@@ -99,18 +99,18 @@ include 'includes/header.php';
 <section class="card admin-inbox-summary p-3 p-lg-4" aria-labelledby="admin-inbox-overview-title">
     <div class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-start gap-3 mb-4">
         <div>
-            <div class="page-eyebrow">Customer support</div>
+            <div class="page-eyebrow">Client support</div>
             <h2 class="h4 fw-bold mb-1" id="admin-inbox-overview-title">Inbox overview</h2>
-            <p class="text-muted mb-0">Review open conversations, follow up on customer questions, and continue the conversation in chat.</p>
+            <p class="text-muted mb-0">Review open conversations, follow up on client questions, and continue the conversation in chat.</p>
         </div>
-        <button type="button" id="admin-inbox-open-chat" class="btn btn-primary flex-shrink-0" aria-controls="admin-chat-panel" aria-expanded="false">Open customer chat</button>
+        <button type="button" id="admin-inbox-open-chat" class="btn btn-primary flex-shrink-0" aria-controls="admin-chat-panel" aria-expanded="false">Open client chat</button>
     </div>
     <div class="row g-3 admin-inbox-metrics mb-4">
         <div class="col-md-4">
             <div class="kq-stat-card">
                 <div class="kq-stat-label">Open conversations</div>
                 <div class="kq-stat-value" id="admin-inbox-open-count">&mdash;</div>
-                <div class="kq-stat-sub">All currently open customer threads.</div>
+                <div class="kq-stat-sub">All currently open client conversations.</div>
             </div>
         </div>
         <div class="col-md-4">
@@ -136,23 +136,23 @@ include 'includes/header.php';
     <div class="list-group admin-inbox-activity" id="admin-inbox-activity">
         <div class="list-group-item text-muted">Loading conversations&hellip;</div>
     </div>
-    <noscript><p class="text-muted mt-3 mb-0">Enable JavaScript to load live inbox activity and open customer chat.</p></noscript>
+    <noscript><p class="text-muted mt-3 mb-0">Enable JavaScript to load live inbox activity and open client chat.</p></noscript>
 </section>
 
-<button id="admin-chat-launcher" type="button" class="btn btn-primary" aria-label="Open customer chat" title="Open customer chat" aria-expanded="false" aria-controls="admin-chat-panel">
+<button id="admin-chat-launcher" type="button" class="btn btn-primary" aria-label="Open client chat" title="Open client chat" aria-expanded="false" aria-controls="admin-chat-panel">
     <svg width="27" height="27" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l1.7-3.4A7.5 7.5 0 1 1 20 11.5Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M8 11.5h.01M12 11.5h.01M16 11.5h.01" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
     </svg>
 </button>
 
-<section id="admin-chat-panel" class="card border-0 flex-column" aria-label="Admin customer chat inbox" aria-hidden="true" inert>
+<section id="admin-chat-panel" class="card border-0 flex-column" aria-label="Admin client chat inbox" aria-hidden="true" inert>
     <header class="card-header bg-primary text-white d-flex justify-content-between align-items-center gap-2 py-3 px-3">
         <div>
-            <strong>Customer inbox</strong>
+            <strong>Client inbox</strong>
             <div id="admin-chat-presence" class="small">Connecting...</div>
         </div>
-        <button id="admin-chat-close" type="button" class="btn-close btn-close-white" aria-label="Minimize customer chat"></button>
+        <button id="admin-chat-close" type="button" class="btn-close btn-close-white" aria-label="Minimize client chat"></button>
     </header>
     <div class="d-flex flex-column flex-grow-1 overflow-hidden p-2 gap-2">
         <div class="card shadow-sm">
@@ -215,8 +215,8 @@ include 'includes/header.php';
         panel.inert = !open;
         launcher.setAttribute('aria-expanded', String(open));
         openChatButton.setAttribute('aria-expanded', String(open));
-        launcher.setAttribute('aria-label', `${open ? 'Close' : 'Open'} customer chat`);
-        launcher.title = `${open ? 'Close' : 'Open'} customer chat`;
+        launcher.setAttribute('aria-label', `${open ? 'Close' : 'Open'} client chat`);
+        launcher.title = `${open ? 'Close' : 'Open'} client chat`;
         if (open) {
             if (!input.disabled) input.focus();
             else closeButton.focus();
@@ -261,7 +261,7 @@ include 'includes/header.php';
         if (!conversations.length) {
             const empty = document.createElement('div');
             empty.className = 'list-group-item text-muted py-4';
-            empty.textContent = 'No open conversations yet. New customer messages will appear here.';
+            empty.textContent = 'No open conversations yet. New client messages will appear here.';
             activity.appendChild(empty);
             return;
         }

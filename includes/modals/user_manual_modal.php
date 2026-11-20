@@ -14,11 +14,11 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body kq-manual-body">
-                <p class="kq-manual-intro">Find clear guidance for property visits, land estimates, reservations and account access.</p>
+                <p class="kq-manual-intro">Find clear guidance for property viewings, land estimates, reservations, and account access.</p>
                 <ul class="nav nav-pills kq-manual-tabs" id="userManualTabs" role="tablist">
                     <li class="nav-item" role="presentation">
                         <button class="nav-link active" id="manual-tripping-tab" data-bs-toggle="pill" data-bs-target="#manual-tripping" type="button" role="tab" aria-controls="manual-tripping" aria-selected="true">
-                            <span class="kq-manual-tab-number">01</span><span>Site visits</span>
+                            <span class="kq-manual-tab-number">01</span><span>Property viewings</span>
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
@@ -40,12 +40,12 @@
 
                 <div class="tab-content kq-manual-content" id="userManualTabsContent">
                     <div class="tab-pane fade show active" id="manual-tripping" role="tabpanel" aria-labelledby="manual-tripping-tab">
-                        <h6 class="fw-bold mb-2">Booking a property visit</h6>
+                        <h6 class="fw-bold mb-2">Requesting a property viewing</h6>
                         <p class="small mb-2">Kings Land Properties facilitates physical on-site inspections for all active parcels across Batangas.</p>
                         <ul class="small mb-3 ps-3">
-                            <li><strong>Anti-Overlap Scheduling:</strong> To ensure dedicated agent assistance and unhurried inspections, appointments on the same property require at least <strong>1 hour spacing</strong>. Double-booking conflicts are automatically blocked.</li>
-                            <li><strong>Confirmation Notice:</strong> Once requested, the sales agent receives an immediate system notification to confirm the appointment. Check your <a href="client_dashboard.php#transaction-tracking">Client Dashboard</a> for real-time schedule status.</li>
-                            <li><strong>What to Bring:</strong> A valid government-issued photo ID and proof of billing for identity verification during site visit.</li>
+                            <li><strong>Scheduling:</strong> To ensure dedicated Sales Agent assistance and unhurried inspections, viewing requests for the same property must be at least <strong>1 hour apart</strong>. Double-booking conflicts are automatically blocked.</li>
+                            <li><strong>Approval notice:</strong> Once requested, a Sales Agent receives an immediate system notification to review the request. Check your <a href="client_dashboard.php#transaction-tracking">Client dashboard</a> for schedule status.</li>
+                            <li><strong>What to bring:</strong> A valid government-issued photo ID and proof of billing for identity verification during the property viewing.</li>
                         </ul>
                     </div>
 
@@ -79,7 +79,7 @@
                     <div class="tab-pane fade" id="manual-roles" role="tabpanel" aria-labelledby="manual-roles-tab">
                         <h6 class="fw-bold mb-2">Account roles and support</h6>
                         <ul class="small mb-3 ps-3">
-                            <li><strong>Client:</strong> Search catalog, book viewings, track transaction milestones, rate sales agents, and manage account details.</li>
+                            <li><strong>Client:</strong> Search the catalog, request property viewings, track transaction milestones, and manage account details.</li>
                             <li><strong>Sales Agent:</strong> Review client viewings, inspect face-to-face paperwork and payments, advance transaction stages, and chat with clients.</li>
                             <li><strong>System Admin:</strong> System administration, property publishing, user management, audit logging, and database backups.</li>
                         </ul>

@@ -29,8 +29,8 @@ include 'includes/header.php';
             <div class="kq-brand-sub">Client portal</div>
         </div>
 
-        <h2>Sign In</h2>
-        <p class="subcopy">Access your KingQuiry account.</p>
+        <h2>Client sign in</h2>
+        <p class="subcopy">Sign in to your KingQuiry Client account.</p>
 
         <?php if (!empty($error)): ?>
             <div class="alert alert-danger" role="alert"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>

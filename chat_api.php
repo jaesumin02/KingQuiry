@@ -70,7 +70,7 @@ function chat_conversation(mysqli $conn): int
     $welcome = $conn->prepare("INSERT INTO chat_messages (conversation_id, sender, body) VALUES (?, 'bot', ?)");
     $clientName = trim($_SESSION['user']['fullname'] ?? '');
     if ($clientName !== '') {
-        $welcomeText = "Hello " . $clientName . "! Welcome to Kings Land Properties. Your assigned sales representative and support staff are here to assist you. Send us a message below and we will be happy to help!";
+        $welcomeText = "Hello " . $clientName . "! Welcome to Kings Land Properties. Your assigned Sales Agent and support staff are here to assist you. Send us a message below and we will be happy to help!";
     } else {
         $welcomeText = "Hello! Welcome to Kings Land Properties. I can help with property questions and land estimates. Use the estimate calculator below or send us a message.";
     }
@@ -190,7 +190,7 @@ try {
     if ($action === 'bootstrap' || $action === 'poll') {
         $role = normalized_user_role($_SESSION['user'] ?? null);
         if ($role !== null && $role !== 'Client') {
-            chat_respond(['error' => 'Customer chat is available to guests and client accounts.'], 403);
+            chat_respond(['error' => 'Chat is available to guests and Client accounts.'], 403);
         }
         $conversationId = chat_conversation($conn);
         $afterId = max(0, (int) ($_GET['after'] ?? 0));
@@ -205,7 +205,7 @@ try {
     if ($action === 'agent_greeting') {
         $role = normalized_user_role($_SESSION['user'] ?? null);
         if ($role !== null && $role !== 'Client') {
-            chat_respond(['error' => 'Customer chat is available to guests and client accounts.'], 403);
+            chat_respond(['error' => 'Chat is available to guests and Client accounts.'], 403);
         }
 
         $conversationId = chat_conversation($conn);
@@ -214,7 +214,7 @@ try {
         $propertyTitle = is_string($payload['property_title'] ?? null) ? trim($payload['property_title']) : '';
         $transactionId = filter_var($payload['transaction_id'] ?? null, FILTER_VALIDATE_INT);
 
-        $safeAgent = $agentName !== '' ? $agentName : 'Assigned Sales Representative';
+        $safeAgent = $agentName !== '' ? $agentName : 'Assigned Sales Agent';
         $safeProperty = $propertyTitle !== '' ? $propertyTitle : 'your selected property';
         $txRef = ($transactionId !== false && $transactionId > 0) ? "Transaction #KQT-{$transactionId}" : "your transaction";
 
@@ -233,7 +233,7 @@ try {
         if (!$alreadySent) {
             $clientName = trim($_SESSION['user']['fullname'] ?? '');
             $greetingPrefix = $clientName !== '' ? "Hello {$clientName}!" : "Hello!";
-            $greetingBody = "{$greetingPrefix} I am {$safeAgent}, your assigned sales representative for {$safeProperty} ({$txRef}). How can I assist you with your inquiry or transaction today?";
+            $greetingBody = "{$greetingPrefix} I am {$safeAgent}, your assigned Sales Agent for {$safeProperty} ({$txRef}). How can I assist you with your inquiry or transaction today?";
             chat_add_message($conn, $conversationId, 'admin', $greetingBody);
         }
 
@@ -335,7 +335,7 @@ try {
         }
 
         if (isset($_SESSION['user']) && normalized_user_role($_SESSION['user']) !== 'Client') {
-            chat_respond(['error' => 'Only clients and guests can start customer conversations.'], 403);
+            chat_respond(['error' => 'Only Clients and guests can start conversations.'], 403);
         }
 
         $clientIpAddress = is_string($_SERVER['REMOTE_ADDR'] ?? null) && $_SERVER['REMOTE_ADDR'] !== ''
@@ -459,7 +459,7 @@ try {
                         create_user_notification(
                             $conn,
                             (int) $staffRow['userID'],
-                            'New Customer Message (' . $clientName . ')',
+                            'New Client Message (' . $clientName . ')',
                             $messageExcerpt,
                             'admin_chat.php',
                             'chat'
@@ -473,7 +473,7 @@ try {
                 $lowerMessage = mb_strtolower($message);
                 // ALGORITHM: Check keyword rules in order and return the first matching canned response.
                 if (preg_match('/hello|hi\b|good morning|good afternoon|good evening|kamusta|kumusta|magandang umaga|magandang hapon|magandang gabi/', $lowerMessage)) {
-                    $reply = 'Hello! Welcome to KingQuiry. I can help with property listings, viewing appointments, contact details, and land estimates. What would you like to know?';
+                    $reply = 'Hello! Welcome to KingQuiry. I can help with property listings, viewing requests, contact details, and land estimates. What would you like to know?';
                 } elseif (preg_match('/estimate|estimation|presyo|price|halaga|how much|magkano|sqm|square meter/', $lowerMessage)) {
                     $reply = 'For an indicative land estimate, use the calculator below and enter the area in square meters, property category, and location. The estimate is not an appraisal or a confirmed sale price.';
                 } elseif (preg_match('/thank|salamat/', $lowerMessage)) {
@@ -483,9 +483,9 @@ try {
                 } elseif (preg_match('/contract|cts|contract to sell|deed of absolute sale|doas|title transfer|transfer of title|taxes|tax\b|transfer fee/', $lowerMessage)) {
                     $reply = 'For installment purchases, a notarized Contract to Sell (CTS) is issued. For Spot Cash or fully paid purchases, a Deed of Absolute Sale (DOAS) is executed. Please note that title transfer, registration, and Documentary Stamp Taxes (DST) are shouldered by the buyer as standard practice.';
                 } elseif (preg_match('/agent|live agent|human|speak with|talk to|kausap|staff/', $lowerMessage)) {
-                    $reply = 'Your inquiry has been flagged for our live sales agents. An agent will review your questions and follow up directly here or via your registered client dashboard.';
+                    $reply = 'Your inquiry has been flagged for our live Sales Agents. A Sales Agent will review your questions and follow up directly here or through your Client dashboard.';
                 } elseif (preg_match('/appointment|book|schedule|viewing|site visit|tripping|mag.?book|pasyal/', $lowerMessage)) {
-                    $reply = 'To schedule a property tripping, sign in with a client account, open the property listing, and submit the “Book Viewing Appointment” form. Site visits require at least 1-hour spacing to avoid overlapping bookings and give you dedicated agent support.';
+                    $reply = 'To request a property viewing, sign in with a Client account, open the property listing, and submit the “Request a viewing” form. Requested viewing times must be at least one hour apart to avoid overlaps and ensure dedicated support from a Sales Agent.';
                 } elseif (preg_match('/contact|phone|call|location|address|hours|open|oras|numero|tawag|saan|lokasyon|bukas/', $lowerMessage)) {
                     $reply = 'You can contact Kings Land Properties at 0965 803 0933 or visit Munting Indang, Nasugbu, Batangas. The contact listing says Always Open; staff reply times may vary.';
                 } elseif (preg_match('/property|listing|available|bahay|condo|farm|commercial|beach lot|lupa|land|lote|bibili|buy|purchase|order/', $lowerMessage)) {

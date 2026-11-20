@@ -26,11 +26,11 @@ include 'includes/header.php';
     <aside class="kq-auth-panel card" aria-label="Agent login panel">
         <div class="kq-brand" aria-label="4 Kings Realty Services logo">
             <img class="kq-official-logo kq-logo-auth" src="assets/images/kings-land-properties-logo.png" alt="4 Kings Realty Services">
-            <div class="kq-brand-sub">Agent portal</div>
+            <div class="kq-brand-sub">Sales Agent portal</div>
         </div>
 
-        <h2>Agent Sign In</h2>
-        <p class="subcopy">Private access for assigned sales agents.</p>
+        <h2>Sales Agent sign in</h2>
+        <p class="subcopy">Sign in to the KingQuiry Sales Agent portal.</p>
 
         <?php if (!empty($error)): ?>
             <div class="alert alert-danger" role="alert"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>
@@ -41,7 +41,7 @@ include 'includes/header.php';
 
             <div class="kq-form-group">
                 <label for="login-identifier">Email address or username</label>
-                <input type="text" id="login-identifier" name="identifier" required maxlength="100" placeholder="Enter your authorized email" autocomplete="off">
+                <input type="text" id="login-identifier" name="identifier" required maxlength="100" placeholder="Enter your email or username" autocomplete="off">
             </div>
 
             <div class="kq-form-group">
@@ -58,7 +58,7 @@ include 'includes/header.php';
                 <a class="kq-link" href="#contactUsModal" data-bs-toggle="modal" data-bs-target="#contactUsModal">Need help signing in? Contact support</a>
             </div>
 
-            <button type="submit" class="kq-auth-submit">Access agent portal</button>
+            <button type="submit" class="kq-auth-submit">Sign in</button>
         </form>
     </aside>
 </div>

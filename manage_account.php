@@ -121,7 +121,7 @@ include 'includes/header.php';
 
             <div class="d-flex justify-content-between align-items-center">
                 <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#logoutConfirmModal">
-                    Log Out
+                    Sign out
                 </button>
                 <button type="submit" class="btn btn-primary px-4 fw-semibold">
                     Save New Password

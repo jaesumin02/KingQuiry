@@ -6,6 +6,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/rate_limit.php';
 require_once __DIR__ . '/../includes/transaction_tracking.php';
 require_once __DIR__ . '/../includes/appointment_management.php';
+require_once __DIR__ . '/../includes/admin_analytics.php';
 require_once __DIR__ . '/../includes/ml_recommender.php';
 require_once __DIR__ . '/../includes/property_categories.php';
 require_once __DIR__ . '/../includes/property_images.php';
@@ -151,6 +152,11 @@ expect_true(
 expect_true(
     in_array('payment_confirmation', property_transaction_next_stages('payment_in_process', 'Spot Cash'), true),
     'Spot Cash purchases must bypass document verification and proceed directly to DOAS payment confirmation.'
+);
+expect_true(
+    admin_report_year_options([2024, 2026, 2024, 0], 2026)
+        === [2031, 2030, 2029, 2028, 2027, 2026, 2024],
+    'Annual revenue reports must offer recorded years, the current year, and five upcoming years without duplicates.'
 );
 
 fwrite(STDOUT, "Production baseline checks passed.\n");

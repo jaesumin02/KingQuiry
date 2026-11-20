@@ -3,6 +3,7 @@ include 'config/db.php';
 require_once 'includes/auth.php';
 require_once 'includes/location_directory.php';
 require_once 'includes/property_categories.php';
+require_once 'includes/property_estimator.php';
 require_once 'includes/property_images.php';
 require_once 'includes/notifications.php';
 require_once 'includes/transaction_tracking.php';
@@ -47,6 +48,8 @@ $categoryLabels = property_type_labels();
 $propertyTitle = (string) $property['title'];
 $isSampleListing = str_starts_with($propertyTitle, '[SAMPLE]');
 $displayTitle = $isSampleListing ? trim(substr($propertyTitle, 8)) : $propertyTitle;
+$comparableEstimate = null;
+$comparableEstimateError = '';
 
 if (!in_array((string) $property['status'], ['Available', 'Sold'], true)) {
     http_response_code(404);
@@ -54,6 +57,25 @@ if (!in_array((string) $property['status'], ['Available', 'Sold'], true)) {
     echo "<div class='alert alert-warning'>This property is not available.</div>";
     include 'includes/footer.php';
     exit();
+}
+
+if (
+    !$isSampleListing
+    && is_numeric($property['areaSqm'] ?? null)
+    && (float) $property['areaSqm'] > 0
+    && (int) ($property['locationID'] ?? 0) > 0
+) {
+    try {
+        $comparableEstimate = estimate_property_value(
+            $conn,
+            (float) $property['areaSqm'],
+            (string) $property['propertyType'],
+            (int) $property['locationID'],
+            $propertyID
+        );
+    } catch (InvalidArgumentException | RuntimeException $exception) {
+        $comparableEstimateError = $exception->getMessage();
+    }
 }
 
 $propertyMunicipality = (string) ($property['municipalityName'] ?? '');
@@ -223,7 +245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $conn->rollback();
                             $transactionStarted = false;
                             $clashTime = date('M j, Y', strtotime($clashResult['appointmentDate'])) . ' at ' . substr($clashResult['appointmentTime'], 0, 5);
-                            $errorMsg = "Schedule conflict: This property already has a scheduled site visit {$clashTime}. To ensure dedicated agent assistance and avoid overlapping viewings, please choose a time at least one hour before or after.";
+                            $errorMsg = "Schedule conflict: This property already has a scheduled property viewing {$clashTime}. To ensure dedicated Sales Agent assistance and avoid overlapping viewings, please choose a time at least one hour before or after.";
                         } else {
                             $bookStmt = $conn->prepare(
                                 "INSERT INTO appointments
@@ -244,7 +266,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     $conn,
                                     $clientID,
                                     'Viewing request received',
-                                    "Thank you for booking a site visit for '{$property['title']}'. Your viewing request has been received and is now being reviewed by our sales team. Please monitor your dashboard for updates.",
+                                    "Thank you for requesting a property viewing for '{$property['title']}'. Your viewing request has been received and is now being reviewed by our Sales Agent team. Please monitor your dashboard for updates.",
                                     'client_dashboard.php#transaction-tracking',
                                     'viewing_request'
                                 );
@@ -387,7 +409,7 @@ include 'includes/header.php';
                 </div>
             <?php endif; ?>
             <?php if ($isSampleListing): ?>
-                <div class="alert alert-warning mb-3" role="note">Sample listing only. The property details, price, location, and representative photo are examples, not an actual offer. Viewing requests and inquiries are disabled.</div>
+                <div class="alert alert-warning mb-3" role="note">Sample listing only. The property details, price, location, and illustrative photo are examples, not an actual offer. Viewing requests and inquiries are disabled.</div>
             <?php endif; ?>
             <div class="d-flex align-items-center gap-2 mb-2">
                 <span class="badge rounded-pill text-bg-light"><?= htmlspecialchars($categoryLabels[$property['propertyType']] ?? $property['propertyType'], ENT_QUOTES, 'UTF-8') ?></span>
@@ -402,10 +424,10 @@ include 'includes/header.php';
             $imageCredit = $imageName !== '' && is_file($imagePath) ? get_property_image_credit($imageName) : null;
             ?>
             <?php if ($imageName !== '' && is_file($imagePath)): ?>
-                <img src="assets/images/<?= rawurlencode($imageName) ?>" class="img-fluid rounded-4 <?= $imageCredit ? 'mb-1' : 'mb-4' ?>" alt="<?= htmlspecialchars($imageCredit ? 'Representative image for ' . $displayTitle : $displayTitle, ENT_QUOTES, 'UTF-8') ?>" style="max-height: 420px; width: 100%; object-fit: cover;">
+                <img src="assets/images/<?= rawurlencode($imageName) ?>" class="img-fluid rounded-4 <?= $imageCredit ? 'mb-1' : 'mb-4' ?>" alt="<?= htmlspecialchars($imageCredit ? 'Illustrative photo for ' . $displayTitle : $displayTitle, ENT_QUOTES, 'UTF-8') ?>" style="max-height: 420px; width: 100%; object-fit: cover;">
                 <?php if ($imageCredit): ?>
                     <p class="small text-muted mb-4" style="font-size: .78rem;">
-                        Representative image. <a href="<?= htmlspecialchars($imageCredit['sourceUrl'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer"><?= htmlspecialchars($imageCredit['title'] . ' by ' . $imageCredit['creator'], ENT_QUOTES, 'UTF-8') ?></a>,
+                        Image credit: <a href="<?= htmlspecialchars($imageCredit['sourceUrl'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer"><?= htmlspecialchars($imageCredit['title'] . ' by ' . $imageCredit['creator'], ENT_QUOTES, 'UTF-8') ?></a>,
                         <a href="<?= htmlspecialchars($imageCredit['licenseUrl'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer"><?= htmlspecialchars($imageCredit['license'], ENT_QUOTES, 'UTF-8') ?></a>.
                     </p>
                 <?php endif; ?>
@@ -419,6 +441,23 @@ include 'includes/header.php';
                 <?php if (!empty($property['areaSqm'])): ?><div class="text-muted small mb-1"><?= $property['propertyType'] === 'Condo' ? 'Floor area' : 'Land area' ?>: <strong><?= number_format((float) $property['areaSqm'], 2) ?> sq.m.</strong></div><?php endif; ?>
                 <span class="text-muted">Price per Square Meter: <strong>₱<?= number_format($property['pricePerSqm'] ?? 0, 2) ?> / sq.m.</strong></span>
             </div>
+
+            <?php if (!$isSampleListing): ?>
+                <section class="card p-3 p-lg-4 mb-4 border rounded-3 shadow-sm" aria-labelledby="comparable-estimate-title">
+                    <div class="page-eyebrow mb-1">Comparable listing analysis</div>
+                    <h3 class="h5 fw-bold mb-2" id="comparable-estimate-title">Indicative market estimate</h3>
+                    <?php if ($comparableEstimate !== null): ?>
+                        <p class="h4 text-primary fw-bold mb-1">₱<?= number_format((float) $comparableEstimate['low_estimate'], 2) ?>–₱<?= number_format((float) $comparableEstimate['high_estimate'], 2) ?></p>
+                        <p class="small text-muted mb-0">
+                            Based on <?= number_format((int) $comparableEstimate['comparable_count']) ?> other available listing(s), including <?= number_format((int) $comparableEstimate['exact_match_count']) ?> in the same category and municipality. This is an indicative planning range, not a formal appraisal.
+                        </p>
+                    <?php elseif ($comparableEstimateError !== ''): ?>
+                        <p class="small text-muted mb-0"><?= htmlspecialchars($comparableEstimateError, ENT_QUOTES, 'UTF-8') ?></p>
+                    <?php else: ?>
+                        <p class="small text-muted mb-0">An estimate is not available because this listing is missing its area or municipality data.</p>
+                    <?php endif; ?>
+                </section>
+            <?php endif; ?>
 
             <h5 class="fw-bold"><?= $property['propertyType'] === 'Condo' ? 'Unit Characteristics' : 'Land Characteristics' ?></h5>
             <p class="text-dark mb-3"><?= htmlspecialchars($property['landCharacteristics'] ?: 'Contact our team for verified land characteristics.', ENT_QUOTES, 'UTF-8') ?></p>
@@ -529,7 +568,7 @@ include 'includes/header.php';
                 <span class="kq-map-fallback">Loading property map…</span>
             </div>
             <p class="small text-muted mt-2 mb-0">
-                <?= $hasExactPin ? 'Showing the saved property pin.' : ($propertyLocationCoords ? 'Approximate location: municipality center. Ask the agent to confirm the exact property pin.' : 'Map coordinates are not available for this property yet.') ?>
+                <?= $hasExactPin ? 'Showing the saved property pin.' : ($propertyLocationCoords ? 'Approximate location: municipality center. Ask a Sales Agent to confirm the exact property pin.' : 'Map coordinates are not available for this property yet.') ?>
             </p>
 
             <div class="small text-muted mt-2 d-flex align-items-center justify-content-center gap-2">
@@ -542,7 +581,7 @@ include 'includes/header.php';
             <div class="card p-4 text-center border-warning-subtle bg-warning-subtle mb-4">
                 <span class="badge text-bg-warning align-self-center mb-2">Sample listing</span>
                 <h4 class="h5 fw-bold mb-2">Example only</h4>
-                <p class="text-muted small mb-3">This listing and its representative photo are illustrative. It is not available for viewing or inquiry.</p>
+                <p class="text-muted small mb-3">This listing and its illustrative photo are not available for viewing or inquiry.</p>
                 <a href="index.php#all-properties" class="btn btn-primary w-100">Browse all listings</a>
             </div>
         <?php elseif ($property['status'] === 'Sold'): ?>
@@ -554,14 +593,13 @@ include 'includes/header.php';
                 <h4 class="h5 fw-bold mb-2">Property Officially Sold</h4>
                 <p class="text-muted small mb-3">This property is officially owned and is no longer available for site viewings or inquiries.</p>
                 <a href="index.php" class="btn btn-primary w-100">Browse Available Properties</a>
-                <a href="property_summary_pdf.php?property_id=<?= (int) $property['propertyID'] ?>" target="_blank" class="btn btn-outline-secondary w-100 mt-2">Download archived summary PDF</a>
             </div>
         <?php else: ?>
             <div class="card p-4 mb-4" id="appointment">
                 <div class="page-eyebrow mb-2">Visit the property</div>
                 <h3 class="h5 fw-bold mb-3">Request a viewing</h3>
                 <?php if(normalized_user_role($_SESSION['user'] ?? null) === 'Client'): ?>
-                    <form method="POST" data-confirm="Send a viewing request for this property? The assigned agent will be notified.">
+                    <form method="POST" data-confirm="Send a viewing request for this property? The assigned Sales Agent will be notified.">
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                         <input type="hidden" name="submission_token" value="<?= htmlspecialchars($_SESSION['property_action_tokens'][$propertyID]['appointment'], ENT_QUOTES, 'UTF-8') ?>">
                         <div class="mb-3">
@@ -574,7 +612,6 @@ include 'includes/header.php';
                         </div>
                         <button type="submit" name="book_appointment" class="btn btn-primary w-100">Request a viewing</button>
                     </form>
-                    <a href="property_summary_pdf.php?property_id=<?= (int) $property['propertyID'] ?>" target="_blank" class="btn btn-outline-secondary w-100 mt-3">Download summary PDF</a>
                 <?php else: ?>
                     <p class="text-muted small">Sign in with a client account to request a viewing.</p>
                     <a href="client_login.php" class="btn btn-primary w-100">Sign in to continue</a>

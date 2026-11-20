@@ -29,8 +29,8 @@ include 'includes/header.php';
             <div class="kq-brand-sub">Admin portal</div>
         </div>
 
-        <h2>Admin Sign In</h2>
-        <p class="subcopy">Private access for system administrators.</p>
+        <h2>Admin sign in</h2>
+        <p class="subcopy">Sign in to the KingQuiry Admin portal.</p>
 
         <?php if (!empty($error)): ?>
             <div class="alert alert-danger" role="alert"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>
@@ -41,7 +41,7 @@ include 'includes/header.php';
 
             <div class="kq-form-group">
                 <label for="login-identifier">Email address or username</label>
-                <input type="text" id="login-identifier" name="identifier" required maxlength="100" placeholder="Enter your authorized email" autocomplete="off">
+                <input type="text" id="login-identifier" name="identifier" required maxlength="100" placeholder="Enter your email or username" autocomplete="off">
             </div>
 
             <div class="kq-form-group">
@@ -55,10 +55,10 @@ include 'includes/header.php';
             <?php include 'includes/login_human_check_field.php'; ?>
 
             <div class="kq-form-options">
-                <a class="kq-link" href="#contactUsModal" data-bs-toggle="modal" data-bs-target="#contactUsModal">Need help signing in? Contact the administrator</a>
+                <a class="kq-link" href="#contactUsModal" data-bs-toggle="modal" data-bs-target="#contactUsModal">Need help signing in? Contact administrator</a>
             </div>
 
-            <button type="submit" class="kq-auth-submit">Access admin portal</button>
+            <button type="submit" class="kq-auth-submit">Sign in</button>
         </form>
     </aside>
 </div>

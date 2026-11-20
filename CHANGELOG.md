@@ -3,6 +3,61 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-20 — Report Filters and Payment Activity
+
+- Added a year selector to the Admin actual-sales line chart, including
+  historical years with completed sales and the next five years (future years
+  show no-data status rather than projected revenue); removed the duplicate
+  calendar-year revenue panel from Admin Sales.
+- Removed the duplicate Reports page title and Back to dashboard button; the
+  shared Admin header and Dashboard navigation remain the single entry points.
+- Removed the duplicate Admin dashboard estimate calculator and kept the
+  property-specific comparable estimate on property details.
+- Updated the Admin collections chart to include confirmed Client reports as
+  well as verified Admin-register payments. Reviewed payment rows now offer a
+  transaction link instead of leaving the Actions column blank.
+- Sent Client, payment, and sales filter submissions and clear actions to their
+  result tables, with a post-load scroll to keep results visible beneath the
+  sticky navigation. The isolated transaction integration test covers inquiry
+  and viewing records, Agent assignment, Client/Admin/Agent visibility,
+  confirmed/rejected reports, and cross-ledger payment totals. Run it with
+  `php tests/transaction_records_test.php`; its fixtures use connection-scoped
+  temporary tables and do not add records to the application database.
+
+## 2026-11-19 — Shared Transaction Payments and Tracking Cleanup
+
+- Removed the duplicate Client dashboard shortcut, the PDF downloads from
+  Client/property detail views, and the transaction-stage stepper. Current
+  status, progress, and milestone history remain available.
+- Made both Client-submitted payment reports and Admin-register payments
+  visible in Client and assigned Agent transaction views. Admin Payments now
+  lists and supports review of Client-submitted reports, with each ledger's
+  totals clearly distinguished. Admin Sales reconciles verified collections
+  across both ledgers when calculating collected and outstanding balances.
+
+## 2026-11-19 — Portal Consistency, Reports, and Comparable Estimates
+
+- Kept each signed-in role's Dashboard link visible across portal pages and added
+  Reports & Analytics to the Admin menu. Shortened the Admin dashboard to its
+  overview and property tools; moved detailed inventory, viewing, and sales
+  reporting to the new `admin_reports.php` page.
+- Replaced the six-month revenue bars with a labeled January–December line
+  chart for the current calendar year. Revenue uses completed transactions
+  with recorded sale prices; future months remain blank until they occur. The
+  Admin Sales page points users to this single calendar-year chart in the
+  Admin menu, without a duplicate shortcut button on either page.
+- Aligned all-time completed-transaction definitions across Admin summaries,
+  Admin Sales, Agent, and Client dashboards. Client totals now count all of the
+  client's records rather than only the latest 100 displayed rows, and Agent
+  metric captions clarify their assigned/open scope.
+- Added comparable-price estimates to property details, excluding the current
+  listing and deleted listings from comparables.
+- Removed feedback and agent-rating prompts from the client-facing UI and
+  completion notification while preserving historical review records.
+- Updated Admin sign-in help to direct users to the administrator.
+- Continued standardizing portal labels and result navigation, listing
+  descriptions, credited representative images, and chatbot location output.
+
 ## 2026-11-19 — Capstone Standardization: Business Rules, Analytics, UI Stabilization, and Code Quality
 
 - **Business Rules Enforcement**:

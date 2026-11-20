@@ -1,3 +1,11 @@
+#property-results,
+#client-results,
+#sales-results,
+#payment-results,
+#monthly-sales-chart {
+    scroll-margin-top: 7rem;
+}
+
 /* Admin control room. The shared header applies this scope only to admin routes. */
 body.admin-control-room {
     --admin-navbar: #102a43;

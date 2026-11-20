@@ -121,7 +121,7 @@ function claim_inquiry_for_agent(mysqli $conn, int $agentId, int $inquiryId): vo
         $agentStmt->bind_param('i', $agentId);
         $agentStmt->execute();
         if (!$agentStmt->get_result()->fetch_assoc()) {
-            throw new InvalidArgumentException('An active sales-agent account is required to claim an inquiry.');
+            throw new InvalidArgumentException('An active Sales Agent account is required to claim an inquiry.');
         }
 
         $inquiryStmt = $conn->prepare('SELECT inquiryID FROM feedbackinquiries WHERE inquiryID = ? FOR UPDATE');
@@ -138,7 +138,7 @@ function claim_inquiry_for_agent(mysqli $conn, int $agentId, int $inquiryId): vo
         $assignmentStmt->execute();
         $assignment = $assignmentStmt->get_result()->fetch_assoc();
         if ($assignment && (int) $assignment['agentID'] !== $agentId) {
-            throw new InvalidArgumentException('This inquiry has already been claimed by another agent.');
+            throw new InvalidArgumentException('This inquiry has already been claimed by another Sales Agent.');
         }
         if (!$assignment) {
             $claimStmt = $conn->prepare(
@@ -182,14 +182,14 @@ function notify_agents_viewing_taken(mysqli $conn, int $appointmentId, int $acti
         return;
     }
 
-    $agentName = (string) ($info['agentName'] ?? 'An agent');
+    $agentName = (string) ($info['agentName'] ?? 'A Sales Agent');
     $propertyTitle = (string) ($info['propertyTitle'] ?? 'Requested Property');
     $formattedDate = date('M j, Y', strtotime($info['appointmentDate']));
     $formattedTime = date('g:i A', strtotime($info['appointmentTime']));
 
     $title = 'Viewing request taken';
     $message = sprintf(
-        "Viewing request #KQ-%d for '%s' (%s at %s) was already taken and confirmed by %s.",
+        "Viewing request #KQ-%d for '%s' (%s at %s) was already taken and approved by %s.",
         1000 + $appointmentId,
         $propertyTitle,
         $formattedDate,
