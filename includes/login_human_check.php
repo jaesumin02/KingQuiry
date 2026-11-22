@@ -48,7 +48,7 @@ function verify_login_human_challenge(array $submitted): bool
     return ($submitted['human_check'] ?? '') === '1'
         && $verified === '1'
         && $honeypot === ''
-        && $elapsed >= 1
+        && $elapsed >= 0
         && $elapsed <= 900;
 }
 ?>

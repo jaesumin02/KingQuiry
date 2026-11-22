@@ -308,6 +308,89 @@ function kq_process_user_login(mysqli $conn): string
     return 'Invalid email or password. Please try again.';
 }
 
+if (!function_exists('update_user_presence')) {
+function update_user_presence(mysqli $conn, int $userId, bool $isOnline, string $status): void
+{
+    if ($userId <= 0) {
+        return;
+    }
+
+    $allowedStatuses = ['online', 'offline', 'away'];
+    if (!in_array($status, $allowedStatuses, true)) {
+        $status = $isOnline ? 'online' : 'offline';
+    }
+
+    $onlineFlag = $isOnline ? 1 : 0;
+    $stmt = $conn->prepare(
+        'UPDATE users SET is_online = ?, availability_status = ?, last_seen_at = CURRENT_TIMESTAMP WHERE userID = ?'
+    );
+    if (!$stmt) {
+        return;
+    }
+    $stmt->bind_param('isi', $onlineFlag, $status, $userId);
+    $stmt->execute();
+    $stmt->close();
+}
+
+function is_agent_online(mysqli $conn, int $agentId): bool
+{
+    if ($agentId <= 0) {
+        return false;
+    }
+
+    $stmt = $conn->prepare('SELECT is_online, (last_seen_at >= DATE_SUB(NOW(), INTERVAL 60 SECOND)) AS fresh FROM users WHERE userID = ? LIMIT 1');
+    if (!$stmt) {
+        return false;
+    }
+    $stmt->bind_param('i', $agentId);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    if (!$row || (int) ($row['is_online'] ?? 0) !== 1) {
+        return false;
+    }
+
+    return (int) ($row['fresh'] ?? 0) === 1;
+}
+
+function get_agent_presence(mysqli $conn, int $agentId): array
+{
+    $result = [
+        'is_online' => false,
+        'availability_status' => 'offline',
+        'last_seen_at' => null,
+    ];
+
+    if ($agentId <= 0) {
+        return $result;
+    }
+
+    $stmt = $conn->prepare('SELECT is_online, availability_status, last_seen_at, (last_seen_at >= DATE_SUB(NOW(), INTERVAL 60 SECOND)) AS fresh FROM users WHERE userID = ? LIMIT 1');
+    if (!$stmt) {
+        return $result;
+    }
+    $stmt->bind_param('i', $agentId);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    if (!$row) {
+        return $result;
+    }
+
+    $online = (int) ($row['is_online'] ?? 0) === 1
+        && (int) ($row['fresh'] ?? 0) === 1;
+
+    $result['is_online'] = $online;
+    $result['availability_status'] = (string) ($row['availability_status'] ?? 'offline');
+    $result['last_seen_at'] = $row['last_seen_at'] ?? null;
+
+    return $result;
+}
+
+}
+
 kq_start_session();
 if (isset($conn) && $conn instanceof mysqli) {
     kq_sync_session_user($conn);

@@ -450,26 +450,6 @@ if ($method === 'POST' || $action === 'send') {
     $agentIsOnline = $assignedAgentId > 0 ? is_agent_online($conn, $assignedAgentId) : false;
 
     if ($isClient && !$agentIsOnline) {
-        // Anti-spam / cooldown guard: do not flood duplicate auto-replies in the same thread within 10 minutes
-        $cdStmt = $conn->prepare(
-            "SELECT createdAt FROM direct_messages 
-             WHERE transactionID = ? AND isAutomated = 1 
-             ORDER BY createdAt DESC LIMIT 1"
-        );
-        $canSendAutoReply = true;
-        if ($cdStmt) {
-            $cdStmt->bind_param('i', $transactionId);
-            $cdStmt->execute();
-            $lastAuto = $cdStmt->get_result()->fetch_assoc();
-            if ($lastAuto) {
-                $elapsed = time() - strtotime($lastAuto['createdAt']);
-                if ($elapsed < 600) { // 10 minutes cooldown
-                    $canSendAutoReply = false;
-                }
-            }
-        }
-
-        if ($canSendAutoReply) {
             $lower = mb_strtolower($rawMessage);
             $propTitle = (string) $transaction['propertyTitle'];
             $propLocation = (string) $transaction['location'];
@@ -531,7 +511,7 @@ if ($method === 'POST' || $action === 'send') {
                     ];
                 }
             }
-        }
+
     }
 
     // Retrieve full updated message list so frontend immediately renders messages without lag

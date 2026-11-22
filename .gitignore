@@ -1,0 +1,11 @@
+node_modules/
+logs/
+*.log
+.env
+vendor/
+.vscode/
+.idea/
+*.tmp
+*.bak
+package-lock.json
+test_session.php
