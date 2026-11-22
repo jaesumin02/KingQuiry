@@ -3,6 +3,20 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-20 — System Analysis Documentation Aligned With Application
+
+- Added `docs/KingQuiry_SAD_Documentation.md` following the supplied IT 313
+  report structure, with implementation-aligned requirements, scope, role
+  workflows, Mermaid diagrams, relational data dictionary, security notes,
+  user guide, test evidence, and explicit stakeholder-evidence checklists.
+- Captured 12 local public/catalog, listing, resource, sign-in, registration,
+  and chat screenshots. Authenticated portal screenshots remain for an
+  approved test-account session; no private data or demo accounts were added.
+- Corrected README setup and feature descriptions to match the current annual
+  reports page, property-detail/chat estimator, checked-in schema, and current
+  test files. Removed obsolete migration/demo-seed instructions and credentials
+  that did not correspond to files in the repository.
+
 ## 2026-11-20 — Report Filters and Payment Activity
 
 - Added a year selector to the Admin actual-sales line chart, including

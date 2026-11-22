@@ -4,7 +4,7 @@
 Land Properties. It provides a public property catalog and different pages for
 clients, sales agents, and administrators.
 
-- **Last reviewed:** 2026-11-19
+- **Last reviewed:** 2026-11-20
 - **Application type:** Server-rendered PHP website
 - **Database:** MySQL, accessed with PHP `mysqli`
 - **Local development environment:** XAMPP
@@ -41,9 +41,15 @@ XAMPP folder or database credentials differ, update the settings in
 `config/db.php` or set the documented `KINGQUIRY_DB_*` environment variables.
 
 In development, the application initializes the schema only when the selected
-database is empty. Production mode disables request-time database/schema
-creation. If an existing database is missing tables, the application fails
-safely without dropping data; apply a reviewed migration after taking a backup.
+database is empty and can attempt idempotent setup for missing required tables
+and columns. Production mode disables request-time database/schema changes and
+requires the expected schema to be present. Back up and review any existing
+database before applying a migration; `database/schema.sql` is for a fresh
+installation, not a versioned migration for a live database.
+
+The complete system-analysis report, diagrams, user guide, test evidence, and
+remaining stakeholder-evidence checklist are in
+[`docs/KingQuiry_SAD_Documentation.md`](docs/KingQuiry_SAD_Documentation.md).
 
 ## Algorithm guide
 
@@ -165,7 +171,7 @@ form validation and database CRUD operations are not listed as algorithms.
 - Open the floating chat bubble on the catalog, property detail, and client
   dashboard pages to message the automated customer assistant.
 - Request an indicative, comparable-listing-based land estimate in chat using
-  the same estimator as the admin dashboard. Its result or missing-data error
+  the same estimator as the property-detail comparable estimate. Its result or missing-data error
   is displayed directly inside the estimate form in the customer chat bubble.
   Estimate answers do not move the chat transcript or scroll the panel away
   from the calculator. An admin can reply while
@@ -179,18 +185,19 @@ form validation and database CRUD operations are not listed as algorithms.
 ### Administrator
 
 - View counts for properties, registered users, appointments, and inquiries.
-- View automatically refreshed business analytics: verified completed sales,
-  actual recorded revenue, an always-visible six-month monthly-revenue line
-  graph, and top-selling properties ranked by actual sale value. The graph
-  shows zero values until verified sales are recorded. The active pipeline is
-  shown separately using listing asking prices, not as earned revenue.
+- View a compact operational overview on the dashboard. Use **Reports &
+  Analytics** for the annual January–December actual-sales line chart; its year
+  selector includes recorded years, the current year, and five future years.
+  Future years are actuals-only and are not forecasts. **Sales & transactions**
+  and **Payments** provide their own pipeline and collection views. Active
+  pipeline value uses listing asking prices, not earned revenue.
 - View property-category and appointment-status charts.
 - Dashboard charts show accurate counts and empty states, group unrecognized
   legacy categories under an "Other / legacy" label, and render without a
   third-party chart service or JavaScript dependency.
 - Add, deactivate, or reactivate locations using region code, region, province,
   and city/municipality fields. Active locations are shared by catalog filters,
-  listing forms, chat estimates, and the admin estimator.
+  listing forms, and chat/property-detail estimate flows.
 - Update client transaction progress through the dedicated transaction tracker.
   Only the next valid stage can be selected, every update is timestamped and
   attributed to the staff account. Successful completion requires a
@@ -217,18 +224,14 @@ form validation and database CRUD operations are not listed as algorithms.
   directly from the inventory table on the admin dashboard.
 - View a compact collections, client, and sales-pipeline summary on the admin
   dashboard, alongside the existing charts, with shortcuts to the new modules.
-- Add and remove property listings, with a validated type, asking price,
+- Add, edit, and remove property listings, with a validated type, asking price,
   land area, standardized municipality selection, and optional validated
   property image. New price-per-square-meter values are calculated from total
   asking price and land area. Existing free-text location data stays visible as
   legacy data until an administrator replaces that listing.
-- Use a data-based price estimator, which fits a normalized linear-regression
-  model with batch gradient descent when at least three comparable listings are
-  available. If model fitting fails, it falls back to a weighted median of
-  comparable prices per square meter, with stronger weights for matching
-  category and municipality. It reports comparable and exact-match counts, a
-  heuristic confidence label, and an indicative range. It is not a formal
-  appraisal.
+- Comparable estimates are displayed on property details and available in the
+  customer chat estimate flow. The manual asking-price/down-payment calculator
+  is on property details; it is not a second comparable-market estimator.
 - Read client conversations and send replies on the Customer Chat page. The
   admin's conversations and reply form are presented inside a floating bubble
   on that page, which is opened from the single **Customer inbox** button on
@@ -246,7 +249,8 @@ form validation and database CRUD operations are not listed as algorithms.
 | `register.php` | Client account registration |
 | `login.php` | Login form, authentication, role-based redirects, and login-page cache handling |
 | `logout.php` | Ends the current session and redirects to login |
-| `admin_dashboard.php` | Business analytics, dynamic location directory, property management and listing status, and price estimator |
+| `admin_dashboard.php` | Admin overview, dynamic location directory, and property management/listing status |
+| `admin_reports.php` | Annual actual-sales report, inventory, viewing, and inquiry analytics |
 | `admin_clients.php` | Client directory: create and edit client accounts, reset passwords, and activate or deactivate accounts |
 | `admin_payments.php` | Payment register: record, verify, reject, and remove collections with a six-month verified-collections chart |
 | `admin_sales.php` | Sales and transaction dashboard: revenue, pipeline, stage breakdown, reconciliation, and transaction register |
@@ -262,15 +266,9 @@ form validation and database CRUD operations are not listed as algorithms.
 | `includes/property_estimator.php` | Shared weighted comparable-listing estimator |
 | `includes/property_images.php` | Validated property image upload and storage |
 | `includes/admin_management.php` | Shared client, payment, and sales helpers, including idempotent schema setup |
-| `database/chat_schema.sql` | Tables required for client conversations, chat messages, and admin presence |
-| `database/notifications_schema.sql` | In-app notifications table for existing installations |
-| `database/location_schema.sql` | Batangas seed data and one-time nullable structured property location and area migration for existing installations |
-| `database/coordinate_columns_schema.sql` | Idempotent latitude/longitude migration for legacy property tables |
-| `database/transaction_tracking_schema.sql` | Additive transaction timeline tables and safe starting-state backfill for existing appointments and inquiries |
-| `database/agent_inquiry_assignments_schema.sql` | Appointment-agent assignment support, dismissed appointments, and inquiry ownership |
-| `database/security_rate_limits_schema.sql` | HMAC-keyed request-throttling buckets for authentication and customer chat |
 | `database/schema.sql` | Complete fresh-install schema, Batangas location directory, and property listings across all supported categories; no user or transaction records |
-| `update_pass.php` | CLI-only administrator password reset utility |
+| `docs/KingQuiry_SAD_Documentation.md` | System-aligned project report, diagrams, user guide, test evidence, and evidence checklist |
+| `docs/screenshots/` | Local public-page and sign-in screenshots captured for the report |
 | `CHANGELOG.md` | Dated record of project changes |
 
 ## Local setup
@@ -293,31 +291,16 @@ form validation and database CRUD operations are not listed as algorithms.
    URL (for example, `http://localhost/kingquiry/`).
    Bootstrap styling and navigation scripts are currently loaded from a CDN,
    so the UI needs internet access unless those assets are later self-hosted.
-6. For a **legacy database that already has the original application tables**,
-   back it up first, then import `database/chat_schema.sql` and
-   `database/notifications_schema.sql`, run `database/location_schema.sql`
-   once, then import `database/coordinate_columns_schema.sql` and
-   `database/transaction_tracking_schema.sql`, import
-   `database/admin_management_schema.sql`,
-   `database/agent_inquiry_assignments_schema.sql`, then import
-   `database/security_rate_limits_schema.sql`. The location migration adds
-   columns to `properties`, so do not run it more than once. It repeats the
-   location table and seed definitions from `schema.sql` so it can independently
-   upgrade an older database; it is not needed for a fresh install. The tracking
-   migration creates its tables (including payment records), adds the sale-price
-   column if missing, and creates an initial state for existing appointments
-   and inquiries; it does not invent past step-by-step history or sales amounts.
-   The client/payments migration adds the `phone`, `address`, and `accountStatus`
-   columns to `users` and creates the `payments` table. The coordinate migration
-   adds nullable latitude and longitude fields. The agent-assignment migration
-   adds `appointments.agentID`, creates the dismissed-appointment table, and
-   creates ownership storage for claimed inquiries. The notification migration
-   creates the in-app notifications table. The security migration creates the
-   HMAC-keyed request-throttling table used by registration, login, and
-   customer-chat endpoints. After migration, the same codebase powers client
-   chat, tracking, analytics, client management, and payments.
-   Existing free-text locations are retained and left unmapped; only verified
-   location data should be assigned to a standardized municipality.
+6. For an **existing database**, do not follow older instructions that refer to
+   standalone SQL migration files; those files are not present in this
+   repository. Back up the database, create a staging copy, compare its actual
+   schema with `database/schema.sql` and the application's required columns,
+   then apply a reviewed migration appropriate to that database. Development
+   mode can attempt non-production schema setup, but it is not a substitute for
+   a reviewed production migration. Production mode checks the required schema
+   and fails safely rather than altering the database from a web request.
+   Preserve existing data and do not assign legacy free-text locations to a
+   standardized municipality unless the location has been verified.
 
 7. Create the first administrator securely: register that account through the
    site first (registration creates only a `Client`), then in phpMyAdmin select
@@ -434,12 +417,13 @@ sanitize personal data before sharing or committing any export.
 
 For an equivalent application setup on another computer, share the project
 source and import `database/schema.sql` into a fresh database there. This
-creates the same tables and initial location directory, but intentionally not
-the users, listings, bookings, inquiries, chats, or logs from your local
-database. Move live data only with the owner's approval, a protected database
-backup, and a deliberate privacy review. Also transfer property image files
-from `assets/images/` when the approved listing data refers to those files;
-do not put private customer data or unreviewed database dumps in Git.
+creates the application tables, initial location directory, and the schema's
+example property listings, but intentionally not user accounts, appointments,
+inquiries, chats, payments, sales, or logs from a local database. Move live data
+only with the owner's approval, a protected database backup, and a deliberate
+privacy review. Also transfer approved property image files from
+`assets/images/` when the listing data refers to them; do not put private
+customer data or unreviewed database dumps in Git.
 
 The exact SQL types, indexes, constraints, and any additional columns should
 match the database that is used for the project.
@@ -536,40 +520,27 @@ near-real-time, not push notifications.
 
 ## Security and maintenance notes
 
-- `update_pass.php` is CLI-only and accepts an administrator email and a new
-  password. Use a secure terminal and avoid putting credentials in shared logs.
 - Property image uploads accept JPG, PNG, or WebP up to 5 MB, use random file
   names, and are stored in `assets/images/`.
 - Do not publish real database credentials or passwords in the repository.
 - Configure production database credentials securely and use HTTPS in
   production.
 
-## Capstone Presentation Demo Data & Test Suite
+## Tests and project documentation
 
-### 1. Presentation Demo Accounts (Idempotent Seed Script)
-To prepare clean test data on local databases without modifying real customer records, import:
-`database/seed_demo_presentation_data.sql`
+Run the maintained checks from the repository root:
 
-This creates three pre-configured accounts:
-- **Client Account:** `client.demo@kingquiry.ph` / `Client123!` (Jasmine Ramos - Demo Client)
-- **Sales Agent Account:** `agent.demo@kingquiry.ph` / `Agent123!` (Brent Marc Alcover - Demo Agent)
-- **Administrator Account:** `admin.demo@kingquiry.ph` / `Admin123!` (Zydryx Policarpio - Demo Admin)
-
-### 2. Automated Test Execution
-Run the comprehensive test suite from PowerShell / Terminal:
-```bash
-php -d session.save_path="$env:TEMP" tests/comprehensive_system_test.php
+```powershell
+php tests/production_baseline_test.php
+php tests/transaction_records_test.php
 ```
-This automatically verifies:
-- Anti-overlap 1-hour scheduling conflicts.
-- Transaction state machine (Spot Cash bypass vs. Non-cash document verification).
-- Dual payment ledger reconciliation math (counterpart deduplication & distinct installment sums).
-- RBAC permissions and currency validations.
-- Content-based machine learning recommendation scoring.
 
-## Documentation updates
-
-`CHANGELOG.md` records dated code and documentation changes. The personal
-Copilot instruction configured for this user asks coding agents to append a
-dated entry there whenever they implement a change in a project, and to update
-this README when behavior, setup, or project structure changes.
+The transaction integration test requires a non-production MySQL database
+connection and uses connection-scoped temporary tables for its fixtures. Do not
+run it against production. The fresh-install schema does not contain
+pre-configured demo accounts or business transactions; use approved isolated
+test data for demonstrations. `CHANGELOG.md` records notable implementation
+changes. See
+[`docs/KingQuiry_SAD_Documentation.md`](docs/KingQuiry_SAD_Documentation.md)
+for the system diagrams, role guide, data model, test evidence, screenshots,
+and items that still require organization approval.
