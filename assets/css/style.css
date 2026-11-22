@@ -64,34 +64,42 @@ body.admin-control-room {
 
 .kq-admin-sidebar {
     position: fixed;
-    z-index: 1040;
-    top: 7.5rem;
+    z-index: 1060;
+    top: 7.25rem;
     left: 0;
-    width: min(280px, calc(100vw - 52px));
-    max-height: calc(100vh - 8rem);
+    width: min(290px, calc(100vw - 56px));
+    max-height: calc(100vh - 8.5rem);
     min-width: 0;
     overflow: visible;
-    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    padding: 1rem 0.85rem;
     transform: translateX(-100%);
-    transition: transform 180ms ease;
-    border: 1px solid var(--admin-shell-border);
+    opacity: 0.95;
+    transition: transform 240ms cubic-bezier(0.16, 1, 0.3, 1), opacity 200ms ease;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-left: none;
     border-radius: 0 1rem 1rem 0;
-    background: var(--admin-banner);
-    box-shadow: var(--admin-shadow);
+    background: #1f2f36;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.35), 0 4px 14px rgba(0, 0, 0, 0.2);
+    pointer-events: auto;
 }
 
 .kq-admin-sidebar.is-open {
     transform: translateX(0);
+    opacity: 1;
 }
 
 .kq-admin-sidebar-heading {
-    display: none;
-    margin: 0 0 0.65rem 0.75rem;
-    color: var(--admin-gold);
-    font-size: 0.72rem;
+    flex: 0 0 auto;
+    margin: 0.25rem 0.5rem 0.85rem 0.75rem;
+    color: #c59b38 !important;
+    font-size: 0.75rem;
     font-weight: 800;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
+    line-height: 1.2;
+    transition: opacity 180ms ease, visibility 180ms ease;
 }
 
 .kq-menu-toggle {
@@ -104,49 +112,66 @@ body.admin-control-room {
     align-items: center;
     justify-content: center;
     padding: 0.65rem;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 0 0.7rem 0.7rem 0;
-    background: rgba(27, 46, 53, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-left: none;
+    border-radius: 0 0.75rem 0.75rem 0;
+    background: #1f2f36;
     color: #ffffff;
     font: inherit;
     font-weight: 700;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.14);
+    box-shadow: 4px 8px 20px rgba(0, 0, 0, 0.24);
+    cursor: pointer;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    transition: background 180ms ease, box-shadow 180ms ease, filter 180ms ease;
 }
 
 .kq-menu-toggle > span:last-child { display: none; }
 .kq-menu-toggle:focus-visible {
-    outline: 3px solid #2877a5;
+    outline: 2px solid #c59b38;
     outline-offset: 2px;
 }
 
-.kq-menu-toggle:hover { filter: brightness(1.05); }
+.kq-menu-toggle:hover {
+    background: #273b44;
+    filter: brightness(1.1);
+    box-shadow: 6px 10px 24px rgba(0, 0, 0, 0.3);
+}
 
 .kq-menu-toggle-icon {
-    display: grid;
+    display: flex;
+    flex-direction: column;
     gap: 4px;
     width: 18px;
 }
 
 .kq-menu-toggle-icon span {
     display: block;
+    width: 100%;
     height: 2px;
     border-radius: 2px;
-    background: currentColor;
+    background: #ffffff;
+    transition: transform 200ms ease, opacity 200ms ease;
 }
 
 .admin-control-room .kq-menu-toggle {
-    border-color: var(--admin-shell-border);
-    background: var(--admin-banner);
-    color: var(--admin-title);
+    border-color: rgba(255, 255, 255, 0.12);
+    background: #1f2f36;
+    color: #ffffff;
 }
 
-.admin-control-room .kq-admin-sidebar:not(.is-open) .admin-nav { display: none; }
-.admin-control-room .kq-admin-sidebar.is-open .kq-admin-sidebar-heading { display: block; }
-.admin-control-room .kq-admin-sidebar.is-open .admin-nav {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
+.admin-control-room .kq-admin-sidebar:not(.is-open) .kq-admin-sidebar-heading,
+.admin-control-room .kq-admin-sidebar:not(.is-open) .admin-nav {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
 }
-.admin-control-room .admin-nav { max-height: calc(100vh - 11rem); overflow-y: auto; }
+.admin-control-room .kq-admin-sidebar.is-open .kq-admin-sidebar-heading,
+.admin-control-room .kq-admin-sidebar.is-open .admin-nav {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+}
 
 .kq-admin-content { width: 100%; min-width: 0; }
 .admin-control-room #properties { width: 100%; min-width: 0; }
@@ -182,14 +207,38 @@ body.admin-control-room {
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 0.4rem;
+    gap: 0.45rem;
     min-width: 0;
     max-width: 100%;
-    padding: 0.75rem;
-    border: 1px solid var(--admin-shell-border);
-    border-radius: var(--admin-radius);
-    background: var(--admin-banner);
-    box-shadow: var(--admin-shadow);
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: calc(100vh - 12rem);
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 0 0.25rem 0 0;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+    overscroll-behavior: contain;
+    transition: opacity 180ms ease, visibility 180ms ease;
+}
+
+.admin-control-room .admin-nav::-webkit-scrollbar {
+    width: 5px;
+}
+.admin-control-room .admin-nav::-webkit-scrollbar-track {
+    background: transparent;
+}
+.admin-control-room .admin-nav::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.22);
+    border-radius: 4px;
+}
+.admin-control-room .admin-nav::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.38);
 }
 
 .admin-control-room .admin-nav .admin-nav-tab {
@@ -199,63 +248,74 @@ body.admin-control-room {
     flex: 0 0 auto;
     align-items: center;
     justify-content: flex-start;
-    padding: 0.5rem 0.75rem;
-    border-radius: 0.65rem;
+    padding: 0.55rem 0.85rem;
+    border-radius: 0.625rem;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: #ffffff !important;
     font-size: 0.875rem;
     font-weight: 600;
-    line-height: 1.5;
+    line-height: 1.4;
     text-align: left;
+    text-decoration: none;
     white-space: nowrap;
     box-shadow: none;
+    cursor: pointer;
+    transition: background 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
 }
 
 .admin-control-room .admin-nav .admin-nav-tab.btn-outline-primary {
-    --bs-btn-color: var(--admin-pill-text);
+    --bs-btn-color: #ffffff;
     --bs-btn-hover-color: #ffffff;
     --bs-btn-active-color: #ffffff;
-    --bs-btn-border-color: var(--admin-pill-border);
-    --bs-btn-hover-border-color: rgba(255, 255, 255, 0.4);
-    --bs-btn-active-border-color: rgba(255, 255, 255, 0.4);
-    --bs-btn-hover-bg: var(--admin-pill-hover);
-    --bs-btn-active-bg: var(--admin-pill-hover);
-    color: var(--admin-pill-text);
-    border-color: var(--admin-pill-border);
-    background: var(--admin-pill);
+    --bs-btn-border-color: rgba(255, 255, 255, 0.12);
+    --bs-btn-hover-border-color: rgba(255, 255, 255, 0.3);
+    --bs-btn-active-border-color: rgba(255, 255, 255, 0.3);
+    --bs-btn-hover-bg: #283e4a;
+    --bs-btn-active-bg: #283e4a;
+    color: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
 }
 
 .admin-control-room .admin-nav .admin-nav-tab.btn-outline-primary:hover,
 .admin-control-room .admin-nav .admin-nav-tab.btn-outline-primary:focus,
 .admin-control-room .admin-nav .admin-nav-tab.btn-outline-primary:active {
-    color: #ffffff;
-    border-color: rgba(255, 255, 255, 0.4);
-    background: var(--admin-pill-hover);
+    color: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.3) !important;
+    background: #283e4a !important;
 }
 
-.admin-control-room .admin-nav .admin-nav-tab.btn-primary {
+.admin-control-room .admin-nav .admin-nav-tab.btn-primary,
+.admin-control-room .admin-nav .admin-nav-tab.active,
+.admin-control-room .admin-nav .admin-nav-tab[aria-current="page"],
+.admin-control-room .admin-nav .admin-nav-tab[aria-current="location"] {
     --bs-btn-color: #ffffff;
     --bs-btn-hover-color: #ffffff;
     --bs-btn-active-color: #ffffff;
-    --bs-btn-border-color: var(--admin-active);
-    --bs-btn-hover-border-color: var(--admin-active-hover);
-    --bs-btn-active-border-color: var(--admin-active);
-    --bs-btn-hover-bg: var(--admin-active-hover);
-    --bs-btn-active-bg: var(--admin-active);
-    color: #ffffff;
-    border-color: var(--admin-active);
-    background: var(--admin-active);
-    box-shadow: inset 0 -2px 0 var(--admin-gold);
+    --bs-btn-border-color: #c59b38;
+    --bs-btn-hover-border-color: #d8af4b;
+    --bs-btn-active-border-color: #c59b38;
+    --bs-btn-hover-bg: #245b82;
+    --bs-btn-active-bg: #1b4d6e;
+    color: #ffffff !important;
+    border-color: #c59b38 !important;
+    background: #1b4d6e !important;
+    box-shadow: inset 3px 0 0 #c59b38, 0 2px 8px rgba(0, 0, 0, 0.25) !important;
 }
 
 .admin-control-room .admin-nav .admin-nav-tab.btn-primary:hover,
-.admin-control-room .admin-nav .admin-nav-tab.btn-primary:focus {
-    color: #ffffff;
-    border-color: var(--admin-active-hover);
-    background: var(--admin-active-hover);
+.admin-control-room .admin-nav .admin-nav-tab.btn-primary:focus,
+.admin-control-room .admin-nav .admin-nav-tab.active:hover,
+.admin-control-room .admin-nav .admin-nav-tab.active:focus {
+    color: #ffffff !important;
+    border-color: #d8af4b !important;
+    background: #245b82 !important;
 }
 
 .admin-control-room .admin-nav .admin-nav-tab:hover { transform: none; }
 .admin-control-room .admin-nav .admin-nav-tab:focus-visible {
-    outline: 2px solid var(--admin-focus);
+    outline: 2px solid #c59b38 !important;
     outline-offset: 2px;
 }
 
@@ -421,7 +481,6 @@ html[data-bs-theme="dark"] body.admin-control-room {
     background: var(--admin-canvas);
 }
 
-html[data-bs-theme="dark"] .admin-control-room .kq-admin-sidebar-heading,
 html[data-bs-theme="dark"] .admin-control-room .kq-admin-shell > section > .kq-panel-header .page-eyebrow {
     color: #f59e0b;
 }
@@ -432,7 +491,6 @@ html[data-bs-theme="dark"] .admin-control-room .kq-admin-shell > section > .kq-p
     border: 1px solid #24415c;
 }
 
-html[data-bs-theme="light"] .admin-control-room .kq-admin-sidebar-heading,
 html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-panel-header .page-eyebrow {
     color: #805a20;
 }

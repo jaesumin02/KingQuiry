@@ -52,6 +52,43 @@ $currentRole = normalized_user_role($currentUser);
 $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
 $action = (string) ($_GET['action'] ?? ($_POST['action'] ?? 'fetch'));
 
+// Action: Heartbeat to update presence timestamp for active agent/user
+if ($action === 'heartbeat') {
+    if ($currentUserId > 0) {
+        $curStmt = $conn->prepare("SELECT availability_status FROM users WHERE userID = ? LIMIT 1");
+        if ($curStmt) {
+            $curStmt->bind_param('i', $currentUserId);
+            $curStmt->execute();
+            $curRow = $curStmt->get_result()->fetch_assoc();
+            $avail = $curRow['availability_status'] ?? 'online';
+            $isOnline = ($avail !== 'offline');
+            update_user_presence($conn, $currentUserId, $isOnline, $avail);
+        }
+    }
+    echo json_encode(['ok' => true, 'is_online' => true]);
+    exit();
+}
+
+// Action: Explicit toggle/set presence for agent
+if ($action === 'toggle_presence' || $action === 'set_presence') {
+    $target = (string) ($_POST['status'] ?? ($_GET['status'] ?? ''));
+    if ($target !== 'online' && $target !== 'offline') {
+        $curStmt = $conn->prepare("SELECT availability_status FROM users WHERE userID = ? LIMIT 1");
+        if ($curStmt) {
+            $curStmt->bind_param('i', $currentUserId);
+            $curStmt->execute();
+            $curRow = $curStmt->get_result()->fetch_assoc();
+            $target = (($curRow['availability_status'] ?? 'offline') === 'online') ? 'offline' : 'online';
+        } else {
+            $target = 'offline';
+        }
+    }
+    $isOnline = ($target === 'online');
+    update_user_presence($conn, $currentUserId, $isOnline, $target);
+    echo json_encode(['ok' => true, 'status' => $target, 'is_online' => $isOnline]);
+    exit();
+}
+
 // Action to initiate or retrieve a direct conversation thread for a specific property
 if ($action === 'initiate_property_chat') {
     $propId = filter_var($_GET['property_id'] ?? ($_POST['property_id'] ?? 0), FILTER_VALIDATE_INT);
@@ -297,6 +334,9 @@ if ($method === 'GET' || $action === 'fetch') {
         ];
     }, $rawMessages);
 
+    $assignedAgentId = !empty($transaction['assignedAgentID']) ? (int) $transaction['assignedAgentID'] : 0;
+    $agentPresence = get_agent_presence($conn, $assignedAgentId);
+
     $partnerName = $isClient
         ? (!empty($transaction['assignedAgentName']) && $transaction['assignedAgentName'] !== 'Unassigned' ? (string) $transaction['assignedAgentName'] : 'Sales Agent')
         : (string) $transaction['clientName'];
@@ -306,14 +346,18 @@ if ($method === 'GET' || $action === 'fetch') {
         'csrf_token' => $sessionCsrfToken,
         'is_client' => $isClient,
         'has_scheduled_viewing' => $hasScheduledViewing,
+        'agent_presence' => $agentPresence,
+        'agent_is_online' => $agentPresence['is_online'],
         'transaction' => [
             'id' => (int) $transaction['transactionID'],
             'propertyTitle' => (string) $transaction['propertyTitle'],
             'currentStage' => (string) $transaction['currentStage'],
             'clientName' => (string) $transaction['clientName'],
             'agentName' => (string) $transaction['assignedAgentName'],
+            'agentId' => $assignedAgentId,
             'partnerName' => $partnerName,
             'hasScheduledViewing' => $hasScheduledViewing,
+            'agentIsOnline' => $agentPresence['is_online'],
         ],
         'messages' => $messages,
     ]);
@@ -398,68 +442,94 @@ if ($method === 'POST' || $action === 'send') {
         send_property_notification($conn, $receiverId, $notifTitle, $notifBody, $notifLink, 'direct_message');
     }
 
-    // If the message was sent by a Client, generate an intelligent automated response for every inquiry/quick ask
+    // If the message was sent by a Client, check the assigned agent's live online status:
+    // ONLY send automated bot replies when the assigned agent is NOT online (offline/away).
+    // NEVER fire automated replies when the agent is online and actively handling the conversation!
     $autoReplyData = null;
-    if ($isClient) {
-        $lower = mb_strtolower($rawMessage);
-        $propTitle = (string) $transaction['propertyTitle'];
-        $propLocation = (string) $transaction['location'];
-        $agentName = !empty($transaction['assignedAgentName']) && $transaction['assignedAgentName'] !== 'Unassigned'
-            ? (string) $transaction['assignedAgentName']
-            : 'Sales Agent';
+    $assignedAgentId = !empty($transaction['assignedAgentID']) ? (int) $transaction['assignedAgentID'] : 0;
+    $agentIsOnline = $assignedAgentId > 0 ? is_agent_online($conn, $assignedAgentId) : false;
 
-        $autoReplyText = null;
-        if (preg_match('/(viewing|schedule|visit|tripping|tripp|appoint|date|time)/i', $lower)) {
-            if ($hasScheduledViewing) {
-                $autoReplyText = "📅 [Automated Reply] Note: A property viewing schedule is already on record for '{$propTitle}'. Your assigned Sales Agent ({$agentName}) will meet you as scheduled. If you need to reschedule or change details, please leave a message here and your agent will coordinate with you.";
-            } else {
-                $autoReplyText = "📅 [Automated Reply] Thank you for asking about scheduling a viewing for '{$propTitle}'! Site visits are available Monday to Saturday between 8:00 AM and 5:00 PM. Your assigned Sales Agent has been notified and will coordinate the exact schedule with you.";
-            }
-        } elseif (preg_match('/(price|payment|downpayment|dp|spot cash|cash|installment|cts|terms|monthly|amortiz)/i', $lower)) {
-            $autoReplyText = "💰 [Automated Reply] Regarding payment terms for '{$propTitle}': Kings Land Properties supports Spot Cash (which transitions directly to DOAS preparation upon full payment) and structured installment plans via Contract to Sell (CTS). Your agent will provide the full computation shortly.";
-        } elseif (preg_match('/(document|requirement|title|deed|transfer|tax|bir|cert|doas)/i', $lower)) {
-            $autoReplyText = "📄 [Automated Reply] Standard transaction requirements include 2 valid government IDs, TIN, Proof of Billing, and signed reservation paperwork. Standard transfer taxes and registration fees are buyer-shouldered upon completion. Your agent will provide the complete checklist.";
-        } elseif (preg_match('/(location|where|address|barangay|map|directions|pin|lot)/i', $lower)) {
-            $autoReplyText = "📍 [Automated Reply] '{$propTitle}' is located in {$propLocation}. You can view the interactive map location on the listing page, and your agent will share exact meeting points and landmark directions before your site visit.";
-        } else {
-            $autoReplyText = "👋 [Automated Reply] Thank you for reaching out! Your message regarding '{$propTitle}' has been received. Your assigned Sales Agent ({$agentName}) has been notified and will assist you shortly. You may also contact our sales office directly at 0965 803 0933.";
-        }
-
-        if ($autoReplyText !== null) {
-            $replySenderId = !empty($transaction['assignedAgentID']) ? (int) $transaction['assignedAgentID'] : null;
-            $agentSenderName = (string) ($transaction['assignedAgentName'] ?? 'Sales Agent');
-            $agentSenderRole = 'Sales Agent';
-
-            if (!$replySenderId) {
-                $staffRes = $conn->query("SELECT userID, fullname, role FROM users WHERE role IN ('Agent', 'Sales Agent', 'Admin') AND accountStatus = 'Active' ORDER BY (role = 'Sales Agent') DESC, userID ASC LIMIT 1");
-                if ($staffRes && ($staffRow = $staffRes->fetch_assoc())) {
-                    $replySenderId = (int) $staffRow['userID'];
-                    $agentSenderName = (string) $staffRow['fullname'];
-                    $agentSenderRole = (string) $staffRow['role'];
+    if ($isClient && !$agentIsOnline) {
+        // Anti-spam / cooldown guard: do not flood duplicate auto-replies in the same thread within 10 minutes
+        $cdStmt = $conn->prepare(
+            "SELECT createdAt FROM direct_messages 
+             WHERE transactionID = ? AND isAutomated = 1 
+             ORDER BY createdAt DESC LIMIT 1"
+        );
+        $canSendAutoReply = true;
+        if ($cdStmt) {
+            $cdStmt->bind_param('i', $transactionId);
+            $cdStmt->execute();
+            $lastAuto = $cdStmt->get_result()->fetch_assoc();
+            if ($lastAuto) {
+                $elapsed = time() - strtotime($lastAuto['createdAt']);
+                if ($elapsed < 600) { // 10 minutes cooldown
+                    $canSendAutoReply = false;
                 }
             }
+        }
 
-            if (!$replySenderId) {
-                $replySenderId = 1;
+        if ($canSendAutoReply) {
+            $lower = mb_strtolower($rawMessage);
+            $propTitle = (string) $transaction['propertyTitle'];
+            $propLocation = (string) $transaction['location'];
+            $agentName = !empty($transaction['assignedAgentName']) && $transaction['assignedAgentName'] !== 'Unassigned'
+                ? (string) $transaction['assignedAgentName']
+                : 'Sales Agent';
+
+            $autoReplyText = null;
+            if (preg_match('/(viewing|schedule|visit|tripping|tripp|appoint|date|time)/i', $lower)) {
+                if ($hasScheduledViewing) {
+                    $autoReplyText = "📅 [Automated Reply] Note: A property viewing schedule is already on record for '{$propTitle}'. Your assigned Sales Agent ({$agentName}) is currently away/offline, but will review your message upon return. If you need to reschedule or change details, your agent will coordinate with you.";
+                } else {
+                    $autoReplyText = "📅 [Automated Reply] Thank you for asking about scheduling a viewing for '{$propTitle}'! Site visits are available Monday to Saturday between 8:00 AM and 5:00 PM. Your assigned Sales Agent ({$agentName}) is currently away/offline and has been notified. They will coordinate the exact schedule with you as soon as they return.";
+                }
+            } elseif (preg_match('/(price|payment|downpayment|dp|spot cash|cash|installment|cts|terms|monthly|amortiz)/i', $lower)) {
+                $autoReplyText = "💰 [Automated Reply] Regarding payment terms for '{$propTitle}': Kings Land Properties supports Spot Cash (which transitions directly to DOAS preparation upon full payment) and structured installment plans via Contract to Sell (CTS). Your agent ({$agentName}) is currently away/offline and will provide the full computation shortly.";
+            } elseif (preg_match('/(document|requirement|title|deed|transfer|tax|bir|cert|doas)/i', $lower)) {
+                $autoReplyText = "📄 [Automated Reply] Standard transaction requirements include 2 valid government IDs, TIN, Proof of Billing, and signed reservation paperwork. Standard transfer taxes and registration fees are buyer-shouldered upon completion. Your agent ({$agentName}) is currently away/offline and will provide the complete checklist.";
+            } elseif (preg_match('/(location|where|address|barangay|map|directions|pin|lot)/i', $lower)) {
+                $autoReplyText = "📍 [Automated Reply] '{$propTitle}' is located in {$propLocation}. You can view the interactive map location on the listing page. Your agent ({$agentName}) is currently away/offline and will share exact meeting points and landmark directions before your site visit.";
+            } else {
+                $autoReplyText = "👋 [Automated Reply] Thank you for reaching out! Your message regarding '{$propTitle}' has been received. Your assigned Sales Agent ({$agentName}) is currently away/offline, but has been notified and will assist you as soon as they are back online. You may also contact our sales office directly at 0965 803 0933.";
             }
 
-            $insAuto = $conn->prepare(
-                "INSERT INTO direct_messages (transactionID, senderID, receiverID, message, isRead, isAutomated, createdAt)
-                 VALUES (?, ?, ?, ?, 0, 1, CURRENT_TIMESTAMP)"
-            );
-            $insAuto->bind_param('iiis', $transactionId, $replySenderId, $currentUserId, $autoReplyText);
-            if ($insAuto->execute()) {
-                $autoMsgId = (int) $conn->insert_id;
-                $autoReplyData = [
-                    'id' => $autoMsgId,
-                    'senderId' => $replySenderId,
-                    'senderName' => $agentSenderName,
-                    'senderRole' => $agentSenderRole,
-                    'isMe' => false,
-                    'isAutomated' => true,
-                    'message' => $autoReplyText,
-                    'time' => date('M j, Y g:i A'),
-                ];
+            if ($autoReplyText !== null) {
+                $replySenderId = $assignedAgentId > 0 ? $assignedAgentId : null;
+                $agentSenderName = (string) ($transaction['assignedAgentName'] ?? 'Sales Agent');
+                $agentSenderRole = 'Sales Agent';
+
+                if (!$replySenderId) {
+                    $staffRes = $conn->query("SELECT userID, fullname, role FROM users WHERE role IN ('Agent', 'Sales Agent', 'Admin') AND accountStatus = 'Active' ORDER BY (role = 'Sales Agent') DESC, userID ASC LIMIT 1");
+                    if ($staffRes && ($staffRow = $staffRes->fetch_assoc())) {
+                        $replySenderId = (int) $staffRow['userID'];
+                        $agentSenderName = (string) $staffRow['fullname'];
+                        $agentSenderRole = (string) $staffRow['role'];
+                    }
+                }
+
+                if (!$replySenderId) {
+                    $replySenderId = 1;
+                }
+
+                $insAuto = $conn->prepare(
+                    "INSERT INTO direct_messages (transactionID, senderID, receiverID, message, isRead, isAutomated, createdAt)
+                     VALUES (?, ?, ?, ?, 0, 1, CURRENT_TIMESTAMP)"
+                );
+                $insAuto->bind_param('iiis', $transactionId, $replySenderId, $currentUserId, $autoReplyText);
+                if ($insAuto->execute()) {
+                    $autoMsgId = (int) $conn->insert_id;
+                    $autoReplyData = [
+                        'id' => $autoMsgId,
+                        'senderId' => $replySenderId,
+                        'senderName' => $agentSenderName,
+                        'senderRole' => $agentSenderRole,
+                        'isMe' => false,
+                        'isAutomated' => true,
+                        'message' => $autoReplyText,
+                        'time' => date('M j, Y g:i A'),
+                    ];
+                }
             }
         }
     }
@@ -508,6 +578,7 @@ if ($method === 'POST' || $action === 'send') {
             'time' => date('M j, Y g:i A'),
         ],
         'auto_reply' => $autoReplyData,
+        'agent_is_online' => $agentIsOnline,
         'messages' => $updatedMessages,
     ]);
     exit();

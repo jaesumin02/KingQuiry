@@ -60,36 +60,138 @@ document.addEventListener('DOMContentLoaded', () => {
             toggle.setAttribute('aria-label', `${isOpen ? 'Close' : 'Open'} ${menuLabel}`);
         };
 
+        // Forgiving hover timing (150ms-250ms close delay)
+        let closeTimer = null;
+        const cancelClose = () => {
+            if (closeTimer !== null) {
+                clearTimeout(closeTimer);
+                closeTimer = null;
+            }
+        };
+        const scheduleClose = (delay = 200) => {
+            cancelClose();
+            closeTimer = setTimeout(() => {
+                if (!sidebar.matches(':focus-within')) {
+                    setMenuOpen(false);
+                }
+                closeTimer = null;
+            }, delay);
+        };
+
+        const handlePointerEnter = (event) => {
+            if (event.pointerType === 'touch') {
+                return;
+            }
+            cancelClose();
+            setMenuOpen(true);
+        };
+
+        const handlePointerLeave = (event) => {
+            if (event.pointerType === 'touch') {
+                return;
+            }
+            scheduleClose(200);
+        };
+
+        // Pointer hover behavior
+        toggle.addEventListener('pointerenter', handlePointerEnter);
+        sidebar.addEventListener('pointerenter', handlePointerEnter);
+        sidebar.addEventListener('pointerleave', handlePointerLeave);
+
+        // Keyboard focus accessibility
+        sidebar.addEventListener('focusin', cancelClose);
+        sidebar.addEventListener('focusout', (event) => {
+            if (!sidebar.contains(event.relatedTarget) && !sidebar.matches(':hover')) {
+                scheduleClose(150);
+            }
+        });
+
+        // Click / touch toggle
         toggle.addEventListener('click', () => {
+            cancelClose();
             setMenuOpen(toggle.getAttribute('aria-expanded') !== 'true');
         });
+
+        // Navigation click handling
         navigation.addEventListener('click', (event) => {
             const target = event.target instanceof Element ? event.target.closest('a, button') : null;
+            if (!target) return;
+            cancelClose();
+
             if (target instanceof HTMLAnchorElement && target.hash) {
                 const sectionId = target.hash.slice(1);
                 if (document.getElementById(sectionId)) {
-                    navigation.querySelectorAll('a[aria-current="location"]').forEach((link) => {
+                    navigation.querySelectorAll('a[aria-current="location"], a.active').forEach((link) => {
                         link.removeAttribute('aria-current');
+                        link.classList.remove('active', 'btn-primary');
+                        link.classList.add('btn-outline-primary');
                     });
                     target.setAttribute('aria-current', 'location');
+                    target.classList.add('active', 'btn-primary');
+                    target.classList.remove('btn-outline-primary');
                 }
             }
-            if (target instanceof HTMLAnchorElement) {
+
+            if (target instanceof HTMLAnchorElement || target.matches('[data-bs-toggle="modal"]')) {
                 setMenuOpen(false);
             }
         });
+
+        // Close on click outside
         document.addEventListener('click', (event) => {
             if (sidebar.classList.contains('is-open') && event.target instanceof Node && !sidebar.contains(event.target)) {
+                cancelClose();
                 setMenuOpen(false);
             }
         });
+
+        // Close on Escape key
         document.addEventListener('keydown', (event) => {
             if (event.key === 'Escape' && sidebar.classList.contains('is-open')) {
+                cancelClose();
                 setMenuOpen(false);
                 toggle.focus();
             }
         });
     });
+
+    // Hash synchronization for active route states and audit logs modal
+    const syncAdminNavHash = () => {
+        const hash = window.location.hash;
+        if (!hash) return;
+
+        if (hash === '#auditLogsModal') {
+            const modalEl = document.getElementById('auditLogsModal');
+            if (modalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                modal.show();
+            }
+        }
+
+        const currentPath = window.location.pathname.split('/').pop() || '';
+        if (currentPath === 'admin_dashboard.php') {
+            const adminNav = document.getElementById('admin-navigation');
+            if (!adminNav) return;
+            const targetLink = adminNav.querySelector(`a[href*="${hash}"]`);
+            if (targetLink) {
+                adminNav.querySelectorAll('.admin-nav-tab').forEach((tab) => {
+                    tab.classList.remove('active', 'btn-primary');
+                    tab.classList.add('btn-outline-primary');
+                    tab.removeAttribute('aria-current');
+                });
+                targetLink.classList.add('active', 'btn-primary');
+                targetLink.classList.remove('btn-outline-primary');
+                targetLink.setAttribute('aria-current', 'location');
+            }
+        }
+    };
+
+    window.addEventListener('hashchange', syncAdminNavHash);
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', syncAdminNavHash);
+    } else {
+        syncAdminNavHash();
+    }
 
     const liveClock = document.getElementById('kq-live-clock');
     const liveClockDate = document.getElementById('kq-live-clock-date');

@@ -30,3 +30,95 @@ function kq_admin_pages(): array
         ],
     ];
 }
+
+/**
+ * Standard 9 navigation drawer items for the Administrator Control Room.
+ * Rendered in exact order across every admin view:
+ * 1. Admin dashboard
+ * 2. Reports & analytics
+ * 3. Sales & transactions
+ * 4. Clients
+ * 5. Payments
+ * 6. Transaction tracking
+ * 7. Client transactions
+ * 8. Property listings
+ * 9. Audit logs
+ */
+function kq_admin_sidebar_items(string $currentPage = ''): array
+{
+    return [
+        [
+            'id' => 'nav-admin-dashboard',
+            'title' => 'Admin dashboard',
+            'href' => 'admin_dashboard.php',
+            'is_page' => true,
+            'is_active' => ($currentPage === 'admin_dashboard.php'),
+            'type' => 'link',
+        ],
+        [
+            'id' => 'nav-admin-reports',
+            'title' => 'Reports & analytics',
+            'href' => 'admin_reports.php',
+            'is_page' => true,
+            'is_active' => ($currentPage === 'admin_reports.php'),
+            'type' => 'link',
+        ],
+        [
+            'id' => 'nav-admin-sales',
+            'title' => 'Sales & transactions',
+            'href' => 'admin_sales.php',
+            'is_page' => true,
+            'is_active' => ($currentPage === 'admin_sales.php'),
+            'type' => 'link',
+        ],
+        [
+            'id' => 'nav-admin-clients',
+            'title' => 'Clients',
+            'href' => 'admin_clients.php',
+            'is_page' => true,
+            'is_active' => ($currentPage === 'admin_clients.php'),
+            'type' => 'link',
+        ],
+        [
+            'id' => 'nav-admin-payments',
+            'title' => 'Payments',
+            'href' => 'admin_payments.php',
+            'is_page' => true,
+            'is_active' => ($currentPage === 'admin_payments.php'),
+            'type' => 'link',
+        ],
+        [
+            'id' => 'nav-transaction-tracking',
+            'title' => 'Transaction tracking',
+            'href' => 'transaction_tracking.php',
+            'is_page' => true,
+            'is_active' => ($currentPage === 'transaction_tracking.php'),
+            'type' => 'link',
+        ],
+        [
+            'id' => 'nav-client-transactions',
+            'title' => 'Client transactions',
+            'href' => ($currentPage === 'admin_dashboard.php' ? '#client-transactions' : 'admin_dashboard.php#client-transactions'),
+            'is_page' => false,
+            'is_active' => false,
+            'type' => 'anchor',
+        ],
+        [
+            'id' => 'nav-property-listings',
+            'title' => 'Property listings',
+            'href' => ($currentPage === 'admin_dashboard.php' ? '#property-list' : 'admin_dashboard.php#property-list'),
+            'is_page' => false,
+            'is_active' => false,
+            'type' => 'anchor',
+        ],
+        [
+            'id' => 'nav-audit-logs',
+            'title' => 'Audit logs',
+            'href' => '#auditLogsModal',
+            'is_page' => false,
+            'is_active' => false,
+            'type' => 'modal',
+            'modal_target' => '#auditLogsModal',
+        ],
+    ];
+}

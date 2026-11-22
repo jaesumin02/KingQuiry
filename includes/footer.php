@@ -41,6 +41,9 @@ $currentRole = normalized_user_role($_SESSION['user'] ?? null);
         include __DIR__ . '/direct_chat_modal.php';
     }
     include __DIR__ . '/modals/user_manual_modal.php';
+    if (!empty($isAdminControlRoom)) {
+        include __DIR__ . '/modals/audit_logs_modal.php';
+    }
     ?>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="assets/js/app.js"></script>
