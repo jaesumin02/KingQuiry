@@ -1,0 +1,417 @@
+<?php
+if (!isset($currentUser) && isset($_SESSION['user'])) {
+    $currentUser = $_SESSION['user'];
+}
+$currentRole = function_exists('normalized_user_role') ? normalized_user_role($currentUser ?? null) : ($currentUser['role'] ?? '');
+$isClientUser = ($currentRole === 'Client');
+$csrfToken = function_exists('csrf_token') ? csrf_token() : ((string) ($_SESSION['csrf_token'] ?? ''));
+?>
+<!-- Direct Client <-> Agent Messaging Modal -->
+<div class="modal fade" id="directChatModal" tabindex="-1" aria-labelledby="directChatModalLabel" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable" style="max-width: 580px; width: 95%;">
+        <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden" style="min-height: 520px;">
+            <div class="modal-header bg-primary text-white py-2 px-3 align-items-center">
+                <div class="d-flex align-items-center gap-2 flex-grow-1 overflow-hidden">
+                    <span class="rounded-circle bg-white text-primary fw-bold d-inline-flex align-items-center justify-content-center flex-shrink-0" style="width: 38px; height: 38px; font-size: 1.1rem;" id="kqChatPartnerAvatar">💬</span>
+                    <div class="text-truncate">
+                        <div class="fw-bold fs-6 text-white text-truncate mb-0" id="kqChatPartnerName">Direct Message</div>
+                        <div class="small text-white-50 text-truncate" style="font-size: 0.76rem;" id="kqChatPropertyTitle">Property Reference</div>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close" id="kqChatModalCloseBtn"></button>
+            </div>
+
+            <div class="modal-body p-3 bg-body-tertiary d-flex flex-column" id="kqChatMessagesContainer" style="height: 380px; overflow-y: auto;">
+                <div class="text-center text-muted my-auto py-4" id="kqChatLoadingSpinner">
+                    <div class="spinner-border spinner-border-sm text-primary mb-2" role="status"></div>
+                    <div class="small">Connecting to conversation...</div>
+                </div>
+                <div id="kqChatEmptyState" class="text-center text-muted my-auto py-4 d-none">
+                    <div class="fs-1 mb-2">👋</div>
+                    <div class="fw-bold text-dark">No messages yet</div>
+                    <div class="small text-muted">Send a message below to start your conversation.</div>
+                </div>
+                <div id="kqChatMessagesList" class="d-flex flex-column gap-2 mt-auto"></div>
+            </div>
+
+            <div class="px-3 py-1 bg-body border-top <?= $isClientUser ? 'd-flex' : 'd-none' ?> gap-1 align-items-center flex-wrap" id="kqChatChipsBar">
+                <span class="small text-muted me-1" style="font-size: 0.7rem;">Quick ask:</span>
+                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2" id="kqChipViewing" style="font-size: 0.72rem;" onclick="kqInsertSuggestion('Can we schedule a property viewing?')">📅 Viewing</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2" id="kqChipPayment" style="font-size: 0.72rem;" onclick="kqInsertSuggestion('What are the payment terms and options?')">💰 Payment terms</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2" id="kqChipDocs" style="font-size: 0.72rem;" onclick="kqInsertSuggestion('What documents are required to purchase?')">📄 Required docs</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2" id="kqChipLocation" style="font-size: 0.72rem;" onclick="kqInsertSuggestion('Can you share location details and directions?')">📍 Location</button>
+            </div>
+
+            <div class="modal-footer p-2 bg-body border-top">
+                <form id="kqDirectChatForm" class="d-flex w-100 gap-2 align-items-center m-0" onsubmit="return kqSendDirectMessage(event);">
+                    <input type="hidden" id="kqChatTransactionId" value="0">
+                    <input type="hidden" id="kqChatCsrfToken" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="text" class="form-control rounded-pill px-3 shadow-none" id="kqChatMessageInput" placeholder="Type a message..." maxlength="2000" autocomplete="off" required>
+                    <button type="submit" class="btn btn-primary rounded-circle d-flex align-items-center justify-content-center shadow-sm" style="width: 42px; height: 42px; flex-shrink: 0;" id="kqChatSendBtn" title="Send message">
+                        <span style="transform: rotate(45deg); display: inline-block; margin-left: -2px; margin-top: -2px;">✈</span>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.kq-bubble-mine {
+    background: linear-gradient(135deg, #174a70 0%, #0f324e 100%) !important;
+    color: #ffffff !important;
+    border-radius: 16px 16px 3px 16px;
+    align-self: flex-end;
+    max-width: 82%;
+    padding: 0.55rem 0.95rem;
+    box-shadow: 0 2px 8px rgba(23, 74, 112, 0.2);
+    word-break: break-word;
+}
+.kq-bubble-theirs {
+    background: var(--bs-card-bg, #ffffff) !important;
+    color: var(--bs-body-color, #1e293b) !important;
+    border: 1px solid var(--bs-border-color, #e2e8f0);
+    border-radius: 16px 16px 16px 3px;
+    align-self: flex-start;
+    max-width: 82%;
+    padding: 0.55rem 0.95rem;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+    word-break: break-word;
+}
+[data-bs-theme="dark"] .kq-bubble-theirs {
+    background: #162838 !important;
+    border-color: #24415c !important;
+    color: #f1f5f9 !important;
+}
+</style>
+
+<script>
+(function() {
+    let activeChatTxId = 0;
+    let pollInterval = null;
+    let isFetching = false;
+    let knownMessageCount = 0;
+
+    window.openDirectChat = function(transactionId, propertyTitle, partnerName, hasScheduledViewing) {
+        activeChatTxId = parseInt(transactionId, 10);
+        if (!activeChatTxId) return;
+
+        const modalEl = document.getElementById('directChatModal');
+        if (!modalEl) return;
+
+        document.getElementById('kqChatTransactionId').value = activeChatTxId;
+        document.getElementById('kqChatPropertyTitle').textContent = propertyTitle ? ('Re: ' + propertyTitle) : 'Transaction #KQT-' + activeChatTxId;
+        document.getElementById('kqChatPartnerName').textContent = partnerName || 'Sales Support';
+
+        // Set initial viewing chip visibility based on passed parameter
+        const viewingChip = document.getElementById('kqChipViewing');
+        if (viewingChip) {
+            if (hasScheduledViewing === true) {
+                viewingChip.classList.add('d-none');
+            } else if (hasScheduledViewing === false) {
+                viewingChip.classList.remove('d-none');
+            }
+        }
+
+        const listEl = document.getElementById('kqChatMessagesList');
+        listEl.innerHTML = '';
+        document.getElementById('kqChatLoadingSpinner').classList.remove('d-none');
+        document.getElementById('kqChatEmptyState').classList.add('d-none');
+        knownMessageCount = 0;
+
+        const modalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modalInstance.show();
+
+        fetchMessages();
+        startPolling();
+    };
+
+    window.openPropertyChat = async function(propertyId, propertyTitle) {
+        const propId = parseInt(propertyId, 10);
+        if (!propId) return;
+
+        const modalEl = document.getElementById('directChatModal');
+        if (!modalEl) {
+            const guestModal = document.getElementById('guestChatModal');
+            if (guestModal) {
+                bootstrap.Modal.getOrCreateInstance(guestModal).show();
+            } else {
+                window.location.href = 'client_login.php';
+            }
+            return;
+        }
+
+        // Open chat modal with connecting state while resolving the conversation
+        document.getElementById('kqChatTransactionId').value = '0';
+        document.getElementById('kqChatPropertyTitle').textContent = propertyTitle ? ('Re: ' + propertyTitle) : 'Connecting...';
+        document.getElementById('kqChatPartnerName').textContent = 'Sales Agent';
+        document.getElementById('kqChatMessagesList').innerHTML = '';
+        document.getElementById('kqChatLoadingSpinner').classList.remove('d-none');
+        document.getElementById('kqChatEmptyState').classList.add('d-none');
+
+        const modalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modalInstance.show();
+
+        try {
+            const resp = await fetch('chat_api.php?action=initiate_property_chat&property_id=' + propId, {
+                cache: 'no-store',
+                credentials: 'same-origin'
+            });
+            const data = await resp.json();
+            if (data && data.ok && data.transaction_id) {
+                window.openDirectChat(
+                    data.transaction_id,
+                    data.property_title || propertyTitle,
+                    data.partner_name || 'Sales Agent',
+                    data.has_scheduled_viewing
+                );
+            } else {
+                alert((data && data.error) ? data.error : 'Could not connect with a Sales Agent for this property.');
+                modalInstance.hide();
+            }
+        } catch (err) {
+            console.error('Error starting property chat:', err);
+            alert('Failed to connect with an agent. Please check your connection.');
+            modalInstance.hide();
+        }
+    };
+
+    function startPolling() {
+        stopPolling();
+        pollInterval = setInterval(fetchMessages, 3500);
+    }
+
+    function stopPolling() {
+        if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+        }
+    }
+
+    async function fetchMessages(force = false) {
+        if (!activeChatTxId || (isFetching && !force)) return;
+        isFetching = true;
+        try {
+            const resp = await fetch('chat_api.php?action=fetch&transaction_id=' + activeChatTxId, {
+                cache: 'no-store',
+                credentials: 'same-origin'
+            });
+            if (!resp.ok) {
+                document.getElementById('kqChatLoadingSpinner').classList.add('d-none');
+                return;
+            }
+            const data = await resp.json();
+            if (!data.ok) {
+                document.getElementById('kqChatLoadingSpinner').classList.add('d-none');
+                return;
+            }
+
+            document.getElementById('kqChatLoadingSpinner').classList.add('d-none');
+
+            // Quick ask suggestions should only appear in the client view
+            const chipsBar = document.getElementById('kqChatChipsBar');
+            if (chipsBar) {
+                if (data.is_client) {
+                    chipsBar.classList.remove('d-none');
+                    chipsBar.classList.add('d-flex');
+                } else {
+                    chipsBar.classList.add('d-none');
+                    chipsBar.classList.remove('d-flex');
+                }
+            }
+
+            // If the property already has a scheduled viewing, hide the "Viewing" quick ask chip
+            const viewingChip = document.getElementById('kqChipViewing');
+            if (viewingChip) {
+                const alreadyScheduled = Boolean(data.has_scheduled_viewing || (data.transaction && data.transaction.hasScheduledViewing));
+                if (alreadyScheduled) {
+                    viewingChip.classList.add('d-none');
+                } else {
+                    viewingChip.classList.remove('d-none');
+                }
+            }
+
+            if (data.csrf_token) {
+                const tokenInput = document.getElementById('kqChatCsrfToken');
+                if (tokenInput) tokenInput.value = data.csrf_token;
+            }
+
+            if (data.transaction) {
+                if (data.transaction.partnerName) {
+                    document.getElementById('kqChatPartnerName').textContent = data.transaction.partnerName;
+                }
+                if (data.transaction.propertyTitle) {
+                    document.getElementById('kqChatPropertyTitle').textContent = 'Re: ' + data.transaction.propertyTitle;
+                }
+            }
+
+            const messages = data.messages || [];
+            const listEl = document.getElementById('kqChatMessagesList');
+            const emptyEl = document.getElementById('kqChatEmptyState');
+
+            if (messages.length === 0) {
+                emptyEl.classList.remove('d-none');
+                listEl.innerHTML = '';
+                knownMessageCount = 0;
+            } else {
+                emptyEl.classList.add('d-none');
+                if (messages.length !== knownMessageCount) {
+                    renderMessages(messages);
+                    knownMessageCount = messages.length;
+                    scrollToBottom();
+                }
+            }
+        } catch (e) {
+            console.error('Direct chat fetch error:', e);
+            document.getElementById('kqChatLoadingSpinner').classList.add('d-none');
+        } finally {
+            isFetching = false;
+        }
+    }
+
+    function renderMessages(messages) {
+        const listEl = document.getElementById('kqChatMessagesList');
+        listEl.innerHTML = '';
+
+        messages.forEach(function(m) {
+            const wrap = document.createElement('div');
+            wrap.className = 'd-flex flex-column ' + (m.isMe ? 'align-items-end' : 'align-items-start');
+
+            const bubble = document.createElement('div');
+            bubble.className = m.isMe ? 'kq-bubble-mine' : 'kq-bubble-theirs';
+
+            if (!m.isMe) {
+                const author = document.createElement('div');
+                author.className = 'small fw-bold opacity-75 mb-1 d-flex align-items-center gap-1 flex-wrap';
+                author.style.fontSize = '0.72rem';
+
+                if (m.isAutomated) {
+                    const autoBadge = document.createElement('span');
+                    autoBadge.className = 'badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill';
+                    autoBadge.style.fontSize = '0.62rem';
+                    autoBadge.textContent = '⚡ Automated';
+                    author.appendChild(autoBadge);
+                }
+
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = m.senderName + ' (' + m.senderRole + ')';
+                author.appendChild(nameSpan);
+
+                bubble.appendChild(author);
+            }
+
+            const text = document.createElement('div');
+            text.textContent = m.message;
+            bubble.appendChild(text);
+
+            const time = document.createElement('div');
+            time.className = 'small opacity-50 mt-1 ' + (m.isMe ? 'text-end' : 'text-start');
+            time.style.fontSize = '0.68rem';
+            time.textContent = m.time;
+            bubble.appendChild(time);
+
+            wrap.appendChild(bubble);
+            listEl.appendChild(wrap);
+        });
+    }
+
+    function scrollToBottom() {
+        const c = document.getElementById('kqChatMessagesContainer');
+        if (c) {
+            setTimeout(function() {
+                c.scrollTop = c.scrollHeight;
+            }, 60);
+        }
+    }
+
+    window.kqInsertSuggestion = function(text) {
+        const input = document.getElementById('kqChatMessageInput');
+        if (!input) return;
+        input.value = text;
+        input.focus();
+        window.kqSendDirectMessage();
+    };
+
+    window.kqSendDirectMessage = async function(e) {
+        if (e) e.preventDefault();
+        const inputEl = document.getElementById('kqChatMessageInput');
+        const text = inputEl.value.trim();
+        if (!text || !activeChatTxId) return false;
+
+        const csrf = document.getElementById('kqChatCsrfToken').value;
+        const sendBtn = document.getElementById('kqChatSendBtn');
+
+        inputEl.disabled = true;
+        sendBtn.disabled = true;
+
+        try {
+            const formData = new FormData();
+            formData.append('action', 'send');
+            formData.append('transaction_id', activeChatTxId);
+            formData.append('message', text);
+            formData.append('csrf_token', csrf);
+
+            const resp = await fetch('chat_api.php', {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin'
+            });
+
+            let errorMsg = '';
+            try {
+                const data = await resp.json();
+                if (data && data.ok) {
+                    inputEl.value = '';
+                    if (data.csrf_token) {
+                        document.getElementById('kqChatCsrfToken').value = data.csrf_token;
+                    }
+                    if (data.messages && Array.isArray(data.messages)) {
+                        document.getElementById('kqChatEmptyState').classList.add('d-none');
+                        renderMessages(data.messages);
+                        knownMessageCount = data.messages.length;
+                        scrollToBottom();
+
+                        const viewingChip = document.getElementById('kqChipViewing');
+                        if (viewingChip && typeof data.has_scheduled_viewing !== 'undefined') {
+                            if (data.has_scheduled_viewing) {
+                                viewingChip.classList.add('d-none');
+                            } else {
+                                viewingChip.classList.remove('d-none');
+                            }
+                        }
+                    } else {
+                        await fetchMessages(true);
+                    }
+                    return false;
+                }
+                errorMsg = (data && data.error) ? data.error : 'Could not send message.';
+            } catch (jsonErr) {
+                errorMsg = 'Server response error (' + resp.status + ').';
+            }
+
+            alert(errorMsg);
+        } catch (err) {
+            alert('Failed to send message. Please check your connection.');
+        } finally {
+            inputEl.disabled = false;
+            sendBtn.disabled = false;
+            inputEl.focus();
+        }
+        return false;
+    };
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const modalEl = document.getElementById('directChatModal');
+        if (modalEl) {
+            modalEl.addEventListener('hidden.bs.modal', function() {
+                stopPolling();
+                activeChatTxId = 0;
+            });
+            modalEl.addEventListener('shown.bs.modal', function() {
+                const input = document.getElementById('kqChatMessageInput');
+                if (input) input.focus();
+            });
+        }
+    });
+})();
+</script>

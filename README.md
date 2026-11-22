@@ -64,7 +64,6 @@ calculation flows:
 | Viewing schedule conflict check | [`property_detail.php`](property_detail.php) | Rejects duplicate active requests and same-property pending/approved viewings less than one hour apart. |
 | Transaction stage flow | [`includes/transaction_tracking.php`](includes/transaction_tracking.php) | Defines allowed next transaction stages; non-cash payments require document verification, while Spot Cash may skip it. |
 | Inventory insights | [`admin_dashboard.php`](admin_dashboard.php) | Uses fixed inquiry/listing thresholds to suggest an inventory or marketing review. |
-| Chatbot responses | [`chat_api.php`](chat_api.php) | Checks ordered keyword rules and selects a matching preset response; it does not call an external AI service. |
 
 These are the system's main algorithms and rule-based decision flows; ordinary
 form validation and database CRUD operations are not listed as algorithms.
@@ -168,14 +167,8 @@ form validation and database CRUD operations are not listed as algorithms.
   a dated vertical timeline in the client dashboard. Use the **My Tracking**
   navigation link to jump directly to it. Existing records receive an honest
   starting point; historical events from before the migration are not invented.
-- Open the floating chat bubble on the catalog, property detail, and client
-  dashboard pages to message the automated customer assistant.
-- Request an indicative, comparable-listing-based land estimate in chat using
-  the same estimator as the property-detail comparable estimate. Its result or missing-data error
-  is displayed directly inside the estimate form in the customer chat bubble.
-  Estimate answers do not move the chat transcript or scroll the panel away
-  from the calculator. An admin can reply while
-  their Customer Chat page is active; otherwise the rule-based assistant responds.
+- Coordinate directly with assigned Sales Agents via phone and email links across active transaction records.
+- Calculate indicative land valuations and terms breakdowns using the interactive calculator on property detail pages.
 
 ### Sales agent
 
@@ -254,15 +247,12 @@ form validation and database CRUD operations are not listed as algorithms.
 | `admin_clients.php` | Client directory: create and edit client accounts, reset passwords, and activate or deactivate accounts |
 | `admin_payments.php` | Payment register: record, verify, reject, and remove collections with a six-month verified-collections chart |
 | `admin_sales.php` | Sales and transaction dashboard: revenue, pipeline, stage breakdown, reconciliation, and transaction register |
-| `admin_chat.php` | Admin inbox for client and chatbot conversations |
 | `agent_dashboard.php` | Sales-agent appointment and inquiry list; appointment status updates |
-| `client_dashboard.php` | Client appointment tracking |
+| `client_dashboard.php` | Client appointment tracking and assigned agent contact |
 | `transaction_tracking.php` | Admin/agent transaction-stage updates and client-visible history |
-| `chat_api.php` | Session-bound chat, polling, admin presence, replies, and estimates |
 | `config/db.php` | MySQL connection settings |
 | `includes/header.php` | Shared navigation, session startup, and page cache headers |
-| `includes/footer.php` | Shared footer, Bootstrap JavaScript, and eligible public/client-page floating chat widget |
-| `includes/chat_widget.php` | Floating customer chat, comparable-listing estimate form, and automated assistant interface |
+| `includes/footer.php` | Shared footer, brand identity, and Bootstrap JavaScript |
 | `includes/property_estimator.php` | Shared weighted comparable-listing estimator |
 | `includes/property_images.php` | Validated property image upload and storage |
 | `includes/admin_management.php` | Shared client, payment, and sales helpers, including idempotent schema setup |

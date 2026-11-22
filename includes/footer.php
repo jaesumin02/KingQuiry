@@ -1,19 +1,5 @@
 <?php
-$chatWidgetPages = ['index.php', 'property_detail.php', 'client_dashboard.php', 'agents.php', 'resources.php', 'about.php'];
-$currentScript = basename($_SERVER['SCRIPT_NAME'] ?? '');
-$currentPhpSelf = basename($_SERVER['PHP_SELF'] ?? '');
-$requestPath = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
-$currentUri = is_string($requestPath) ? basename($requestPath) : '';
-
-$isChatPage = in_array($currentScript, $chatWidgetPages, true)
-    || in_array($currentPhpSelf, $chatWidgetPages, true)
-    || in_array($currentUri, $chatWidgetPages, true)
-    || (isset($trackingRows) && is_array($trackingRows));
-
 $currentRole = normalized_user_role($_SESSION['user'] ?? null);
-if ($isChatPage && ($currentRole === null || $currentRole === 'Client')) {
-    include __DIR__ . '/chat_widget.php';
-}
 ?>
         <?php if ($isAdminControlRoom): ?>
                 </div>
@@ -45,12 +31,14 @@ if ($isChatPage && ($currentRole === null || $currentRole === 'Client')) {
     // Modular application modals
     if ($currentRole === null || $currentRole === 'Client') {
         include __DIR__ . '/modals/contact_us_modal.php';
+        include __DIR__ . '/modals/chat_picker_modals.php';
     }
     $sessionUser = $_SESSION['user'] ?? $currentUser ?? null;
     if ($sessionUser !== null) {
         $currentUser = $sessionUser;
         include __DIR__ . '/modals/notifications_modal.php';
         include __DIR__ . '/modals/account_modals.php';
+        include __DIR__ . '/direct_chat_modal.php';
     }
     include __DIR__ . '/modals/user_manual_modal.php';
     ?>

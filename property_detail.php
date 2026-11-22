@@ -595,6 +595,24 @@ include 'includes/header.php';
                 <a href="index.php" class="btn btn-primary w-100">Browse Available Properties</a>
             </div>
         <?php else: ?>
+            <!-- Direct Agent Chat Card -->
+            <div class="card p-3 p-md-4 mb-4 border-primary-subtle shadow-sm" style="background: linear-gradient(135deg, rgba(23,74,112,0.04) 0%, rgba(216,173,99,0.07) 100%);">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="rounded-circle bg-primary text-white d-inline-flex align-items-center justify-content-center flex-shrink-0" style="width: 36px; height: 36px;">
+                        <i class="bi bi-chat-dots-fill"></i>
+                    </span>
+                    <div>
+                        <div class="page-eyebrow text-primary mb-0" style="font-size: 0.68rem;">Direct Communication</div>
+                        <h4 class="h6 fw-bold mb-0 text-dark">Message an Agent</h4>
+                    </div>
+                </div>
+                <p class="small text-muted mb-3">Have questions about pricing, payment terms, required documents, or title verification? Chat directly with an assigned Sales Agent.</p>
+                <button type="button" class="btn btn-primary w-100 shadow-sm d-inline-flex align-items-center justify-content-center gap-2 fw-semibold py-2" onclick="openPropertyChat(<?= (int)$propertyID ?>, '<?= addslashes(htmlspecialchars($property['title'], ENT_QUOTES, 'UTF-8')) ?>')">
+                    <i class="bi bi-chat-text-fill"></i>
+                    <span>Message an Agent about this property</span>
+                </button>
+            </div>
+
             <div class="card p-4 mb-4" id="appointment">
                 <div class="page-eyebrow mb-2">Visit the property</div>
                 <h3 class="h5 fw-bold mb-3">Request a viewing</h3>
@@ -678,7 +696,12 @@ include 'includes/header.php';
                                     <div class="small text-muted" style="font-size: 0.7rem;">Asking Price</div>
                                     <span class="fw-bold text-primary">₱<?= number_format((float) $rec['price'], 2) ?></span>
                                 </div>
-                                <a href="property_detail.php?id=<?= (int) $rec['propertyID'] ?>" class="btn btn-sm btn-primary px-3 fw-semibold">View</a>
+                                <div class="d-flex align-items-center gap-1">
+                                    <button type="button" class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 shadow-sm px-2" onclick="openPropertyChat(<?= (int) $rec['propertyID'] ?>, '<?= addslashes(htmlspecialchars($rec['title'], ENT_QUOTES, 'UTF-8')) ?>')" title="Message an Agent about this property">
+                                        <i class="bi bi-chat-dots-fill"></i>
+                                    </button>
+                                    <a href="property_detail.php?id=<?= (int) $rec['propertyID'] ?>" class="btn btn-sm btn-primary px-3 fw-semibold">View</a>
+                                </div>
                             </div>
                         </div>
                     </div>

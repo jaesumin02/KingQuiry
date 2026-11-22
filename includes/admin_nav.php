@@ -14,6 +14,7 @@
             <a class="btn admin-nav-tab <?= $route === $currentPage ? 'btn-primary active' : 'btn-outline-primary' ?>" href="<?= htmlspecialchars($route, ENT_QUOTES, 'UTF-8') ?>"<?= $route === $currentPage ? ' aria-current="page"' : '' ?>><?= htmlspecialchars($page['title'], ENT_QUOTES, 'UTF-8') ?></a>
         <?php endforeach; ?>
         <?php if ($currentPage === 'admin_dashboard.php'): ?>
+            <a class="btn btn-outline-primary admin-nav-tab" href="admin_dashboard.php#client-transactions">Client transactions</a>
             <a class="btn btn-outline-primary admin-nav-tab" href="admin_dashboard.php#property-list">Property listings</a>
             <button type="button" class="btn btn-outline-primary admin-nav-tab" data-bs-toggle="modal" data-bs-target="#auditLogsModal">Audit logs</button>
         <?php endif; ?>

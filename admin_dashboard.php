@@ -406,6 +406,36 @@ include 'includes/header.php';
 require_once 'includes/admin_analytics.php';
 $adminMetrics = get_admin_summary_metrics($conn);
 
+$adminRecentTx = $conn->query(
+    "SELECT t.transactionID, t.propertyID, t.clientID, t.currentStage, t.salePrice, t.updatedAt, t.createdAt,
+            p.title, p.location,
+            u.fullname AS clientName, u.email AS clientEmail,
+            COALESCE(agentUser.fullname, inqAgentUser.fullname, 'Unassigned') AS assignedAgentName,
+            COALESCE(a.agentID, ia.agentID) AS assignedAgentID
+     FROM property_transactions t
+     JOIN properties p ON p.propertyID = t.propertyID
+     JOIN users u ON u.userID = t.clientID
+     LEFT JOIN appointments a ON a.appointmentID = t.appointmentID
+     LEFT JOIN users agentUser ON agentUser.userID = a.agentID
+     LEFT JOIN agent_inquiry_assignments ia ON ia.inquiryID = t.inquiryID
+     LEFT JOIN users inqAgentUser ON inqAgentUser.userID = ia.agentID
+     ORDER BY (a.agentID IS NULL AND ia.agentID IS NULL) DESC, t.updatedAt DESC, t.transactionID DESC
+     LIMIT 25"
+)->fetch_all(MYSQLI_ASSOC);
+
+$adminStageLabels = function_exists('property_transaction_stages') ? property_transaction_stages() : [
+    'inquiry_received' => 'Inquiry Received',
+    'contacting_client' => 'Contacting Client',
+    'viewing_requested' => 'Viewing Requested',
+    'viewing_confirmed' => 'Viewing Approved',
+    'viewing_completed' => 'Viewing Completed',
+    'payment_in_process' => 'Payment In Process',
+    'document_verification' => 'Document Verification',
+    'payment_confirmation' => 'Payment Confirmed',
+    'completed' => 'Completed',
+    'cancelled' => 'Cancelled',
+];
+
 $properties = $conn->query(
     "SELECT p.*, l.municipalityName, l.provinceName
      FROM properties p
@@ -577,6 +607,89 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
         <div class="col-6 col-lg-4 col-xl-2"><div class="card h-100"><div class="card-body p-3"><div class="page-eyebrow text-primary">Active pipeline</div><h3 class="h3 mb-0 text-primary"><?= number_format($adminMetrics['active_pipeline']) ?></h3><small class="text-muted"><a href="admin_sales.php" class="text-decoration-none">Transactions &rarr;</a></small></div></div></div>
         <div class="col-6 col-lg-4 col-xl-2"><div class="card h-100"><div class="card-body p-3"><div class="page-eyebrow text-success">Completed sales</div><h3 class="h3 mb-0 text-success"><?= number_format($adminMetrics['completed_sales']) ?></h3><small class="text-muted">All completed transactions</small></div></div></div>
         <div class="col-6 col-lg-4 col-xl-2"><div class="card h-100"><div class="card-body p-3"><div class="page-eyebrow text-success">Actual revenue</div><h3 class="h3 mb-0 text-success"><?= htmlspecialchars(format_admin_compact_peso($adminMetrics['actual_revenue']), ENT_QUOTES, 'UTF-8') ?></h3><small class="text-muted">Recorded sale prices</small></div></div></div>
+    </div>
+</section>
+
+<section class="card p-3 p-lg-4 mb-4 shadow-sm" id="client-transactions">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3 pb-3 border-bottom">
+        <div>
+            <div class="page-eyebrow mb-1">Live Pipeline</div>
+            <h2 class="h4 fw-bold mb-0">Client Transactions &amp; Pipeline</h2>
+            <p class="text-muted small mb-0">Real-time overview of all transactions created from client viewing requests and property inquiries.</p>
+        </div>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1"><?= count($adminRecentTx) ?> Tracked Case<?= count($adminRecentTx) === 1 ? '' : 's' ?></span>
+            <a href="transaction_tracking.php" class="btn btn-sm btn-primary">Open Tracking Hub &rarr;</a>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Ref ID</th>
+                    <th>Property</th>
+                    <th>Client</th>
+                    <th>Stage</th>
+                    <th>Assigned Agent</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php if ($adminRecentTx !== []): ?>
+                <?php foreach ($adminRecentTx as $tx):
+                    $txId = (int) $tx['transactionID'];
+                    $txStage = (string) $tx['currentStage'];
+                    $isUnassigned = empty($tx['assignedAgentID']);
+                    $txBadge = match ($txStage) {
+                        'completed' => 'text-bg-success',
+                        'cancelled' => 'text-bg-secondary',
+                        'payment_in_process' => 'text-bg-warning text-dark',
+                        'payment_confirmation' => 'text-bg-info text-dark',
+                        default => 'text-bg-primary',
+                    };
+                ?>
+                    <tr>
+                        <td>
+                            <strong class="text-dark">#KQT-<?= $txId ?></strong>
+                            <div class="small text-muted"><?= htmlspecialchars(date('M j, Y', strtotime($tx['createdAt'])), ENT_QUOTES, 'UTF-8') ?></div>
+                        </td>
+                        <td>
+                            <strong class="text-dark text-truncate d-block" style="max-width: 220px;"><?= htmlspecialchars($tx['title'], ENT_QUOTES, 'UTF-8') ?></strong>
+                            <div class="small text-muted text-truncate" style="max-width: 220px;"><?= htmlspecialchars($tx['location'], ENT_QUOTES, 'UTF-8') ?></div>
+                        </td>
+                        <td>
+                            <div class="fw-semibold text-dark"><?= htmlspecialchars($tx['clientName'], ENT_QUOTES, 'UTF-8') ?></div>
+                            <div class="small text-muted"><?= htmlspecialchars($tx['clientEmail'], ENT_QUOTES, 'UTF-8') ?></div>
+                        </td>
+                        <td>
+                            <span class="badge rounded-pill <?= $txBadge ?>"><?= htmlspecialchars($adminStageLabels[$txStage] ?? ucfirst($txStage), ENT_QUOTES, 'UTF-8') ?></span>
+                        </td>
+                        <td>
+                            <?php if ($isUnassigned): ?>
+                                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill">Unassigned</span>
+                            <?php else: ?>
+                                <span class="badge bg-secondary-subtle text-secondary rounded-pill"><?= htmlspecialchars($tx['assignedAgentName'], ENT_QUOTES, 'UTF-8') ?></span>
+                            <?php endif; ?>
+                        </td>
+                        <td class="text-end">
+                            <div class="d-inline-flex align-items-center gap-1 justify-content-end flex-wrap">
+                                <button type="button" class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 shadow-sm text-nowrap" onclick="openDirectChat(<?= $txId ?>, '<?= addslashes(htmlspecialchars($tx['title'], ENT_QUOTES, 'UTF-8')) ?>', '<?= addslashes(htmlspecialchars($tx['clientName'], ENT_QUOTES, 'UTF-8')) ?>')" title="Direct chat with <?= htmlspecialchars($tx['clientName'], ENT_QUOTES, 'UTF-8') ?>">
+                                    <span>💬 Chat</span>
+                                </button>
+                                <a href="transaction_tracking.php" class="btn btn-sm btn-primary fw-semibold shadow-sm text-nowrap">
+                                    <span>Track &rarr;</span>
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            <?php else: ?>
+                <tr>
+                    <td colspan="6" class="text-center text-muted py-4">No client transactions yet. Transactions initiated by clients will appear here automatically.</td>
+                </tr>
+            <?php endif; ?>
+            </tbody>
+        </table>
     </div>
 </section>
 

@@ -157,7 +157,7 @@ $apptStmt = $conn->prepare(
      LEFT JOIN property_locations l ON l.locationID = p.locationID
      LEFT JOIN agent_dismissed_appointments ada ON ada.appointmentID = a.appointmentID AND ada.agentID = ?
      WHERE a.agentID = ?
-        OR (a.agentID IS NULL AND a.status = 'Pending' AND ada.appointmentID IS NULL)
+        OR (a.agentID IS NULL AND a.status IN ('Pending', 'Approved') AND ada.appointmentID IS NULL)
      ORDER BY a.appointmentDate DESC, a.appointmentTime DESC, a.appointmentID DESC
      LIMIT 300"
 );
@@ -193,7 +193,7 @@ $statsStmt = $conn->prepare(
      FROM appointments a
      LEFT JOIN agent_dismissed_appointments ada ON ada.appointmentID = a.appointmentID AND ada.agentID = ?
      WHERE a.agentID = ?
-        OR (a.agentID IS NULL AND a.status = 'Pending' AND ada.appointmentID IS NULL)"
+        OR (a.agentID IS NULL AND a.status IN ('Pending', 'Approved') AND ada.appointmentID IS NULL)"
 );
 $statsStmt->bind_param('iii', $currentAgentId, $currentAgentId, $currentAgentId);
 $statsStmt->execute();
@@ -207,11 +207,46 @@ $txStatsStmt = $conn->prepare(
      FROM property_transactions t
      LEFT JOIN appointments a ON a.appointmentID = t.appointmentID
      LEFT JOIN agent_inquiry_assignments ia ON ia.inquiryID = t.inquiryID
-     WHERE a.agentID = ? OR ia.agentID = ?"
+     WHERE (a.agentID = ? OR ia.agentID = ?) OR (a.agentID IS NULL AND ia.agentID IS NULL)"
 );
 $txStatsStmt->bind_param('ii', $currentAgentId, $currentAgentId);
 $txStatsStmt->execute();
 $txStatsRow = $txStatsStmt->get_result()->fetch_assoc() ?: ['active_transactions' => 0, 'completed_transactions' => 0];
+
+$agentTxStmt = $conn->prepare(
+    "SELECT t.transactionID, t.propertyID, t.clientID, t.appointmentID, t.inquiryID,
+            t.currentStage, t.salePrice, t.paymentMethod, t.createdAt, t.updatedAt,
+            p.title, p.location,
+            u.fullname AS clientName, u.email AS clientEmail,
+            COALESCE(a.agentID, ia.agentID) AS assignedAgentID,
+            COALESCE(agentUser.fullname, inqAgentUser.fullname, 'Unassigned') AS assignedAgentName
+     FROM property_transactions t
+     JOIN properties p ON p.propertyID = t.propertyID
+     JOIN users u ON u.userID = t.clientID
+     LEFT JOIN appointments a ON a.appointmentID = t.appointmentID
+     LEFT JOIN users agentUser ON agentUser.userID = a.agentID
+     LEFT JOIN agent_inquiry_assignments ia ON ia.inquiryID = t.inquiryID
+     LEFT JOIN users inqAgentUser ON inqAgentUser.userID = ia.agentID
+     WHERE (a.agentID = ? OR ia.agentID = ?) OR (a.agentID IS NULL AND ia.agentID IS NULL)
+     ORDER BY (a.agentID IS NULL AND ia.agentID IS NULL) DESC, (t.currentStage IN ('completed', 'cancelled')) ASC, t.updatedAt DESC
+     LIMIT 40"
+);
+$agentTxStmt->bind_param('ii', $currentAgentId, $currentAgentId);
+$agentTxStmt->execute();
+$agentTransactions = $agentTxStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+$agentStageLabels = function_exists('property_transaction_stages') ? property_transaction_stages() : [
+    'inquiry_received' => 'Inquiry Received',
+    'contacting_client' => 'Contacting Client',
+    'viewing_requested' => 'Viewing Requested',
+    'viewing_confirmed' => 'Viewing Approved',
+    'viewing_completed' => 'Viewing Completed',
+    'payment_in_process' => 'Payment In Process',
+    'document_verification' => 'Document Verification',
+    'payment_confirmation' => 'Payment Confirmed',
+    'completed' => 'Completed',
+    'cancelled' => 'Cancelled',
+];
 
 include 'includes/header.php';
 ?>
@@ -320,11 +355,11 @@ include 'includes/header.php';
             <div class="kq-portal-sidebar-heading">Sales Agent menu</div>
             <nav class="kq-portal-nav" id="agent-navigation" aria-label="Sales Agent dashboard sections">
                 <a href="#agent-overview">Overview</a>
+                <a href="#agent-transactions">Transactions & Pipeline</a>
                 <a href="#appointments">Viewing requests</a>
                 <a href="#agent-inquiries">Inquiries</a>
                 <a href="#add-property">Publish a listing</a>
                 <a href="transaction_tracking.php">Transaction tracking</a>
-                <a href="admin_chat.php">💬 Client chat inbox</a>
             </nav>
         </aside>
         <div class="kq-portal-main">
@@ -476,6 +511,100 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
     </section>
 <?php endif; ?>
 
+<section class="card p-3 p-lg-4 mb-4 shadow-sm" id="agent-transactions">
+    <div class="kq-panel-header mb-3">
+        <div>
+            <div class="page-eyebrow">Client Services &amp; Pipeline</div>
+            <h2 class="h4 fw-bold mb-0">Client Transactions &amp; Pipeline</h2>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1"><?= count($agentTransactions) ?> Tracked Case<?= count($agentTransactions) === 1 ? '' : 's' ?></span>
+            <a href="transaction_tracking.php" class="btn btn-sm btn-outline-primary">Open Tracker &rarr;</a>
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Case Ref</th>
+                    <th>Property</th>
+                    <th>Client</th>
+                    <th>Stage</th>
+                    <th>Assignment</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php if ($agentTransactions !== []): ?>
+                <?php foreach ($agentTransactions as $tx):
+                    $txId = (int) $tx['transactionID'];
+                    $txStage = (string) $tx['currentStage'];
+                    $isAssignedToMe = ((int) ($tx['assignedAgentID'] ?? 0) === $currentAgentId);
+                    $isUnassigned = empty($tx['assignedAgentID']);
+                    $txBadge = match ($txStage) {
+                        'completed' => 'text-bg-success',
+                        'cancelled' => 'text-bg-secondary',
+                        'payment_in_process' => 'text-bg-warning text-dark',
+                        'payment_confirmation' => 'text-bg-info text-dark',
+                        default => 'text-bg-primary',
+                    };
+                ?>
+                    <tr>
+                        <td>
+                            <strong class="text-dark">#KQT-<?= $txId ?></strong>
+                            <div class="small text-muted"><?= htmlspecialchars(date('M j, Y', strtotime($tx['createdAt'])), ENT_QUOTES, 'UTF-8') ?></div>
+                        </td>
+                        <td>
+                            <strong class="text-dark text-truncate d-block" style="max-width: 200px;"><?= htmlspecialchars($tx['title'], ENT_QUOTES, 'UTF-8') ?></strong>
+                            <div class="small text-muted text-truncate" style="max-width: 200px;"><?= htmlspecialchars($tx['location'], ENT_QUOTES, 'UTF-8') ?></div>
+                        </td>
+                        <td>
+                            <div class="fw-semibold text-dark"><?= htmlspecialchars($tx['clientName'], ENT_QUOTES, 'UTF-8') ?></div>
+                            <div class="small text-muted"><?= htmlspecialchars($tx['clientEmail'], ENT_QUOTES, 'UTF-8') ?></div>
+                        </td>
+                        <td>
+                            <span class="badge rounded-pill <?= $txBadge ?>"><?= htmlspecialchars($agentStageLabels[$txStage] ?? ucfirst($txStage), ENT_QUOTES, 'UTF-8') ?></span>
+                        </td>
+                        <td>
+                            <?php if ($isAssignedToMe): ?>
+                                <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">Assigned to You</span>
+                            <?php elseif ($isUnassigned): ?>
+                                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill">Open / Unassigned</span>
+                            <?php else: ?>
+                                <span class="badge bg-secondary-subtle text-secondary rounded-pill"><?= htmlspecialchars($tx['assignedAgentName'], ENT_QUOTES, 'UTF-8') ?></span>
+                            <?php endif; ?>
+                        </td>
+                        <td class="text-end">
+                            <div class="d-inline-flex align-items-center gap-1 justify-content-end flex-wrap">
+                                <button type="button" class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 shadow-sm text-nowrap" onclick="openDirectChat(<?= $txId ?>, '<?= addslashes(htmlspecialchars($tx['title'], ENT_QUOTES, 'UTF-8')) ?>', '<?= addslashes(htmlspecialchars($tx['clientName'], ENT_QUOTES, 'UTF-8')) ?>')">
+                                    <span>💬 Chat</span>
+                                </button>
+                                <?php if ($isUnassigned): ?>
+                                    <form method="post" action="transaction_tracking.php" class="d-inline">
+                                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                                        <input type="hidden" name="transactionID" value="<?= $txId ?>">
+                                        <button type="submit" name="claim_transaction" class="btn btn-sm btn-success fw-semibold shadow-sm text-nowrap">
+                                            <span>✋ Claim</span>
+                                        </button>
+                                    </form>
+                                <?php endif; ?>
+                                <a href="transaction_tracking.php" class="btn btn-sm btn-primary fw-semibold shadow-sm text-nowrap">
+                                    <span>Manage &rarr;</span>
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            <?php else: ?>
+                <tr>
+                    <td colspan="6" class="text-center text-muted py-4">No active client transactions found yet. New client inquiries and viewing requests will appear here.</td>
+                </tr>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</section>
+
 <section class="card p-3 p-lg-4 mb-4" id="appointments">
     <div class="kq-panel-header mb-3">
         <div>
@@ -515,6 +644,10 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
                                     <span class="badge rounded-pill text-bg-success px-2 py-1 shadow-sm">
                                         Approved by you
                                     </span>
+                                <?php elseif ($appt['status'] === 'Approved' && $assignedAgentId === null): ?>
+                                    <span class="badge rounded-pill text-bg-info px-2 py-1 shadow-sm">
+                                        Approved (Unassigned)
+                                    </span>
                                 <?php elseif ($appt['status'] === 'Cancelled'): ?>
                                     <span class="badge rounded-pill text-bg-danger px-2 py-1">Cancelled</span>
                                 <?php else: ?>
@@ -550,7 +683,7 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
                                                 <option value="Cancelled" selected>Cancelled</option>
                                             <?php endif; ?>
                                         </select>
-                                        <button type="submit" name="update_status" class="btn btn-sm btn-primary">Update status</button>
+                                        <button type="submit" name="update_status" class="btn btn-sm btn-primary text-nowrap"><?= $assignedAgentId === null ? 'Claim &amp; Update' : 'Update status' ?></button>
                                     </form>
                                 <?php endif; ?>
                             </td>

@@ -87,6 +87,7 @@ function ensure_required_database_tables(mysqli $connection, bool $allowSchemaCh
         'security_rate_limits',
         'agent_inquiry_assignments',
         'agent_dismissed_appointments',
+        'direct_messages',
     ];
 
     $existingTables = $connection->query('SHOW TABLES');
@@ -213,6 +214,22 @@ function ensure_required_database_tables(mysqli $connection, bool $allowSchemaCh
                 CONSTRAINT `fk_payments_transaction` FOREIGN KEY (`transactionID`) REFERENCES `property_transactions` (`transactionID`) ON DELETE CASCADE,
                 CONSTRAINT `fk_payments_client` FOREIGN KEY (`clientID`) REFERENCES `users` (`userID`) ON DELETE CASCADE,
                 CONSTRAINT `fk_payments_recorded_by` FOREIGN KEY (`recordedBy`) REFERENCES `users` (`userID`) ON DELETE SET NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+            'direct_messages' => "CREATE TABLE IF NOT EXISTS `direct_messages` (
+                `messageID` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `transactionID` BIGINT UNSIGNED NOT NULL,
+                `senderID` INT NOT NULL,
+                `receiverID` INT DEFAULT NULL,
+                `message` TEXT NOT NULL,
+                `isRead` TINYINT(1) NOT NULL DEFAULT 0,
+                `isAutomated` TINYINT(1) NOT NULL DEFAULT 0,
+                `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`messageID`),
+                KEY `idx_dm_transaction` (`transactionID`, `createdAt`),
+                KEY `idx_dm_users` (`senderID`, `receiverID`),
+                CONSTRAINT `fk_dm_transaction` FOREIGN KEY (`transactionID`) REFERENCES `property_transactions` (`transactionID`) ON DELETE CASCADE,
+                CONSTRAINT `fk_dm_sender` FOREIGN KEY (`senderID`) REFERENCES `users` (`userID`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
         ];
 

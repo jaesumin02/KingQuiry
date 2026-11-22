@@ -56,7 +56,7 @@
                             <code>Total Land Value = Registered Area (sq.m.) × Base Price per sq.m.</code>
                         </div>
                         <ul class="small mb-0 ps-3">
-                            <li><strong>Virtual Estimator in Chatbot:</strong> Click the floating chat icon at the bottom-right and select <em>"Need a land estimate? Click here"</em> to compute indicative land values for any municipality in Batangas.</li>
+                            <li><strong>Valuation Estimator:</strong> Use the interactive valuation calculator on any property detail page to compute indicative land values and down payment estimates.</li>
                             <li><strong>Down Payment Rule:</strong> Standard initial down payment is typically 20% of the total verified property price.</li>
                         </ul>
                     </div>
@@ -80,7 +80,7 @@
                         <h6 class="fw-bold mb-2">Account roles and support</h6>
                         <ul class="small mb-3 ps-3">
                             <li><strong>Client:</strong> Search the catalog, request property viewings, track transaction milestones, and manage account details.</li>
-                            <li><strong>Sales Agent:</strong> Review client viewings, inspect face-to-face paperwork and payments, advance transaction stages, and chat with clients.</li>
+                            <li><strong>Sales Agent:</strong> Review client viewings, inspect face-to-face paperwork and payments, coordinate directly with clients, and advance transaction stages.</li>
                             <li><strong>System Admin:</strong> System administration, property publishing, user management, audit logging, and database backups.</li>
                         </ul>
                         <div class="small text-muted">For urgent concerns, contact Kings Land Properties at <strong>+63 965 803 0933</strong> or via our <a href="https://www.facebook.com/p/Kings-Land-Properties-61568411772451/" target="_blank" rel="noopener noreferrer">Official Facebook Page</a>.</div>

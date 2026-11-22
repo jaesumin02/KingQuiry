@@ -79,13 +79,8 @@ include __DIR__ . '/includes/header.php';
                     <div class="rounded-3 border bg-light p-3 p-md-4 h-100">
                         <div class="page-eyebrow mb-2">Contact this Sales Agent</div>
                         <div class="d-grid gap-2">
-                            <button type="button" class="btn btn-primary"
-                                    data-kq-chat-agent="<?= htmlspecialchars((string) $agent['fullname'], ENT_QUOTES, 'UTF-8') ?>"
-                                    data-kq-chat-agent-id="<?= (int) $agent['userID'] ?>"
-                                    data-kq-chat-agent-email="<?= $emailIsValid ? htmlspecialchars((string) $agent['email'], ENT_QUOTES, 'UTF-8') : '' ?>"
-                                    data-kq-chat-agent-phone="<?= $phoneIsCallable ? htmlspecialchars((string) $agent['phone'], ENT_QUOTES, 'UTF-8') : '' ?>">Chat with Sales Agent</button>
                             <?php if ($emailIsValid): ?>
-                                <a class="btn btn-outline-primary" href="mailto:<?= htmlspecialchars((string) $agent['email'], ENT_QUOTES, 'UTF-8') ?>?subject=KingQuiry%20property%20inquiry">Email Sales Agent</a>
+                                <a class="btn btn-primary" href="mailto:<?= htmlspecialchars((string) $agent['email'], ENT_QUOTES, 'UTF-8') ?>?subject=KingQuiry%20property%20inquiry">Email Sales Agent</a>
                             <?php endif; ?>
                             <?php if ($phoneIsCallable): ?>
                                 <a class="btn btn-outline-primary" href="tel:<?= htmlspecialchars($phoneHref, ENT_QUOTES, 'UTF-8') ?>">Call Sales Agent</a>
@@ -112,7 +107,7 @@ include __DIR__ . '/includes/header.php';
                     </div>
                 <?php endif; ?>
             </div>
-            <p class="small text-muted mt-4 mb-0">Direct chat messages are sent to the selected Sales Agent through KingQuiry. Email and phone links open outside the site. Do not send passwords, payment credentials, or sensitive identity documents.</p>
+            <p class="small text-muted mt-4 mb-0">Email and phone links connect directly with the Sales Agent. Do not send passwords, payment credentials, or sensitive identity documents.</p>
         </div>
     <?php else: ?>
         <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-3">
@@ -140,23 +135,18 @@ include __DIR__ . '/includes/header.php';
                         <p class="text-muted small flex-grow-1">Ask about available listings, property details, or arranging a viewing.</p>
                         <div class="d-grid gap-2 mt-auto">
                             <a class="btn btn-sm btn-outline-primary" href="agents.php?id=<?= (int) $listedAgent['userID'] ?>">View Sales Agent profile</a>
-                            <button type="button" class="btn btn-sm btn-outline-primary"
-                                    data-kq-chat-agent="<?= htmlspecialchars((string) $listedAgent['fullname'], ENT_QUOTES, 'UTF-8') ?>"
-                                    data-kq-chat-agent-id="<?= (int) $listedAgent['userID'] ?>"
-                                    data-kq-chat-agent-email="<?= $emailIsValid ? htmlspecialchars((string) $listedAgent['email'], ENT_QUOTES, 'UTF-8') : '' ?>"
-                                    data-kq-chat-agent-phone="<?= $phoneIsCallable ? htmlspecialchars((string) $listedAgent['phone'], ENT_QUOTES, 'UTF-8') : '' ?>">Chat with Sales Agent</button>
                             <?php if ($emailIsValid): ?>
                                 <a class="btn btn-sm btn-primary" href="mailto:<?= htmlspecialchars((string) $listedAgent['email'], ENT_QUOTES, 'UTF-8') ?>?subject=KingQuiry%20property%20inquiry">Email Sales Agent</a>
                             <?php endif; ?>
                             <?php if ($phoneIsCallable): ?>
-                                <a class="btn btn-sm btn-primary" href="tel:<?= htmlspecialchars($phoneHref, ENT_QUOTES, 'UTF-8') ?>">Call Sales Agent</a>
+                                <a class="btn btn-sm btn-outline-secondary" href="tel:<?= htmlspecialchars($phoneHref, ENT_QUOTES, 'UTF-8') ?>">Call Sales Agent</a>
                             <?php endif; ?>
                         </div>
                     </article>
                 </div>
             <?php endforeach; ?>
         </div>
-        <p class="small text-muted mt-3 mb-0">Use Chat with Sales Agent for an in-site message or the email and phone links for direct contact. Sales Agent availability should be confirmed.</p>
+        <p class="small text-muted mt-3 mb-0">Use the email and phone links for direct contact. Sales Agent availability should be confirmed.</p>
     <?php endif; ?>
 <?php endif; ?>
 

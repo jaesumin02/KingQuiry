@@ -1,6 +1,7 @@
 <?php
 include 'config/db.php';
 require_once 'includes/auth.php';
+require_once 'includes/property_images.php';
 require_once 'includes/location_directory.php';
 require_once 'includes/transaction_tracking.php';
 require_once 'includes/rate_limit.php';
@@ -272,139 +273,6 @@ include 'includes/header.php';
         color: #f1f5f9;
     }
 
-    /* ══════════ CLIENT CHAT POPUP WINDOW & CONVERSATIONS ══════════ */
-    .kq-chat-window-card {
-        border-radius: 1.1rem !important;
-        overflow: hidden;
-    }
-    .kq-chat-modal-body {
-        background: #f8fafc;
-    }
-    .kq-chat-conversations-card {
-        background: #ffffff;
-        border-color: #e2e8f0 !important;
-    }
-    .kq-chat-section-label {
-        color: #1e293b;
-    }
-    .kq-chat-active-bar {
-        background: #ffffff;
-        border-color: #e2e8f0 !important;
-    }
-    .kq-chat-messages-container {
-        background: #ffffff;
-        border: 1px solid #e2e8f0;
-    }
-    .kq-chat-conv-btn {
-        display: inline-flex;
-        flex-direction: column;
-        align-items: flex-start;
-        border: 1.5px solid #e2e8f0;
-        background: #ffffff;
-        color: #1e293b;
-        border-radius: 0.75rem;
-        padding: 0.45rem 0.85rem;
-        transition: all 0.16s ease;
-        white-space: nowrap;
-        cursor: pointer;
-        min-width: 170px;
-    }
-    .kq-chat-conv-btn:hover {
-        border-color: #174a70;
-        background: #f1f5f9;
-        transform: translateY(-1px);
-    }
-    .kq-chat-conv-btn.is-active {
-        background: linear-gradient(135deg, #174a70, #0f324e) !important;
-        color: #ffffff !important;
-        border-color: #174a70 !important;
-        box-shadow: 0 4px 14px rgba(23, 74, 112, 0.25);
-    }
-    .kq-chat-conv-btn.is-active .text-muted,
-    .kq-chat-conv-btn.is-active .kq-conv-sub {
-        color: rgba(255, 255, 255, 0.8) !important;
-    }
-    .kq-chat-conv-btn.is-active .badge {
-        background-color: rgba(255, 255, 255, 0.25) !important;
-        color: #ffffff !important;
-    }
-    .kq-chat-bubble-agent {
-        background: #ffffff;
-        border: 1px solid #e2e8f0;
-        color: #0f172a;
-        border-radius: 14px 14px 14px 3px;
-        box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
-    }
-    .kq-chat-bubble-client {
-        background: linear-gradient(135deg, #174a70 0%, #0f324e 100%);
-        color: #ffffff;
-        border-radius: 14px 14px 3px 14px;
-        box-shadow: 0 2px 8px rgba(23, 74, 112, 0.18);
-    }
-    .kq-chat-input {
-        background: #ffffff;
-        border-color: #cbd5e1;
-        color: #0f172a;
-        border-radius: 0.65rem 0 0 0.65rem;
-    }
-    .kq-chat-input:focus {
-        border-color: #174a70;
-        box-shadow: 0 0 0 0.2rem rgba(23, 74, 112, 0.15);
-    }
-    .kq-chat-send-btn {
-        border-radius: 0 0.65rem 0.65rem 0;
-        font-weight: 600;
-    }
-
-    /* Dark theme for Client Chat */
-    [data-bs-theme="dark"] .kq-chat-modal-body {
-        background: #09131a !important;
-    }
-    [data-bs-theme="dark"] .kq-chat-conversations-card {
-        background: #0f1f2b !important;
-        border-color: #1e3a4e !important;
-    }
-    [data-bs-theme="dark"] .kq-chat-section-label {
-        color: #f1f5f9 !important;
-    }
-    [data-bs-theme="dark"] .kq-chat-active-bar {
-        background: #0f1f2b !important;
-        border-color: #1e3a4e !important;
-        color: #f1f5f9 !important;
-    }
-    [data-bs-theme="dark"] .kq-chat-messages-container {
-        background: #0b1720 !important;
-        border-color: #1e3a4e !important;
-    }
-    [data-bs-theme="dark"] .kq-chat-conv-btn {
-        border-color: #1e3a4e;
-        background: #0f1f2b;
-        color: #f1f5f9;
-    }
-    [data-bs-theme="dark"] .kq-chat-conv-btn:hover {
-        border-color: #3b82f6;
-        background: #162838;
-    }
-    [data-bs-theme="dark"] .kq-chat-conv-btn.is-active {
-        background: linear-gradient(135deg, #1d4e73, #13334d) !important;
-        color: #ffffff !important;
-        border-color: #38bdf8 !important;
-        box-shadow: 0 4px 14px rgba(56, 189, 248, 0.25);
-    }
-    [data-bs-theme="dark"] .kq-chat-bubble-agent {
-        background: #132537 !important;
-        border-color: #1e3a4e !important;
-        color: #f1f5f9 !important;
-    }
-    [data-bs-theme="dark"] .kq-chat-input {
-        background: #132537 !important;
-        border-color: #1e3a4e !important;
-        color: #f1f5f9 !important;
-    }
-    [data-bs-theme="dark"] .kq-chat-input::placeholder {
-        color: #94a3b8 !important;
-    }
-
     @media (max-width: 767.98px) {
         .kq-client-shell {
             padding-top: .75rem;
@@ -436,7 +304,7 @@ $inquiryStmt->execute();
 $inquiryRows = $inquiryStmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $trackingStmt = $conn->prepare(
     "SELECT t.transactionID, t.propertyID, t.currentStage, t.salePrice, t.paymentMethod, t.createdAt, t.updatedAt,
-            p.title, a.appointmentDate, a.appointmentTime,
+            p.title, p.image, p.propertyType, a.appointmentDate, a.appointmentTime,
             l.municipalityName, l.provinceName, p.location,
             COALESCE(
                 apptAgent.fullname,
@@ -703,10 +571,18 @@ $progressStages = [
                          aria-label="View tracking details for <?= htmlspecialchars($tracking['title'], ENT_QUOTES, 'UTF-8') ?>"
                          style="cursor: pointer; border-radius: 0.85rem; transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;">
                         
+                        <?php
+                        $propImage = basename((string) ($tracking['image'] ?? ''));
+                        if ($propImage === '' || $propImage === 'default.jpg' || !is_file(__DIR__ . '/assets/images/' . $propImage)) {
+                            $propImage = function_exists('property_representative_image') ? (property_representative_image((string) ($tracking['propertyType'] ?? '')) ?? '') : '';
+                        }
+                        $hasPropImage = $propImage !== '' && is_file(__DIR__ . '/assets/images/' . $propImage);
+                        $propImgSrc = $hasPropImage ? ('assets/images/' . rawurlencode($propImage)) : 'assets/images/representative-residential-01.jpg';
+                        ?>
                         <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
                             <div class="d-flex align-items-start gap-3">
-                                <div class="rounded-3 p-3 d-flex align-items-center justify-content-center bg-primary-subtle text-primary flex-shrink-0" style="width: 52px; height: 52px;">
-                                    <i class="bi bi-building fs-4"></i>
+                                <div class="rounded-3 overflow-hidden flex-shrink-0 border shadow-sm position-relative" style="width: 58px; height: 58px; background: rgba(0,0,0,0.04);">
+                                    <img src="<?= htmlspecialchars($propImgSrc, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($tracking['title'], ENT_QUOTES, 'UTF-8') ?>" class="w-100 h-100" style="object-fit: cover;" loading="lazy" onerror="this.onerror=null;this.src='assets/images/representative-residential-01.jpg';">
                                 </div>
                                 <div>
                                     <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
@@ -779,6 +655,17 @@ $progressStages = [
                             </div>
 
                             <div class="modal-body p-3 p-md-4 text-start">
+                                <!-- Property Overview Banner -->
+                                <div class="d-flex align-items-center gap-3 p-2 p-sm-3 mb-3 bg-body-tertiary border rounded-3">
+                                    <div class="rounded-3 overflow-hidden flex-shrink-0 border shadow-sm" style="width: 64px; height: 64px;">
+                                        <img src="<?= htmlspecialchars($propImgSrc, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($tracking['title'], ENT_QUOTES, 'UTF-8') ?>" class="w-100 h-100" style="object-fit: cover;" onerror="this.onerror=null;this.src='assets/images/representative-residential-01.jpg';">
+                                    </div>
+                                    <div class="flex-grow-1 overflow-hidden">
+                                        <h6 class="fw-bold mb-1 text-dark text-truncate"><?= htmlspecialchars($tracking['title'], ENT_QUOTES, 'UTF-8') ?></h6>
+                                        <div class="small text-muted text-truncate"><i class="bi bi-geo-alt me-1"></i><?= htmlspecialchars($location, ENT_QUOTES, 'UTF-8') ?></div>
+                                    </div>
+                                </div>
+
                                 <!-- Status / Celebration Banner -->
                                 <?php if ($stage === 'completed'): ?>
                                     <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 p-3 bg-success-subtle border border-success-subtle rounded-3 mb-3">
@@ -866,13 +753,19 @@ $progressStages = [
                                                 </div>
                                             </div>
                                         </div>
-                                        <div class="d-flex gap-2">
+                                        <div class="d-flex gap-2 flex-wrap">
+                                            <?php
+                                            $hasSchedViewing = !empty($tracking['appointmentDate']) || in_array($stage, ['viewing_approved', 'viewing_completed', 'reservation_deposit', 'reservation_under_review', 'reservation_agreement', 'payment_in_process', 'payment_confirmation', 'completed'], true);
+                                            ?>
+                                            <button type="button" class="btn btn-sm btn-primary d-inline-flex align-items-center gap-1 shadow-sm" onclick="openDirectChat(<?= $transactionId ?>, '<?= addslashes(htmlspecialchars($tracking['title'], ENT_QUOTES, 'UTF-8')) ?>', '<?= addslashes(htmlspecialchars($tracking['agentName'], ENT_QUOTES, 'UTF-8')) ?>', <?= $hasSchedViewing ? 'true' : 'false' ?>)">
+                                                <span>💬 Chat with Agent</span>
+                                            </button>
                                             <a href="tel:<?= htmlspecialchars($tracking['agentPhone'], ENT_QUOTES, 'UTF-8') ?>" class="btn btn-sm btn-outline-success d-inline-flex align-items-center gap-1 shadow-sm">
                                                 <span>📞 Call / SMS</span>
                                             </a>
-                                            <button type="button" class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 shadow-sm" onclick="openClientAgentChat(<?= $transactionId ?>)" title="Direct message with <?= htmlspecialchars($tracking['agentName'], ENT_QUOTES, 'UTF-8') ?>">
-                                                <span>💬 Message</span>
-                                            </button>
+                                            <a href="mailto:<?= htmlspecialchars($tracking['agentEmail'], ENT_QUOTES, 'UTF-8') ?>" class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1 shadow-sm">
+                                                <span>✉️ Email</span>
+                                            </a>
                                         </div>
                                     </div>
                                 </div>
@@ -1074,24 +967,5 @@ $progressStages = [
 </div>
 </div>
 </div>
-
-<script>
-// ══════════ CLIENT-SIDE AGENT & SUPPORT CHAT TRIGGER ══════════
-function openClientAgentChat(transactionId) {
-    // Hide tracking modal if currently open
-    if (transactionId) {
-        const trackingModalEl = document.getElementById('trackingModal' + transactionId);
-        if (trackingModalEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
-            bootstrap.Modal.getInstance(trackingModalEl)?.hide();
-        }
-    }
-    // Open Facebook Messenger-style corner bottom chat bubble
-    if (typeof window.openKingQuiryChatWithTransaction === 'function') {
-        window.openKingQuiryChatWithTransaction(transactionId || 0);
-    } else if (typeof window.openChatWithAgent === 'function') {
-        window.openChatWithAgent('', '', transactionId || 0);
-    }
-}
-</script>
 
 <?php include 'includes/footer.php'; ?>

@@ -28,9 +28,5 @@ function kq_admin_pages(): array
             'title' => 'Transaction tracking',
             'subtitle' => 'Record each verified milestone so clients can follow their request through completion.',
         ],
-        'admin_chat.php' => [
-            'title' => 'Client inbox',
-            'subtitle' => 'Reply to client questions and land-estimate requests from your inbox.',
-        ],
     ];
 }

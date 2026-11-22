@@ -8,7 +8,7 @@ apply_secure_headers();
 $currentUser = $_SESSION['user'] ?? null;
 $currentRole = normalized_user_role($currentUser);
 $currentPageName = basename($_SERVER['PHP_SELF'] ?? '');
-$isAuthPage = in_array($currentPageName, ['register.php', 'client_login.php', 'agent_login.php', 'admin_login.php'], true);
+$isAuthPage = in_array($currentPageName, ['register.php', 'client_login.php', 'agent_login.php', 'admin_login.php', 'login.php'], true);
 $needsLeaflet = in_array($currentPageName, ['property_detail.php', 'agent_dashboard.php', 'admin_dashboard.php'], true);
 $adminPage = ($currentRole === 'Admin' && function_exists('kq_admin_pages')) ? (kq_admin_pages()[$currentPageName] ?? null) : null;
 $isAdminControlRoom = $adminPage !== null;
@@ -31,6 +31,28 @@ if (!empty($currentUser['userID'])) {
             $unreadNotificationCount = get_user_unread_notification_count($conn, $headerUserId);
             $allUserNotifications = get_user_notifications($conn, $headerUserId, 60);
             $userNotifications = array_slice($allUserNotifications, 0, 10);
+
+            $navClientTransactions = [];
+            if (normalized_user_role($currentUser) === 'Client') {
+                $navTxStmt = $conn->prepare(
+                    "SELECT t.transactionID, t.propertyID, p.title, p.image, p.propertyType,
+                            COALESCE(agentUser.fullname, inqAgentUser.fullname, 'Assigned Sales Agent') AS agentName
+                     FROM property_transactions t
+                     JOIN properties p ON p.propertyID = t.propertyID
+                     LEFT JOIN appointments a ON a.appointmentID = t.appointmentID
+                     LEFT JOIN users agentUser ON agentUser.userID = a.agentID
+                     LEFT JOIN agent_inquiry_assignments ia ON ia.inquiryID = t.inquiryID
+                     LEFT JOIN users inqAgentUser ON inqAgentUser.userID = ia.agentID
+                     WHERE t.clientID = ?
+                     ORDER BY (t.currentStage NOT IN ('completed', 'cancelled')) DESC, t.updatedAt DESC
+                     LIMIT 10"
+                );
+                if ($navTxStmt) {
+                    $navTxStmt->bind_param('i', $headerUserId);
+                    $navTxStmt->execute();
+                    $navClientTransactions = $navTxStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+                }
+            }
         }
     }
 }
@@ -59,6 +81,7 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
         })();
     </script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <?php if ($needsLeaflet): ?>
         <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
@@ -480,6 +503,7 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
         .navbar .navbar-collapse .dropdown-menu { position: static; margin-top: 0; }
         .navbar .navbar-nav .nav-item > .btn,
         .navbar .navbar-nav .kq-contact-btn,
+        .navbar .navbar-nav .kq-chat-nav-btn,
         .navbar .navbar-nav .kq-help-btn,
         .navbar .navbar-nav .kq-theme-toggle-btn {
             min-height: 44px;
@@ -487,6 +511,7 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
             font-size: .875rem;
         }
         .navbar .navbar-nav .kq-contact-btn { justify-content: flex-start; }
+        .navbar .navbar-nav .kq-chat-nav-btn { justify-content: flex-start; }
         .navbar .navbar-nav .kq-help-btn { justify-content: flex-start; width: 100%; }
         .navbar .navbar-nav .kq-theme-toggle-btn { justify-content: center; width: 100%; }
         @media (min-width: 1400px) {
@@ -520,6 +545,7 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
             }
             .navbar .navbar-nav .nav-item > .btn,
             .navbar .navbar-nav .kq-contact-btn,
+            .navbar .navbar-nav .kq-chat-nav-btn,
             .navbar .navbar-nav .kq-help-btn,
             .navbar .navbar-nav .kq-theme-toggle-btn {
                 min-height: 44px;
@@ -589,7 +615,35 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                                     <span>Contact Us</span>
                                 </button>
                             </li>
+                            <?php if (!$isAuthPage): ?>
+                                <li class="nav-item ms-lg-2">
+                                    <?php if (!empty($navClientTransactions) && count($navClientTransactions) === 1): ?>
+                                        <button type="button" class="btn fw-bold px-3 d-inline-flex align-items-center gap-2 kq-chat-nav-btn" onclick="openDirectChat(<?= (int)$navClientTransactions[0]['transactionID'] ?>, '<?= addslashes(htmlspecialchars($navClientTransactions[0]['title'], ENT_QUOTES, 'UTF-8')) ?>', '<?= addslashes(htmlspecialchars($navClientTransactions[0]['agentName'], ENT_QUOTES, 'UTF-8')) ?>')" title="Direct chat with your Sales Agent">
+                                            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                            <span>Chat an Agent</span>
+                                        </button>
+                                    <?php elseif (!empty($navClientTransactions) && count($navClientTransactions) > 1): ?>
+                                        <button type="button" class="btn fw-bold px-3 d-inline-flex align-items-center gap-2 kq-chat-nav-btn" data-bs-toggle="modal" data-bs-target="#clientChatPickerModal" title="Chat with an assigned Sales Agent">
+                                            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                            <span>Chat an Agent</span>
+                                        </button>
+                                    <?php else: ?>
+                                        <button type="button" class="btn fw-bold px-3 d-inline-flex align-items-center gap-2 kq-chat-nav-btn" data-bs-toggle="modal" data-bs-target="#noAgentChatModal" title="Chat with a Sales Agent">
+                                            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                            <span>Chat an Agent</span>
+                                        </button>
+                                    <?php endif; ?>
+                                </li>
+                            <?php endif; ?>
                         <?php elseif($currentRole === 'Sales Agent'): ?>
+                            <?php if (!$isAuthPage): ?>
+                                <li class="nav-item ms-lg-2 kq-nav-actions-start">
+                                    <a class="btn fw-bold px-3 d-inline-flex align-items-center gap-2 kq-chat-nav-btn text-white text-decoration-none" href="transaction_tracking.php#transactions" title="Open Client Messaging &amp; Transactions">
+                                        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                        <span>Client Chats</span>
+                                    </a>
+                                </li>
+                            <?php endif; ?>
                             <li class="nav-item"><a class="nav-link" href="transaction_tracking.php">Transaction Tracking</a></li>
                         <?php endif; ?>
                         <!-- Notifications Bell Dropdown -->
@@ -701,6 +755,14 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                                 <span>Contact Us</span>
                             </button>
                         </li>
+                        <?php if (!$isAuthPage): ?>
+                            <li class="nav-item ms-lg-2">
+                                <button type="button" class="btn fw-bold px-3 d-inline-flex align-items-center gap-2 kq-chat-nav-btn" data-bs-toggle="modal" data-bs-target="#guestChatModal" title="Chat with a Sales Agent">
+                                    <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                                    <span>Chat an Agent</span>
+                                </button>
+                            </li>
+                        <?php endif; ?>
                     <?php endif; ?>
                     <!-- Help & Guidelines / User Manual -->
                     <li class="nav-item ms-lg-2">

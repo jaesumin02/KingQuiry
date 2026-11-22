@@ -81,7 +81,7 @@ include __DIR__ . '/includes/header.php';
                 <p class="small text-muted mb-0">
                     All listings and estimation calculators strictly adhere to the transparent valuation model:
                     <code>Total Asking Price = Lot Area (sq.m.) × Price per sq.m.</code>
-                    Buyers can test custom parcel sizes in the property detail calculator or instant chatbot.
+                    Buyers can test custom parcel sizes in the property detail calculator or by consulting our sales agents.
                 </p>
             </div>
         </div>

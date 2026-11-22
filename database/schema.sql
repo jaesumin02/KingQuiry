@@ -223,6 +223,24 @@ CREATE TABLE IF NOT EXISTS property_transaction_events (
         FOREIGN KEY (changedBy) REFERENCES users (userID) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS direct_messages (
+    messageID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    transactionID BIGINT UNSIGNED NOT NULL,
+    senderID INT NOT NULL,
+    receiverID INT DEFAULT NULL,
+    message TEXT NOT NULL,
+    isRead TINYINT(1) NOT NULL DEFAULT 0,
+    isAutomated TINYINT(1) NOT NULL DEFAULT 0,
+    createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (messageID),
+    KEY idx_dm_transaction (transactionID, createdAt),
+    KEY idx_dm_users (senderID, receiverID),
+    CONSTRAINT fk_dm_transaction
+        FOREIGN KEY (transactionID) REFERENCES property_transactions (transactionID) ON DELETE CASCADE,
+    CONSTRAINT fk_dm_sender
+        FOREIGN KEY (senderID) REFERENCES users (userID) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS property_transaction_payments (
     paymentID BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     transactionID BIGINT UNSIGNED NOT NULL,

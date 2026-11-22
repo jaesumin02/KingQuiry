@@ -527,7 +527,13 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0 || $sor
                             <p class="small text-muted mb-2"><?= htmlspecialchars((string) ($featuredProperty['municipalityName'] ?? $featuredProperty['location'] ?? 'Location not specified'), ENT_QUOTES, 'UTF-8') ?></p>
                             <div class="fw-bold fs-5 mb-3">₱<?= number_format((float) $featuredProperty['price'], 2) ?></div>
                             <p class="small text-muted mt-auto"><?= htmlspecialchars((string) $featuredProperty['match_reason'], ENT_QUOTES, 'UTF-8') ?></p>
-                            <a class="btn btn-outline-primary w-100" href="property_detail.php?id=<?= (int) $featuredProperty['propertyID'] ?>">View property</a>
+                            <div class="d-flex gap-2 align-items-center mt-auto">
+                                <a class="btn btn-outline-primary flex-grow-1 text-center" href="property_detail.php?id=<?= (int) $featuredProperty['propertyID'] ?>">View property</a>
+                                <button type="button" class="btn btn-primary d-inline-flex align-items-center justify-content-center gap-1 shadow-sm px-3" onclick="openPropertyChat(<?= (int) $featuredProperty['propertyID'] ?>, '<?= addslashes(htmlspecialchars((string)$featuredProperty['title'], ENT_QUOTES, 'UTF-8')) ?>')" title="Message an Agent about this property">
+                                    <i class="bi bi-chat-dots-fill"></i>
+                                    <span class="d-none d-sm-inline">Message Agent</span>
+                                </button>
+                            </div>
                         </div>
                     </article>
                 </div>
@@ -706,7 +712,13 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0 || $sor
                             <?php else: ?>
                                 <div class="small text-muted mb-3">Contact us for price per sq.m.</div>
                             <?php endif; ?>
-                            <a href="property_detail.php?id=<?= (int) $row['propertyID'] ?>" class="btn btn-outline-primary w-100">View property details</a>
+                            <div class="d-flex gap-2 align-items-center">
+                                <a href="property_detail.php?id=<?= (int) $row['propertyID'] ?>" class="btn btn-outline-primary flex-grow-1 text-center">View details</a>
+                                <button type="button" class="btn btn-primary d-inline-flex align-items-center justify-content-center gap-1 shadow-sm px-3" onclick="openPropertyChat(<?= (int) $row['propertyID'] ?>, '<?= addslashes(htmlspecialchars($displayTitle, ENT_QUOTES, 'UTF-8')) ?>')" title="Message an Agent about this property">
+                                    <i class="bi bi-chat-dots-fill"></i>
+                                    <span>Message Agent</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </article>

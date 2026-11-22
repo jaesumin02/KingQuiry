@@ -204,6 +204,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_payment_review
             }
         }
     }
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['claim_transaction'])) {
+    if ($role !== 'Agent' && $role !== 'Sales Agent' && $role !== 'Admin') {
+        $formError = 'Only an authorized Sales Agent or Admin can claim transactions.';
+    } else {
+        $transactionId = filter_var($_POST['transactionID'] ?? null, FILTER_VALIDATE_INT);
+        if (!has_valid_csrf_token()) {
+            $formError = 'Your session expired. Refresh the page and try again.';
+        } elseif ($transactionId === false || $transactionId <= 0) {
+            $formError = 'Choose a valid transaction to claim.';
+        } else {
+            try {
+                $tStmt = $conn->prepare("SELECT transactionID, propertyID, clientID, appointmentID, inquiryID, currentStage FROM property_transactions WHERE transactionID = ? LIMIT 1");
+                $tStmt->bind_param('i', $transactionId);
+                $tStmt->execute();
+                $tRow = $tStmt->get_result()->fetch_assoc();
+                if (!$tRow) {
+                    throw new InvalidArgumentException('Transaction not found.');
+                }
+
+                $conn->begin_transaction();
+
+                if (!empty($tRow['appointmentID'])) {
+                    $apptStmt = $conn->prepare("UPDATE appointments SET agentID = ? WHERE appointmentID = ?");
+                    $apptStmt->bind_param('ii', $actorId, $tRow['appointmentID']);
+                    $apptStmt->execute();
+                }
+
+                if (!empty($tRow['inquiryID'])) {
+                    $inqStmt = $conn->prepare("INSERT INTO agent_inquiry_assignments (inquiryID, agentID, assignedAt) VALUES (?, ?, CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE agentID = ?, assignedAt = CURRENT_TIMESTAMP");
+                    $inqStmt->bind_param('iii', $tRow['inquiryID'], $actorId, $actorId);
+                    $inqStmt->execute();
+                }
+
+                $agentName = (string) ($_SESSION['user']['fullname'] ?? 'Sales Agent');
+                $claimNote = 'Sales Agent ' . $agentName . ' claimed this transaction request.';
+                add_property_transaction_event($conn, (int) $transactionId, (string) $tRow['currentStage'], $claimNote, $actorId);
+
+                send_property_notification(
+                    $conn,
+                    (int) $tRow['clientID'],
+                    'Sales Agent assigned',
+                    'Sales Agent ' . $agentName . ' has claimed your request and is now assisting you with transaction #KQT-' . $transactionId . '.',
+                    'client_dashboard.php#transaction-tracking',
+                    'agent_assigned'
+                );
+
+                $conn->commit();
+                header('Location: transaction_tracking.php?claimed=1#transactions');
+                exit();
+            } catch (Throwable $ex) {
+                $conn->rollback();
+                error_log('Transaction claim failed: ' . $ex->getMessage());
+                $formError = $ex->getMessage();
+            }
+        }
+    }
 }
 
 $activeAgentsList = [];
@@ -239,7 +295,7 @@ if ($role === 'Admin') {
 } else {
     $transactionsStmt = $conn->prepare(
         $transactionsSql . "
-         WHERE a.agentID = ? OR ia.agentID = ?
+         WHERE (a.agentID = ? OR ia.agentID = ?) OR (a.agentID IS NULL AND ia.agentID IS NULL)
          ORDER BY (t.currentStage IN ('completed', 'cancelled')) ASC, t.updatedAt DESC, t.transactionID DESC
          LIMIT 300"
     );
@@ -357,19 +413,33 @@ include 'includes/header.php';
                         </td>
                         <td class="small"><?= htmlspecialchars($transaction['updatedAt'], ENT_QUOTES, 'UTF-8') ?></td>
                         <td class="text-end">
-                            <?php if ($nextStages !== [] || ($currentStage !== 'completed' && $currentStage !== 'cancelled')): ?>
-                                <button type="button" class="btn btn-sm btn-primary fw-semibold d-inline-flex align-items-center gap-1 shadow-sm text-nowrap" data-bs-toggle="modal" data-bs-target="#recordNextModal<?= $tId ?>" title="Open Record Next Step window">
-                                    <span>📝</span>
-                                    <span>Record next step</span>
+                            <div class="d-inline-flex align-items-center gap-1 flex-wrap justify-content-end">
+                                <button type="button" class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 shadow-sm text-nowrap" onclick="openDirectChat(<?= $tId ?>, '<?= addslashes(htmlspecialchars($transaction['title'], ENT_QUOTES, 'UTF-8')) ?>', '<?= addslashes(htmlspecialchars($transaction['clientName'], ENT_QUOTES, 'UTF-8')) ?>')" title="Direct chat with <?= htmlspecialchars($transaction['clientName'], ENT_QUOTES, 'UTF-8') ?>">
+                                    <span>💬 Chat</span>
                                 </button>
-                            <?php else: ?>
-                                <div class="d-inline-flex align-items-center gap-1">
-                                    <span class="badge text-bg-light border text-muted">Closed</span>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" data-bs-toggle="modal" data-bs-target="#recordNextModal<?= $tId ?>" title="View details">
-                                        👁️ View
+                                <?php if (empty($transaction['assignedAgentID']) && ($role === 'Agent' || $role === 'Sales Agent')): ?>
+                                    <form method="post" action="transaction_tracking.php" class="d-inline">
+                                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                                        <input type="hidden" name="transactionID" value="<?= $tId ?>">
+                                        <button type="submit" name="claim_transaction" class="btn btn-sm btn-success fw-semibold shadow-sm text-nowrap">
+                                            <span>✋ Claim</span>
+                                        </button>
+                                    </form>
+                                <?php endif; ?>
+                                <?php if ($nextStages !== [] || ($currentStage !== 'completed' && $currentStage !== 'cancelled')): ?>
+                                    <button type="button" class="btn btn-sm btn-primary fw-semibold d-inline-flex align-items-center gap-1 shadow-sm text-nowrap" data-bs-toggle="modal" data-bs-target="#recordNextModal<?= $tId ?>" title="Open Record Next Step window">
+                                        <span>📝</span>
+                                        <span>Record next step</span>
                                     </button>
-                                </div>
-                            <?php endif; ?>
+                                <?php else: ?>
+                                    <div class="d-inline-flex align-items-center gap-1">
+                                        <span class="badge text-bg-light border text-muted">Closed</span>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" data-bs-toggle="modal" data-bs-target="#recordNextModal<?= $tId ?>" title="View details">
+                                            👁️ View
+                                        </button>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -454,6 +524,21 @@ include 'includes/header.php';
                                 <span class="text-muted">Assigned Sales Agent:</span>
                                 <strong>👤 <?= htmlspecialchars($transaction['assignedAgentName'] ?? 'Unassigned', ENT_QUOTES, 'UTF-8') ?></strong>
                             </div>
+                        </div>
+
+                        <div class="d-flex gap-2 mb-3 flex-wrap">
+                            <button type="button" class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 shadow-sm" onclick="openDirectChat(<?= $tId ?>, '<?= addslashes(htmlspecialchars($transaction['title'], ENT_QUOTES, 'UTF-8')) ?>', '<?= addslashes(htmlspecialchars($transaction['clientName'], ENT_QUOTES, 'UTF-8')) ?>')">
+                                <span>💬 Direct Message Client</span>
+                            </button>
+                            <?php if (empty($transaction['assignedAgentID']) && ($role === 'Agent' || $role === 'Sales Agent')): ?>
+                                <form method="post" action="transaction_tracking.php" class="d-inline">
+                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                                    <input type="hidden" name="transactionID" value="<?= $tId ?>">
+                                    <button type="submit" name="claim_transaction" class="btn btn-sm btn-success fw-semibold shadow-sm">
+                                        <span>✋ Claim & Assign to Me</span>
+                                    </button>
+                                </form>
+                            <?php endif; ?>
                         </div>
 
                         <!-- Admin Agent Assignment Dispatch (Admin Only) -->

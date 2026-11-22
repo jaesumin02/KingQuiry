@@ -1167,7 +1167,7 @@ function update_appointment_tracking_status(
             throw new InvalidArgumentException("This viewing request was already taken by {$assignedAgentName}.");
         }
 
-        if ($currentStatus === $newStatus && ($assignedAgentId === $actorId || $assignedAgentId === null)) {
+        if ($currentStatus === $newStatus && $assignedAgentId === $actorId) {
             $conn->commit();
             return;
         }

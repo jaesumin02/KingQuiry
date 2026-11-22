@@ -3,6 +3,93 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-22 — Dynamic Viewing Quick Ask Suppression & Property-Level Direct Agent Chat
+
+- **Dynamic Viewing Quick Ask Suppression**:
+  - Automatically checks whether a property already has an active or confirmed viewing schedule on record (`appointments` table date/time and stage progression beyond `viewing_requested`).
+  - Hides the `📅 Viewing` quick ask chip (`#kqChipViewing`) whenever a viewing appointment is already scheduled, leaving only relevant options (`💰 Payment terms`, `📄 Required docs`, `📍 Location`).
+  - If a client manually asks about viewings when one is already scheduled, the automated responder intelligently notes the existing appointment and offers rescheduling assistance.
+  - Automatically restores the `📅 Viewing` chip when no active viewing schedule is present.
+- **Direct Agent Chat from Every Property**:
+  - Added dedicated `"Message Agent"` / `"Message an Agent"` button to every property listing:
+    - **Featured Property cards** on [index.php](file:///c:/xampp/htdocs/kingquiry/index.php).
+    - **Catalog listings** on [index.php](file:///c:/xampp/htdocs/kingquiry/index.php).
+    - **Property Detail sidebar action card** on [property_detail.php](file:///c:/xampp/htdocs/kingquiry/property_detail.php).
+    - **Recommended property suggestions** on [property_detail.php](file:///c:/xampp/htdocs/kingquiry/property_detail.php).
+  - Added `initiate_property_chat` API endpoint in [chat_api.php](file:///c:/xampp/htdocs/kingquiry/chat_api.php) to seamlessly find existing conversations or initialize a tracked transaction and assign a licensed Sales Agent.
+  - Integrated `window.openPropertyChat()` with guest sign-in guidance modal fallback.
+
+## 2026-11-22 — Chatbox Automated Replies for Every Quick Ask & Role-Specific Suggestion Chips
+
+- **Immediate Automated Replies for Every Quick Ask**:
+  - Removed message throttling/cooldown block on automated replies so every click on `"Quick ask"` chips (`📅 Viewing`, `💰 Payment terms`, `📄 Required docs`, `📍 Location`) immediately triggers and renders its dedicated automated response.
+  - Returns the updated message list directly from `POST chat_api.php`, rendering responses instantly (0ms) without waiting for polling cycles or facing race condition locks.
+  - Bypassed fetch-lock on post-send refresh (`fetchMessages(true)`) to prevent missed message renders during active polling.
+- **Client-Exclusive Quick Ask Suggestions**:
+  - Restricted the Quick Ask suggestions bar (`#kqChatChipsBar`) to client views only: hidden by default for Sales Agents and Administrators on page render and dynamically toggled based on `is_client` API payload.
+- **Authentication Pages Header Cleanliness**:
+  - Ensured `"Chat an Agent"` button is completely excluded from the top navbar across all authentication routes (`client_login.php`, `agent_login.php`, `admin_login.php`, `login.php`, `register.php`) for both guests and authenticated sessions.
+- **Robust Property Image Resolution**:
+  - Added `require_once 'includes/property_images.php'` to `client_dashboard.php` so `property_representative_image()` is always loaded, resolving representative images for all property categories.
+  - Added `onerror` image fallbacks on tracking cards and modal previews to prevent blank boxes.
+
+## 2026-11-22 — Top Navigation Chat Access & Property Image Display Fix
+
+- **Top Navbar "Chat an Agent" Feature**:
+  - Added dedicated `"Chat an Agent"` button in the top navigation bar beside `"Contact Us"` across all portals.
+  - Automatically adapts to user state:
+    - **Single transaction client**: Instantly opens direct messaging modal with assigned Sales Agent in 1 click.
+    - **Multiple transaction client**: Opens responsive conversation picker modal (`#clientChatPickerModal`) displaying properties, photos, and agent names.
+    - **No active transaction**: Opens informative guidance modal (`#noAgentChatModal`) with one-click catalog browse and office support buttons.
+    - **Unauthenticated guest**: Opens sign-in/register guidance modal (`#guestChatModal`) with links to connect with staff.
+    - **Sales Agent**: Displays direct `"Client Chats"` link to the transaction tracking hub.
+- **Property Image Visibility Fix**:
+  - Fixed missing property image on `client_dashboard.php` transaction tracking cards where `p.image` and `p.propertyType` were omitted from the query.
+  - Replaced empty blue square container with responsive property image thumbnail (`<img>`) with fallback to representative property type images.
+  - Added property overview image banner inside the `#trackingModal` window.
+  - Included Bootstrap Icons stylesheet in `includes/header.php` to restore all dashboard iconography.
+
+## 2026-11-22 — Direct Messaging & Pipeline Resolution
+
+- **Database Table Creation & Verification**:
+  - Ensured `direct_messages` table exists in `kingquiry_db` with indexes on `(transactionID, createdAt)` and `(senderID, receiverID)`.
+  - Added self-healing `ensure_direct_messages_table()` execution in both `config/db.php` and `chat_api.php` to permanently prevent "Table doesn't exist" 500 fatal errors.
+- **CSRF Token & Session Fix**:
+  - Resolved undefined `$csrfToken` instances on `transaction_tracking.php`, replacing with `csrf_token()`.
+  - Synchronized fresh CSRF tokens into the frontend modal state on every poll and send action.
+  - Added session cookie fallback validation in `chat_api.php` for same-origin authenticated requests.
+- **Agent Dashboard & Viewing Request Sync**:
+  - Fixed query scoping in `agent_dashboard.php` so unassigned client viewing requests in `Pending` or `Approved` status (`WHERE a.agentID = ? OR (a.agentID IS NULL AND a.status IN ('Pending', 'Approved') AND ada.appointmentID IS NULL)`) display on the Agent dashboard KPI metrics and scheduling queue.
+  - Allowed agents to claim and assign unassigned approved appointments directly from the viewing requests table.
+  - Prevented silent early return in `update_appointment_tracking_status()` when an unassigned approved viewing is claimed by an agent.
+
+## 2026-11-22 — Human-to-Human Direct Messaging Chatbox and Cross-Portal Transaction Visibility
+
+- **Client <-> Agent Direct Chatbox**:
+  - Replaced automated bot logic with a direct, human-to-human authenticated messaging system between Clients and their assigned Sales Agents.
+  - Implemented secure API in `chat_api.php` with CSRF protection, message sanitization, permission validation, and real-time polling.
+  - Created reusable, responsive modal in `includes/direct_chat_modal.php` featuring distinct sender bubbles (Royal Blue gradient for outgoing, card surfaces for incoming), micro-timestamps, auto-scroll, and auto-refresh.
+  - Added direct chat action buttons to `client_dashboard.php` (assigned agent card), `agent_dashboard.php` (transactions table), and `transaction_tracking.php`.
+- **Cross-Portal Transaction Visibility Fix**:
+  - **Agent Visibility**: Updated `transaction_tracking.php` and `agent_dashboard.php` so all client transactions—including open/unassigned requests—are visible to active Sales Agents (`WHERE (a.agentID = ? OR ia.agentID = ?) OR (a.agentID IS NULL AND ia.agentID IS NULL)`).
+  - **One-Click Claiming**: Added a "Claim & Assign to Me" action enabling agents to accept unassigned client transactions directly from `transaction_tracking.php` and `agent_dashboard.php`.
+  - **Admin Visibility**: Added a live "Client Transactions & Pipeline" section to `admin_dashboard.php`, ensuring all client-created transactions appear directly on the main admin overview.
+  - **Database Persistence**: Added `direct_messages` table with automatic idempotent creation in `config/db.php` and updated `database/schema.sql`.
+
+## 2026-11-22 — Chatbot Integration Decommissioning and UI Streamlining
+
+- **Layout & Footer Intact**: Completely decoupled and removed the floating customer chatbot widget inclusion from `includes/footer.php` while preserving 100% of the footer layout, brand logos, legal links, and application modals.
+- **Navigation & Portals Cleaned**:
+  - Removed the `admin_chat.php` ("Client inbox") tab from `includes/admin_layout.php` across all Admin navigation bars.
+  - Removed the "Client chat inbox" link from the Sales Agent sidebar menu in `agent_dashboard.php`.
+  - Replaced the message chat button on the client dashboard assigned-agent card in `client_dashboard.php` with direct verified contact actions (Call/SMS and Email), and cleaned up obsolete chat modal scripts and CSS styles.
+  - Removed "Chat with Sales Agent" buttons from `agents.php` in favor of direct email and phone contact.
+  - Updated valuation and contact guidance in `resources.php` and `includes/modals/user_manual_modal.php`.
+- **Backend Endpoints Safely Neutralized**:
+  - `admin_chat.php` safely redirects authenticated staff to their respective dashboards.
+  - `chat_api.php` returns a clean 404 JSON response.
+  - `includes/chat_widget.php` decommissioned with an inert stub.
+
 ## 2026-11-20 — System Analysis Documentation Aligned With Application
 
 - Added `docs/KingQuiry_SAD_Documentation.md` following the supplied IT 313
