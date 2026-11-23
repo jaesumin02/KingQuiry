@@ -551,33 +551,46 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
 }
 .kq-portal-nav { max-height: calc(100vh - 11rem); overflow-y: auto; }
 
-.kq-portal-nav a {
+.kq-portal-nav a,
+.kq-portal-nav a:link,
+.kq-portal-nav a:visited,
+.kq-portal-sidebar .kq-portal-nav a,
+.kq-portal-sidebar .kq-portal-nav a:link,
+.kq-portal-sidebar .kq-portal-nav a:visited {
     display: flex;
     min-height: 42px;
     align-items: center;
-    padding: 0.55rem 0.75rem;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 0.55rem 0.85rem;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
     border-radius: 0.65rem;
-    background: #1e323a;
-    color: #e2e8f0;
+    background: #1e323a !important;
+    color: #f1f5f9 !important;
     font-size: 0.9rem;
     font-weight: 600;
     line-height: 1.4;
-    text-decoration: none;
+    text-decoration: none !important;
+    transition: background-color .15s ease, color .15s ease, border-color .15s ease, box-shadow .15s ease;
 }
 
 .kq-portal-nav a:hover,
-.kq-portal-nav a:focus-visible {
-    border-color: rgba(255, 255, 255, 0.35);
-    background: #2b4652;
-    color: #ffffff;
+.kq-portal-nav a:focus,
+.kq-portal-nav a:focus-visible,
+.kq-portal-sidebar .kq-portal-nav a:hover,
+.kq-portal-sidebar .kq-portal-nav a:focus,
+.kq-portal-sidebar .kq-portal-nav a:focus-visible {
+    border-color: rgba(255, 255, 255, 0.35) !important;
+    background: #2b4652 !important;
+    color: #ffffff !important;
 }
 
-.kq-portal-nav a[aria-current="location"] {
-    border-color: #1b4d6e;
-    background: #1b4d6e;
-    color: #ffffff;
-    box-shadow: inset 0 -2px 0 #d9a74a;
+.kq-portal-nav a[aria-current="location"],
+.kq-portal-nav a.active,
+.kq-portal-sidebar .kq-portal-nav a[aria-current="location"],
+.kq-portal-sidebar .kq-portal-nav a.active {
+    border-color: #d9a74a !important;
+    background: #1b4d6e !important;
+    color: #ffffff !important;
+    box-shadow: inset 0 -2px 0 #d9a74a, 0 0 0 1px rgba(217, 167, 74, 0.35) !important;
 }
 
 .kq-portal-nav a:focus-visible {

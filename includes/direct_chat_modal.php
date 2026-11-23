@@ -14,7 +14,10 @@ $csrfToken = function_exists('csrf_token') ? csrf_token() : ((string) ($_SESSION
                 <div class="d-flex align-items-center gap-2 flex-grow-1 overflow-hidden">
                     <span class="rounded-circle bg-white text-primary fw-bold d-inline-flex align-items-center justify-content-center flex-shrink-0" style="width: 38px; height: 38px; font-size: 1.1rem;" id="kqChatPartnerAvatar">💬</span>
                     <div class="text-truncate">
-                        <div class="fw-bold fs-6 text-white text-truncate mb-0" id="kqChatPartnerName">Direct Message</div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="fw-bold fs-6 text-white text-truncate mb-0" id="kqChatPartnerName">Direct Message</span>
+                            <span id="kqChatPartnerStatus" class="badge rounded-pill bg-success-subtle text-success border border-success-subtle d-none" style="font-size: 0.68rem; font-weight: 600;">🟢 Online</span>
+                        </div>
                         <div class="small text-white-50 text-truncate" style="font-size: 0.76rem;" id="kqChatPropertyTitle">Property Reference</div>
                     </div>
                 </div>
@@ -47,8 +50,10 @@ $csrfToken = function_exists('csrf_token') ? csrf_token() : ((string) ($_SESSION
                     <input type="hidden" id="kqChatTransactionId" value="0">
                     <input type="hidden" id="kqChatCsrfToken" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
                     <input type="text" class="form-control rounded-pill px-3 shadow-none" id="kqChatMessageInput" placeholder="Type a message..." maxlength="2000" autocomplete="off" required>
-                    <button type="submit" class="btn btn-primary rounded-circle d-flex align-items-center justify-content-center shadow-sm" style="width: 42px; height: 42px; flex-shrink: 0;" id="kqChatSendBtn" title="Send message">
-                        <span style="transform: rotate(45deg); display: inline-block; margin-left: -2px; margin-top: -2px;">✈</span>
+                    <button type="submit" class="btn btn-primary rounded-circle d-flex align-items-center justify-content-center shadow-sm" style="width: 42px; height: 42px; flex-shrink: 0;" id="kqChatSendBtn" title="Send message" aria-label="Send message">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="margin-left: 2px;">
+                            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                        </svg>
                     </button>
                 </form>
             </div>
@@ -89,8 +94,31 @@ $csrfToken = function_exists('csrf_token') ? csrf_token() : ((string) ($_SESSION
 (function() {
     let activeChatTxId = 0;
     let pollInterval = null;
+    let heartbeatInterval = null;
     let isFetching = false;
     let knownMessageCount = 0;
+
+    async function kqSafeJson(resp) {
+        if (!resp) return null;
+        try {
+            const text = await resp.text();
+            try {
+                return JSON.parse(text);
+            } catch (jsonErr) {
+                const match = text.match(/\{[\s\S]*\}/);
+                if (match) {
+                    try {
+                        return JSON.parse(match[0]);
+                    } catch (e) {}
+                }
+                console.warn('Non-JSON response from chat API:', text);
+                return null;
+            }
+        } catch (e) {
+            console.error('Failed to read response body:', e);
+            return null;
+        }
+    }
 
     window.openDirectChat = function(transactionId, propertyTitle, partnerName, hasScheduledViewing) {
         activeChatTxId = parseInt(transactionId, 10);
@@ -102,6 +130,11 @@ $csrfToken = function_exists('csrf_token') ? csrf_token() : ((string) ($_SESSION
         document.getElementById('kqChatTransactionId').value = activeChatTxId;
         document.getElementById('kqChatPropertyTitle').textContent = propertyTitle ? ('Re: ' + propertyTitle) : 'Transaction #KQT-' + activeChatTxId;
         document.getElementById('kqChatPartnerName').textContent = partnerName || 'Sales Support';
+
+        const statusBadge = document.getElementById('kqChatPartnerStatus');
+        if (statusBadge) {
+            statusBadge.classList.add('d-none');
+        }
 
         // Set initial viewing chip visibility based on passed parameter
         const viewingChip = document.getElementById('kqChipViewing');
@@ -149,6 +182,9 @@ $csrfToken = function_exists('csrf_token') ? csrf_token() : ((string) ($_SESSION
         document.getElementById('kqChatLoadingSpinner').classList.remove('d-none');
         document.getElementById('kqChatEmptyState').classList.add('d-none');
 
+        const statusBadge = document.getElementById('kqChatPartnerStatus');
+        if (statusBadge) statusBadge.classList.add('d-none');
+
         const modalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
         modalInstance.show();
 
@@ -157,7 +193,7 @@ $csrfToken = function_exists('csrf_token') ? csrf_token() : ((string) ($_SESSION
                 cache: 'no-store',
                 credentials: 'same-origin'
             });
-            const data = await resp.json();
+            const data = await kqSafeJson(resp);
             if (data && data.ok && data.transaction_id) {
                 window.openDirectChat(
                     data.transaction_id,
@@ -179,12 +215,31 @@ $csrfToken = function_exists('csrf_token') ? csrf_token() : ((string) ($_SESSION
     function startPolling() {
         stopPolling();
         pollInterval = setInterval(fetchMessages, 3500);
+        startHeartbeat();
     }
 
     function stopPolling() {
         if (pollInterval) {
             clearInterval(pollInterval);
             pollInterval = null;
+        }
+        stopHeartbeat();
+    }
+
+    function startHeartbeat() {
+        stopHeartbeat();
+        heartbeatInterval = setInterval(async function() {
+            if (!activeChatTxId) return;
+            try {
+                await fetch('chat_api.php?action=heartbeat', { cache: 'no-store', credentials: 'same-origin' });
+            } catch (e) {}
+        }, 45000);
+    }
+
+    function stopHeartbeat() {
+        if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+            heartbeatInterval = null;
         }
     }
 
@@ -196,12 +251,22 @@ $csrfToken = function_exists('csrf_token') ? csrf_token() : ((string) ($_SESSION
                 cache: 'no-store',
                 credentials: 'same-origin'
             });
-            if (!resp.ok) {
+            if (resp.status === 401) {
+                stopPolling();
+                document.getElementById('kqChatLoadingSpinner').classList.add('d-none');
+                const emptyEl = document.getElementById('kqChatEmptyState');
+                if (emptyEl) {
+                    emptyEl.innerHTML = '<div class="text-danger fw-bold mb-1">Session expired</div><div class="small text-muted mb-2">You must be signed in to view and send messages.</div><a href="client_login.php" class="btn btn-sm btn-primary rounded-pill px-3">Sign in</a>';
+                    emptyEl.classList.remove('d-none');
+                }
+                return;
+            }
+            if (!resp.ok && resp.status !== 200) {
                 document.getElementById('kqChatLoadingSpinner').classList.add('d-none');
                 return;
             }
-            const data = await resp.json();
-            if (!data.ok) {
+            const data = await kqSafeJson(resp);
+            if (!data || !data.ok) {
                 document.getElementById('kqChatLoadingSpinner').classList.add('d-none');
                 return;
             }
@@ -228,6 +293,26 @@ $csrfToken = function_exists('csrf_token') ? csrf_token() : ((string) ($_SESSION
                     viewingChip.classList.add('d-none');
                 } else {
                     viewingChip.classList.remove('d-none');
+                }
+            }
+
+            // Update live agent presence badge in modal header
+            const statusBadge = document.getElementById('kqChatPartnerStatus');
+            if (statusBadge) {
+                if (data.is_client) {
+                    statusBadge.classList.remove('d-none');
+                    const isOnline = Boolean(data.agent_is_online || (data.agent_presence && data.agent_presence.is_online));
+                    if (isOnline) {
+                        statusBadge.className = 'badge rounded-pill bg-success-subtle text-success border border-success-subtle';
+                        statusBadge.innerHTML = '🟢 Online';
+                        statusBadge.title = 'Assigned sales agent is currently online (live conversation)';
+                    } else {
+                        statusBadge.className = 'badge rounded-pill bg-secondary text-white border border-light-subtle';
+                        statusBadge.innerHTML = '⚪ Offline';
+                        statusBadge.title = 'Assigned sales agent is currently away (automated assistance active)';
+                    }
+                } else {
+                    statusBadge.classList.add('d-none');
                 }
             }
 
@@ -280,7 +365,21 @@ $csrfToken = function_exists('csrf_token') ? csrf_token() : ((string) ($_SESSION
             const bubble = document.createElement('div');
             bubble.className = m.isMe ? 'kq-bubble-mine' : 'kq-bubble-theirs';
 
-            if (!m.isMe) {
+            if (m.isMe) {
+                if (m.isAutomated) {
+                    const author = document.createElement('div');
+                    author.className = 'small fw-bold mb-1 d-flex align-items-center justify-content-end gap-1';
+                    author.style.fontSize = '0.72rem';
+
+                    const autoBadge = document.createElement('span');
+                    autoBadge.className = 'badge bg-white text-dark rounded-pill fw-semibold shadow-sm';
+                    autoBadge.style.fontSize = '0.62rem';
+                    autoBadge.textContent = '⚡ Automated Reply';
+                    author.appendChild(autoBadge);
+
+                    bubble.appendChild(author);
+                }
+            } else {
                 const author = document.createElement('div');
                 author.className = 'small fw-bold opacity-75 mb-1 d-flex align-items-center gap-1 flex-wrap';
                 author.style.fontSize = '0.72rem';
@@ -357,40 +456,49 @@ $csrfToken = function_exists('csrf_token') ? csrf_token() : ((string) ($_SESSION
                 credentials: 'same-origin'
             });
 
-            let errorMsg = '';
-            try {
-                const data = await resp.json();
-                if (data && data.ok) {
-                    inputEl.value = '';
-                    if (data.csrf_token) {
-                        document.getElementById('kqChatCsrfToken').value = data.csrf_token;
-                    }
-                    if (data.messages && Array.isArray(data.messages)) {
-                        document.getElementById('kqChatEmptyState').classList.add('d-none');
-                        renderMessages(data.messages);
-                        knownMessageCount = data.messages.length;
-                        scrollToBottom();
-
-                        const viewingChip = document.getElementById('kqChipViewing');
-                        if (viewingChip && typeof data.has_scheduled_viewing !== 'undefined') {
-                            if (data.has_scheduled_viewing) {
-                                viewingChip.classList.add('d-none');
-                            } else {
-                                viewingChip.classList.remove('d-none');
-                            }
-                        }
-                    } else {
-                        await fetchMessages(true);
-                    }
-                    return false;
-                }
-                errorMsg = (data && data.error) ? data.error : 'Could not send message.';
-            } catch (jsonErr) {
-                errorMsg = 'Server response error (' + resp.status + ').';
+            const data = await kqSafeJson(resp);
+            if (resp.status === 401 || (data && data.code === 'session_expired')) {
+                alert('Your session has expired. Please sign in again.');
+                window.location.href = 'client_login.php';
+                return false;
             }
 
-            alert(errorMsg);
+            if (data && data.ok) {
+                inputEl.value = '';
+                if (data.csrf_token) {
+                    document.getElementById('kqChatCsrfToken').value = data.csrf_token;
+                }
+                if (data.messages && Array.isArray(data.messages)) {
+                    document.getElementById('kqChatEmptyState').classList.add('d-none');
+                    renderMessages(data.messages);
+                    knownMessageCount = data.messages.length;
+                    scrollToBottom();
+
+                    const viewingChip = document.getElementById('kqChipViewing');
+                    if (viewingChip && typeof data.has_scheduled_viewing !== 'undefined') {
+                        if (data.has_scheduled_viewing) {
+                            viewingChip.classList.add('d-none');
+                        } else {
+                            viewingChip.classList.remove('d-none');
+                        }
+                    }
+                } else {
+                    await fetchMessages(true);
+                }
+                return false;
+            }
+
+            if (data && data.error) {
+                alert(data.error);
+            } else if (resp.ok) {
+                // If HTTP 200 was returned and processed, refresh messages seamlessly
+                inputEl.value = '';
+                await fetchMessages(true);
+            } else {
+                alert('Could not deliver message. Please try again.');
+            }
         } catch (err) {
+            console.error('Direct chat send error:', err);
             alert('Failed to send message. Please check your connection.');
         } finally {
             inputEl.disabled = false;

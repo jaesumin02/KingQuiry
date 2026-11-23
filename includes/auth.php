@@ -46,7 +46,8 @@ function kq_start_session(): void
     ini_set('session.use_trans_sid', '0');
     ini_set('session.cookie_httponly', '1');
     ini_set('session.cookie_samesite', 'Lax');
-    ini_set('session.gc_maxlifetime', '1800');
+    $sessionTimeout = ($appEnvironment === 'production') ? 28800 : 86400; // 8h prod, 24h dev/test
+    ini_set('session.gc_maxlifetime', (string) $sessionTimeout);
     session_set_cookie_params([
         'lifetime' => 0,
         'path' => '/',
@@ -63,7 +64,7 @@ function kq_start_session(): void
 
     $now = time();
     $lastActivity = (int) ($_SESSION['last_activity_at'] ?? 0);
-    if ($lastActivity > 0 && $now - $lastActivity > 1800) {
+    if ($lastActivity > 0 && $now - $lastActivity > $sessionTimeout) {
         $_SESSION = [];
         kq_regenerate_session_id_or_fail('Unable to rotate the expired KingQuiry session.');
     }
@@ -112,29 +113,48 @@ function kq_sync_session_user(mysqli $conn): ?array
         kq_regenerate_session_id_or_fail('Unable to rotate an invalid KingQuiry session.');
         return null;
     }
-    if ($checkedUserId === (int) $userId) {
+    if ($checkedUserId === (int) $userId && $syncedUser !== null) {
         return $syncedUser;
     }
 
-    $stmt = $conn->prepare(
-        'SELECT userID, fullname, email, role, accountStatus
-         FROM users WHERE userID = ? LIMIT 1'
-    );
-    $stmt->bind_param('i', $userId);
-    $stmt->execute();
-    $user = $stmt->get_result()->fetch_assoc();
-    if (!$user || ($user['accountStatus'] ?? 'Active') !== 'Active') {
-        $_SESSION = ['last_activity_at' => time()];
-        kq_regenerate_session_id_or_fail('Unable to rotate a revoked KingQuiry session.');
-        $checkedUserId = (int) $userId;
-        $syncedUser = null;
-        return null;
-    }
+    try {
+        $stmt = $conn->prepare(
+            'SELECT userID, fullname, email, role, accountStatus
+             FROM users WHERE userID = ? LIMIT 1'
+        );
+        if (!$stmt) {
+            return $sessionUser;
+        }
+        $stmt->bind_param('i', $userId);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        if (!$res) {
+            return $sessionUser;
+        }
+        $user = $res->fetch_assoc();
+        if (!$user) {
+            $_SESSION = ['last_activity_at' => time()];
+            kq_regenerate_session_id_or_fail('Unable to rotate a non-existent KingQuiry session.');
+            $checkedUserId = (int) $userId;
+            $syncedUser = null;
+            return null;
+        }
+        if (($user['accountStatus'] ?? 'Active') !== 'Active') {
+            $_SESSION = ['last_activity_at' => time()];
+            kq_regenerate_session_id_or_fail('Unable to rotate a revoked KingQuiry session.');
+            $checkedUserId = (int) $userId;
+            $syncedUser = null;
+            return null;
+        }
 
-    $_SESSION['user'] = $user;
-    $checkedUserId = (int) $userId;
-    $syncedUser = $user;
-    return $user;
+        $_SESSION['user'] = $user;
+        $checkedUserId = (int) $userId;
+        $syncedUser = $user;
+        return $user;
+    } catch (Throwable $e) {
+        error_log('kq_sync_session_user query error: ' . $e->getMessage());
+        return $sessionUser;
+    }
 }
 
 function normalize_role_name(?string $role): ?string
@@ -296,6 +316,9 @@ function kq_process_user_login(mysqli $conn): string
                     kq_clear_login_rate_limits($conn, $identifier, $loginIpAddress);
                 }
                 kq_regenerate_session_after_login($user);
+                if (function_exists('update_user_presence')) {
+                    update_user_presence($conn, (int) $user['userID'], true, 'online');
+                }
                 $destination = $normalizedRole === 'Admin'
                     ? 'admin_dashboard.php'
                     : ($normalizedRole === 'Sales Agent' ? 'agent_dashboard.php' : 'index.php');
@@ -308,6 +331,33 @@ function kq_process_user_login(mysqli $conn): string
     return 'Invalid email or password. Please try again.';
 }
 
+if (!function_exists('ensure_user_presence_columns')) {
+function ensure_user_presence_columns(mysqli $conn): void
+{
+    static $ensured = false;
+    if ($ensured) {
+        return;
+    }
+    try {
+        $colCheck = $conn->query("SHOW COLUMNS FROM `users` LIKE 'is_online'");
+        if ($colCheck && $colCheck->num_rows === 0) {
+            $conn->query("ALTER TABLE `users` ADD COLUMN `is_online` TINYINT(1) NOT NULL DEFAULT 0 AFTER `accountStatus`");
+        }
+        $colCheck = $conn->query("SHOW COLUMNS FROM `users` LIKE 'availability_status'");
+        if ($colCheck && $colCheck->num_rows === 0) {
+            $conn->query("ALTER TABLE `users` ADD COLUMN `availability_status` VARCHAR(20) NOT NULL DEFAULT 'offline' AFTER `is_online`");
+        }
+        $colCheck = $conn->query("SHOW COLUMNS FROM `users` LIKE 'last_seen_at'");
+        if ($colCheck && $colCheck->num_rows === 0) {
+            $conn->query("ALTER TABLE `users` ADD COLUMN `last_seen_at` TIMESTAMP NULL DEFAULT NULL AFTER `availability_status`");
+        }
+        $ensured = true;
+    } catch (Throwable $e) {
+        error_log('ensure_user_presence_columns warning: ' . $e->getMessage());
+    }
+}
+}
+
 if (!function_exists('update_user_presence')) {
 function update_user_presence(mysqli $conn, int $userId, bool $isOnline, string $status): void
 {
@@ -315,21 +365,27 @@ function update_user_presence(mysqli $conn, int $userId, bool $isOnline, string 
         return;
     }
 
+    ensure_user_presence_columns($conn);
     $allowedStatuses = ['online', 'offline', 'away'];
+    $status = strtolower(trim($status));
     if (!in_array($status, $allowedStatuses, true)) {
         $status = $isOnline ? 'online' : 'offline';
     }
 
-    $onlineFlag = $isOnline ? 1 : 0;
-    $stmt = $conn->prepare(
-        'UPDATE users SET is_online = ?, availability_status = ?, last_seen_at = CURRENT_TIMESTAMP WHERE userID = ?'
-    );
-    if (!$stmt) {
-        return;
+    $onlineFlag = ($isOnline && $status !== 'offline') ? 1 : 0;
+    try {
+        $stmt = $conn->prepare(
+            'UPDATE users SET is_online = ?, availability_status = ?, last_seen_at = CURRENT_TIMESTAMP WHERE userID = ?'
+        );
+        if (!$stmt) {
+            return;
+        }
+        $stmt->bind_param('isi', $onlineFlag, $status, $userId);
+        $stmt->execute();
+        $stmt->close();
+    } catch (Throwable $e) {
+        error_log('update_user_presence error: ' . $e->getMessage());
     }
-    $stmt->bind_param('isi', $onlineFlag, $status, $userId);
-    $stmt->execute();
-    $stmt->close();
 }
 
 function is_agent_online(mysqli $conn, int $agentId): bool
@@ -338,20 +394,35 @@ function is_agent_online(mysqli $conn, int $agentId): bool
         return false;
     }
 
-    $stmt = $conn->prepare('SELECT is_online, (last_seen_at >= DATE_SUB(NOW(), INTERVAL 60 SECOND)) AS fresh FROM users WHERE userID = ? LIMIT 1');
-    if (!$stmt) {
+    ensure_user_presence_columns($conn);
+    try {
+        $stmt = $conn->prepare(
+            'SELECT is_online, availability_status, (last_seen_at >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)) AS fresh 
+             FROM users WHERE userID = ? LIMIT 1'
+        );
+        if (!$stmt) {
+            return false;
+        }
+        $stmt->bind_param('i', $agentId);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if (!$row) {
+            return false;
+        }
+
+        $avail = strtolower((string) ($row['availability_status'] ?? 'offline'));
+        if ($avail === 'offline') {
+            return false;
+        }
+
+        // Agent is online if explicitly set to online/away and recently active (within 15 minutes) or currently flagged online
+        return (int) ($row['is_online'] ?? 0) === 1 && (int) ($row['fresh'] ?? 0) === 1;
+    } catch (Throwable $e) {
+        error_log('is_agent_online error: ' . $e->getMessage());
         return false;
     }
-    $stmt->bind_param('i', $agentId);
-    $stmt->execute();
-    $row = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
-
-    if (!$row || (int) ($row['is_online'] ?? 0) !== 1) {
-        return false;
-    }
-
-    return (int) ($row['fresh'] ?? 0) === 1;
 }
 
 function get_agent_presence(mysqli $conn, int $agentId): array
@@ -366,29 +437,36 @@ function get_agent_presence(mysqli $conn, int $agentId): array
         return $result;
     }
 
-    $stmt = $conn->prepare('SELECT is_online, availability_status, last_seen_at, (last_seen_at >= DATE_SUB(NOW(), INTERVAL 60 SECOND)) AS fresh FROM users WHERE userID = ? LIMIT 1');
-    if (!$stmt) {
-        return $result;
+    ensure_user_presence_columns($conn);
+    try {
+        $stmt = $conn->prepare(
+            'SELECT is_online, availability_status, last_seen_at, (last_seen_at >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)) AS fresh 
+             FROM users WHERE userID = ? LIMIT 1'
+        );
+        if (!$stmt) {
+            return $result;
+        }
+        $stmt->bind_param('i', $agentId);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if (!$row) {
+            return $result;
+        }
+
+        $avail = strtolower((string) ($row['availability_status'] ?? 'offline'));
+        $online = ($avail !== 'offline') && (int) ($row['is_online'] ?? 0) === 1 && (int) ($row['fresh'] ?? 0) === 1;
+
+        $result['is_online'] = $online;
+        $result['availability_status'] = $avail;
+        $result['last_seen_at'] = $row['last_seen_at'] ?? null;
+    } catch (Throwable $e) {
+        error_log('get_agent_presence error: ' . $e->getMessage());
     }
-    $stmt->bind_param('i', $agentId);
-    $stmt->execute();
-    $row = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
-
-    if (!$row) {
-        return $result;
-    }
-
-    $online = (int) ($row['is_online'] ?? 0) === 1
-        && (int) ($row['fresh'] ?? 0) === 1;
-
-    $result['is_online'] = $online;
-    $result['availability_status'] = (string) ($row['availability_status'] ?? 'offline');
-    $result['last_seen_at'] = $row['last_seen_at'] ?? null;
 
     return $result;
 }
-
 }
 
 kq_start_session();

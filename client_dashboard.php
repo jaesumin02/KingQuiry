@@ -61,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_client_payment
                 );
                 unset($_SESSION['client_payment_tokens'][$transactionId]);
                 $_SESSION['flash_payment_success'] = 'Your payment record was submitted for staff verification.';
-                header('Location: client_dashboard.php#transaction-tracking');
+                header('Location: client_dashboard.php?open_modal=' . $transactionId . '#transaction-tracking');
                 exit();
             }
         } catch (InvalidArgumentException $exception) {
@@ -69,6 +69,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_client_payment
         } catch (Throwable $exception) {
             error_log('KingQuiry client payment submission failed: ' . $exception->getMessage());
             $paymentSubmissionError = 'We could not submit your payment record. Please try again.';
+        }
+    }
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['choose_payment_scheme'])) {
+    $transactionId = filter_var($_POST['transactionID'] ?? null, FILTER_VALIDATE_INT);
+    $selectedScheme = is_string($_POST['paymentScheme'] ?? null) ? trim($_POST['paymentScheme']) : '';
+    $clientNote = is_string($_POST['clientPaymentNote'] ?? null) ? trim($_POST['clientPaymentNote']) : null;
+
+    if (!has_valid_csrf_token()) {
+        $paymentSubmissionError = 'Your session expired. Refresh the page and try again.';
+    } elseif ($transactionId === false || $transactionId <= 0) {
+        $paymentSubmissionError = 'Choose a valid transaction.';
+    } else {
+        try {
+            set_property_transaction_payment_method($conn, (int) $transactionId, $clientID, $selectedScheme, $clientNote);
+            $_SESSION['flash_payment_success'] = 'Preferred payment scheme saved! Your Sales Agent has been notified.';
+            header('Location: client_dashboard.php?open_modal=' . $transactionId . '#transaction-tracking');
+            exit();
+        } catch (InvalidArgumentException $exception) {
+            $paymentSubmissionError = $exception->getMessage();
+        } catch (Throwable $exception) {
+            error_log('KingQuiry client payment scheme selection failed: ' . $exception->getMessage());
+            $paymentSubmissionError = 'Could not save payment scheme. Please try again.';
         }
     }
 }
@@ -214,6 +236,37 @@ include 'includes/header.php';
         background: #f4f7fb;
     }
 
+    /* Force high-contrast crisp white typography on Client Menu portal sidebar */
+    .kq-portal-sidebar .kq-portal-nav a,
+    .kq-portal-sidebar .kq-portal-nav a:link,
+    .kq-portal-sidebar .kq-portal-nav a:visited {
+        display: flex;
+        min-height: 42px;
+        align-items: center;
+        padding: 0.55rem 0.85rem;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        border-radius: 0.65rem;
+        background: #1e323a !important;
+        color: #f1f5f9 !important;
+        font-size: 0.9rem;
+        font-weight: 600;
+        text-decoration: none !important;
+    }
+    .kq-portal-sidebar .kq-portal-nav a:hover,
+    .kq-portal-sidebar .kq-portal-nav a:focus,
+    .kq-portal-sidebar .kq-portal-nav a:focus-visible {
+        border-color: rgba(255, 255, 255, 0.35) !important;
+        background: #2b4652 !important;
+        color: #ffffff !important;
+    }
+    .kq-portal-sidebar .kq-portal-nav a[aria-current="location"],
+    .kq-portal-sidebar .kq-portal-nav a.active {
+        border-color: #d9a74a !important;
+        background: #1b4d6e !important;
+        color: #ffffff !important;
+        box-shadow: inset 0 -2px 0 #d9a74a, 0 0 0 1px rgba(217, 167, 74, 0.35) !important;
+    }
+
     /* ══════════ TRANSACTION UPDATES & TIMELINE (LIGHT & DARK THEMES) ══════════ */
     .kq-tracking-updates-box {
         background: #ffffff;
@@ -291,17 +344,6 @@ $appointmentStmt = $conn->prepare(
 $appointmentStmt->bind_param('i', $clientID);
 $appointmentStmt->execute();
 $appointmentRows = $appointmentStmt->get_result()->fetch_all(MYSQLI_ASSOC);
-$inquiryStmt = $conn->prepare(
-    "SELECT i.*, p.title
-     FROM feedbackinquiries i
-     JOIN properties p ON i.propertyID = p.propertyID
-     WHERE i.clientID = ?
-     ORDER BY i.inquiryID DESC
-     LIMIT 100"
-);
-$inquiryStmt->bind_param('i', $clientID);
-$inquiryStmt->execute();
-$inquiryRows = $inquiryStmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $trackingStmt = $conn->prepare(
     "SELECT t.transactionID, t.propertyID, t.currentStage, t.salePrice, t.paymentMethod, t.createdAt, t.updatedAt,
             p.title, p.image, p.propertyType, a.appointmentDate, a.appointmentTime,
@@ -410,6 +452,7 @@ $progressStages = [
     'inquiry_received',
     'contacting_client',
     'viewing_requested',
+    'reviewing_schedule',
     'viewing_confirmed',
     'viewing_completed',
     'payment_in_process',
@@ -429,10 +472,8 @@ $progressStages = [
             <div class="kq-portal-sidebar-heading">Client menu</div>
             <nav class="kq-portal-nav" id="client-navigation" aria-label="Client dashboard sections">
                 <a href="#client-overview">Overview</a>
-                <a href="#notifications">Notifications</a>
                 <a href="#transaction-tracking">Transaction tracking</a>
                 <a href="#viewing-requests">Viewing requests</a>
-                <a href="#client-inquiries">Inquiries</a>
             </nav>
         </aside>
         <div class="kq-portal-main">
@@ -453,7 +494,7 @@ $progressStages = [
 <?php endif; ?>
 
 <div class="row g-3 mb-4">
-    <div class="col-6 col-lg-4 col-xl-2">
+    <div class="col-6 col-md-4 col-xl">
         <div class="card h-100 border-0 shadow-sm">
             <div class="card-body p-3">
                 <div class="page-eyebrow" style="font-size: 0.68rem;">Tracked requests</div>
@@ -462,7 +503,7 @@ $progressStages = [
             </div>
         </div>
     </div>
-    <div class="col-6 col-lg-4 col-xl-2">
+    <div class="col-6 col-md-4 col-xl">
         <div class="card h-100 border-0 shadow-sm">
             <div class="card-body p-3">
                 <div class="page-eyebrow text-primary" style="font-size: 0.68rem;">Active Pipeline</div>
@@ -471,7 +512,7 @@ $progressStages = [
             </div>
         </div>
     </div>
-    <div class="col-6 col-lg-4 col-xl-2">
+    <div class="col-6 col-md-4 col-xl">
         <div class="card h-100 border-0 shadow-sm">
             <div class="card-body p-3">
                 <div class="page-eyebrow text-info" style="font-size: 0.68rem;">Viewing requests</div>
@@ -480,7 +521,7 @@ $progressStages = [
             </div>
         </div>
     </div>
-    <div class="col-6 col-lg-4 col-xl-2">
+    <div class="col-6 col-md-4 col-xl">
         <div class="card h-100 border-0 shadow-sm">
             <div class="card-body p-3">
                 <div class="page-eyebrow text-warning" style="font-size: 0.68rem;">Pending viewing requests</div>
@@ -489,16 +530,7 @@ $progressStages = [
             </div>
         </div>
     </div>
-    <div class="col-6 col-lg-4 col-xl-2">
-        <div class="card h-100 border-0 shadow-sm">
-            <div class="card-body p-3">
-                <div class="page-eyebrow text-info" style="font-size: 0.68rem;">Inquiries</div>
-                <h3 class="h3 mb-0 text-info"><?= (int) $totalClientInquiries ?></h3>
-                <small class="text-muted" style="font-size: 0.72rem;"><a href="#client-inquiries" class="text-decoration-none">Questions sent</a></small>
-            </div>
-        </div>
-    </div>
-    <div class="col-6 col-lg-4 col-xl-2">
+    <div class="col-12 col-md-4 col-xl">
         <div class="card h-100 border-0 shadow-sm">
             <div class="card-body p-3">
                 <div class="page-eyebrow text-success" style="font-size: 0.68rem;">Completed sales</div>
@@ -555,6 +587,7 @@ $progressStages = [
                 $stageBadgeClass = match ($stage) {
                     'completed' => 'text-bg-success',
                     'cancelled' => 'text-bg-secondary',
+                    'reviewing_schedule' => 'text-bg-info text-dark',
                     'payment_in_process' => 'text-bg-warning text-dark',
                     'payment_confirmation' => 'text-bg-info text-dark',
                     default => 'text-bg-primary',
@@ -655,6 +688,18 @@ $progressStages = [
                             </div>
 
                             <div class="modal-body p-3 p-md-4 text-start">
+                                <?php if ((int)($_GET['open_modal'] ?? 0) === $transactionId && $paymentSubmissionSuccess !== ''): ?>
+                                    <div class="alert alert-success alert-dismissible fade show py-2 mb-3 shadow-sm small" role="alert">
+                                        <i class="bi bi-check-circle-fill me-1"></i> <?= htmlspecialchars($paymentSubmissionSuccess, ENT_QUOTES, 'UTF-8') ?>
+                                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                    </div>
+                                <?php elseif ((int)($_POST['transactionID'] ?? 0) === $transactionId && $paymentSubmissionError !== ''): ?>
+                                    <div class="alert alert-danger alert-dismissible fade show py-2 mb-3 shadow-sm small" role="alert">
+                                        <i class="bi bi-exclamation-triangle-fill me-1"></i> <?= htmlspecialchars($paymentSubmissionError, ENT_QUOTES, 'UTF-8') ?>
+                                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                    </div>
+                                <?php endif; ?>
+
                                 <!-- Property Overview Banner -->
                                 <div class="d-flex align-items-center gap-3 p-2 p-sm-3 mb-3 bg-body-tertiary border rounded-3">
                                     <div class="rounded-3 overflow-hidden flex-shrink-0 border shadow-sm" style="width: 64px; height: 64px;">
@@ -666,7 +711,7 @@ $progressStages = [
                                     </div>
                                 </div>
 
-                                <!-- Status / Celebration Banner -->
+                                <!-- Status / Milestone Guidance Banner -->
                                 <?php if ($stage === 'completed'): ?>
                                     <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 p-3 bg-success-subtle border border-success-subtle rounded-3 mb-3">
                                         <div class="d-flex align-items-center gap-2">
@@ -680,29 +725,70 @@ $progressStages = [
                                             </div>
                                         </div>
                                     </div>
+                                <?php elseif ($stage === 'cancelled'): ?>
+                                    <div class="alert alert-secondary small py-2 mb-3 d-flex align-items-start gap-2" role="status">
+                                        <i class="bi bi-x-circle fs-5 text-secondary flex-shrink-0 mt-1"></i>
+                                        <div>
+                                            <strong>Transaction Cancelled:</strong>
+                                            This transaction tracking request was cancelled. If you wish to inquire again, feel free to submit a new inquiry or message our sales team.
+                                        </div>
+                                    </div>
+                                <?php elseif ($stage === 'viewing_requested'): ?>
+                                    <div class="alert alert-primary small py-2 mb-3 d-flex align-items-start gap-2" role="status">
+                                        <i class="bi bi-calendar-event fs-5 text-primary flex-shrink-0 mt-1"></i>
+                                        <div>
+                                            <strong>Step 1: Viewing Requested</strong>
+                                            <p class="mb-0 mt-1">Your request to view this property has been received. Your assigned Sales Agent will review availability and accept your viewing schedule shortly.</p>
+                                        </div>
+                                    </div>
+                                <?php elseif ($stage === 'reviewing_schedule'): ?>
+                                    <div class="alert alert-info small py-2 mb-3 d-flex align-items-start gap-2" role="status">
+                                        <i class="bi bi-calendar-check fs-5 text-info flex-shrink-0 mt-1"></i>
+                                        <div>
+                                            <strong>Step 2: Reviewing Schedule</strong>
+                                            <p class="mb-0 mt-1">Your Sales Agent has accepted your viewing request! Your agent is currently coordinating the viewing schedule details with you. You can chat or call your agent directly below.</p>
+                                        </div>
+                                    </div>
+                                <?php elseif ($stage === 'viewing_confirmed'): ?>
+                                    <div class="alert alert-success small py-2 mb-3 d-flex align-items-start gap-2" role="status">
+                                        <i class="bi bi-check-circle-fill fs-5 text-success flex-shrink-0 mt-1"></i>
+                                        <div>
+                                            <strong>Step 3: Viewing Approved &amp; Confirmed</strong>
+                                            <p class="mb-0 mt-1">Your property viewing is confirmed! Please meet your assigned Sales Agent at the scheduled date, time, and location.</p>
+                                        </div>
+                                    </div>
                                 <?php elseif (in_array($stage, ['viewing_completed', 'payment_in_process', 'document_verification', 'payment_confirmation'], true)): ?>
                                     <div class="alert alert-info small py-2 mb-3 d-flex align-items-start gap-2" role="status">
                                         <i class="bi bi-shield-check fs-5 text-primary flex-shrink-0 mt-1"></i>
                                         <div>
-                                            <strong>Viewing completed — Sales Agent processing in progress:</strong>
-                                            <?php if ($stage === 'payment_in_process'): ?>
+                                            <strong>
+                                                <?php if ($stage === 'viewing_completed'): ?>
+                                                    Step 4: Viewing Completed — Choose Payment Plan
+                                                <?php elseif ($stage === 'payment_in_process'): ?>
+                                                    Step 5: Payment Processing &amp; Reservation
+                                                <?php elseif ($stage === 'document_verification'): ?>
+                                                    Step 6: Legal &amp; Document Verification
+                                                <?php elseif ($stage === 'payment_confirmation'): ?>
+                                                    Step 7: Payment Confirmation &amp; Turnover Clearance
+                                                <?php endif; ?>
+                                            </strong>
+                                            <?php if ($stage === 'viewing_completed'): ?>
+                                                <p class="mb-0 mt-1">Your property viewing was successfully conducted! Please select your preferred payment scheme below so your agent can prepare the contract and reservation paperwork.</p>
+                                            <?php elseif ($stage === 'payment_in_process'): ?>
                                                 <?php if ($isSpotCash): ?>
-                                                    Your property viewing is complete. Your Sales Agent is processing your Spot Cash payment. Document verification is skipped for Spot Cash transactions, and your transaction advances directly to Payment Confirmation and deed preparation.
+                                                    <p class="mb-0 mt-1">Spot Cash selected! Document verification is skipped for Spot Cash transactions. Settle the balance to advance directly to final Deed of Absolute Sale (DOAS) preparation and turnover.</p>
                                                 <?php else: ?>
-                                                    Your property viewing is complete. Your Sales Agent is actively inspecting and recording payment and paperwork details.
+                                                    <p class="mb-0 mt-1">Payment processing is active. Settle your reservation deposit / down payment within the 7-day grace period. You can submit offline payment reports below for agent verification.</p>
                                                 <?php endif; ?>
                                             <?php elseif ($stage === 'document_verification'): ?>
-                                                Your Sales Agent is verifying required property legal documents, certificates, and clearance papers.
+                                                <p class="mb-0 mt-1">Your Sales Agent is actively verifying property title deeds (TCT/CCT), tax declarations, and government clearance papers.</p>
                                             <?php elseif ($stage === 'payment_confirmation'): ?>
-                                                Paperwork and payments have been verified. Your Sales Agent is finalizing transaction turnover.
-                                            <?php else: ?>
-                                                Your property viewing has concluded. Your Sales Agent is initiating the paperwork and payment processing.
+                                                <p class="mb-0 mt-1">All payments and legal paperwork have been verified. Your Sales Agent is finalizing deed notarization and scheduling turnover.</p>
                                             <?php endif; ?>
-                                            <div class="mt-1 text-dark fw-semibold">No action needed from you. Your Sales Agent will handle all remaining steps until the transaction is successfully completed.</div>
                                         </div>
                                     </div>
 
-                                    <!-- 7-Day Reservation & Legal Pathway Guidance (Requirement 5) -->
+                                    <!-- 7-Day Reservation & Legal Pathway Guidance -->
                                     <?php if (in_array($stage, ['viewing_completed', 'payment_in_process'], true)): ?>
                                         <div class="p-2 px-3 rounded-3 mb-3 bg-warning-subtle border border-warning small d-flex align-items-center justify-content-between flex-wrap gap-2">
                                             <div class="d-flex align-items-center gap-2">
@@ -725,7 +811,7 @@ $progressStages = [
                                                 Spot Cash / Full Payment selected. A notarized Deed of Absolute Sale (DOAS) will be prepared upon full settlement. <em>Note: Title transfer, Documentary Stamp Tax (DST), and registration fees are shouldered by the buyer as standard.</em>
                                             </div>
                                         </div>
-                                    <?php else: ?>
+                                    <?php elseif (!empty($tracking['paymentMethod'])): ?>
                                         <div class="p-2 px-3 rounded-3 mb-3 bg-info-subtle border border-info small">
                                             <div class="fw-bold text-primary d-flex align-items-center gap-1">
                                                 <i class="bi bi-file-earmark-text-fill"></i> Legal Pathway: Contract to Sell (CTS)
@@ -755,7 +841,7 @@ $progressStages = [
                                         </div>
                                         <div class="d-flex gap-2 flex-wrap">
                                             <?php
-                                            $hasSchedViewing = !empty($tracking['appointmentDate']) || in_array($stage, ['viewing_approved', 'viewing_completed', 'reservation_deposit', 'reservation_under_review', 'reservation_agreement', 'payment_in_process', 'payment_confirmation', 'completed'], true);
+                                            $hasSchedViewing = !empty($tracking['appointmentDate']) || in_array($stage, ['viewing_approved', 'viewing_confirmed', 'reviewing_schedule', 'viewing_completed', 'reservation_deposit', 'reservation_under_review', 'reservation_agreement', 'payment_in_process', 'payment_confirmation', 'completed'], true);
                                             ?>
                                             <button type="button" class="btn btn-sm btn-primary d-inline-flex align-items-center gap-1 shadow-sm" onclick="openDirectChat(<?= $transactionId ?>, '<?= addslashes(htmlspecialchars($tracking['title'], ENT_QUOTES, 'UTF-8')) ?>', '<?= addslashes(htmlspecialchars($tracking['agentName'], ENT_QUOTES, 'UTF-8')) ?>', <?= $hasSchedViewing ? 'true' : 'false' ?>)">
                                                 <span>💬 Chat with Agent</span>
@@ -786,10 +872,91 @@ $progressStages = [
                                     </div>
                                 <?php endif; ?>
 
-                                <!-- 3. Payment and Document / Paperwork -->
+                                <!-- Unified Payment & Financing Section -->
+                                <?php
+                                $currentSchemeKey = (string) ($tracking['paymentMethod'] ?? '');
+                                $allSchemes = property_transaction_payment_schemes();
+                                $currentSchemeInfo = $allSchemes[$currentSchemeKey] ?? null;
+                                $canChooseScheme = !in_array($stage, ['completed', 'cancelled'], true);
+                                ?>
                                 <div class="border rounded-3 p-3 bg-white mb-3 shadow-none">
+                                    <!-- 1. Overarching Financing Scheme -->
+                                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                                        <h4 class="h6 fw-bold mb-0 text-dark">
+                                            <i class="bi bi-wallet2 me-1 text-primary"></i> 1. Payment &amp; Financing Scheme
+                                        </h4>
+                                        <?php if ($currentSchemeInfo !== null): ?>
+                                            <span class="badge text-bg-success px-2 py-1"><?= htmlspecialchars($currentSchemeInfo['badge'], ENT_QUOTES, 'UTF-8') ?></span>
+                                        <?php else: ?>
+                                            <span class="badge text-bg-warning text-dark px-2 py-1">Action needed: Choose Scheme</span>
+                                        <?php endif; ?>
+                                    </div>
+
+                                    <?php if ($currentSchemeInfo !== null): ?>
+                                        <div class="p-3 bg-light rounded-3 border mb-2">
+                                            <div class="d-flex align-items-start gap-2">
+                                                <span class="fs-4"><?= $currentSchemeInfo['icon'] ?></span>
+                                                <div class="flex-grow-1">
+                                                    <div class="small text-muted text-uppercase fw-semibold" style="font-size: 0.7rem; letter-spacing: 0.5px;">Your Selected Financing Plan</div>
+                                                    <strong class="text-dark fs-6"><?= htmlspecialchars($currentSchemeInfo['label'], ENT_QUOTES, 'UTF-8') ?></strong>
+                                                    <p class="small text-muted mb-0 mt-1"><?= htmlspecialchars($currentSchemeInfo['desc'], ENT_QUOTES, 'UTF-8') ?></p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <?php if ($canChooseScheme): ?>
+                                            <div class="mb-2">
+                                                <button class="btn btn-sm btn-outline-secondary py-1 px-2" type="button" data-bs-toggle="collapse" data-bs-target="#changeSchemeCollapse<?= $transactionId ?>" aria-expanded="false">
+                                                    <i class="bi bi-pencil-square me-1"></i> Change Financing Plan
+                                                </button>
+                                            </div>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        <p class="small text-muted mb-3">
+                                            Choose how you plan to purchase this property. Your Sales Agent will coordinate the appropriate legal contract (e.g. Deed of Absolute Sale for Spot Cash, or Contract to Sell for Installment) based on your choice.
+                                        </p>
+                                    <?php endif; ?>
+
+                                    <?php if ($canChooseScheme): ?>
+                                        <div class="<?= $currentSchemeInfo !== null ? 'collapse mb-3' : 'mb-3' ?>" id="changeSchemeCollapse<?= $transactionId ?>">
+                                            <form method="POST" action="client_dashboard.php">
+                                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                                                <input type="hidden" name="transactionID" value="<?= $transactionId ?>">
+
+                                                <div class="d-grid gap-2 mb-3">
+                                                    <?php foreach ($allSchemes as $schemeKey => $scheme): ?>
+                                                        <label class="border rounded-3 p-3 bg-light d-flex align-items-start gap-3 position-relative <?= $currentSchemeKey === $schemeKey ? 'border-primary bg-primary-subtle' : '' ?>" style="cursor: pointer;">
+                                                            <input type="radio" name="paymentScheme" value="<?= htmlspecialchars($schemeKey, ENT_QUOTES, 'UTF-8') ?>" class="form-check-input mt-1 flex-shrink-0" <?= $currentSchemeKey === $schemeKey ? 'checked' : '' ?> required>
+                                                            <div>
+                                                                <div class="fw-bold text-dark d-flex align-items-center gap-2">
+                                                                    <span><?= $scheme['icon'] ?></span>
+                                                                    <span><?= htmlspecialchars($scheme['label'], ENT_QUOTES, 'UTF-8') ?></span>
+                                                                </div>
+                                                                <div class="small text-muted mt-1"><?= htmlspecialchars($scheme['desc'], ENT_QUOTES, 'UTF-8') ?></div>
+                                                            </div>
+                                                        </label>
+                                                    <?php endforeach; ?>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label class="form-label small fw-semibold mb-1" for="clientNote-<?= $transactionId ?>">Note for Sales Agent <span class="text-muted fw-normal">(optional)</span></label>
+                                                    <input type="text" id="clientNote-<?= $transactionId ?>" name="clientPaymentNote" class="form-control form-control-sm" maxlength="255" placeholder="e.g. Prefer 20% down payment, balance via bank transfer">
+                                                </div>
+
+                                                <button type="submit" name="choose_payment_scheme" class="btn btn-sm btn-primary fw-semibold px-3 py-2 shadow-sm">
+                                                    💾 Save Preferred Financing Plan
+                                                </button>
+                                            </form>
+                                        </div>
+                                    <?php endif; ?>
+
+                                    <hr class="my-3 text-secondary-subtle">
+
+                                    <!-- 2. Verified Payment Records & Offline Receipts -->
                                     <div class="d-flex justify-content-between align-items-center mb-2">
-                                        <h4 class="h6 fw-bold mb-0 text-dark"><i class="bi bi-credit-card me-1"></i> Payments &amp; Paperwork</h4>
+                                        <div>
+                                            <h5 class="h6 fw-bold mb-0 text-dark"><i class="bi bi-receipt me-1 text-secondary"></i> 2. Verified Payment Records &amp; Receipts</h5>
+                                            <div class="small text-muted" style="font-size: 0.75rem;">Official installments, down payments, and reservation deposits recorded for this property.</div>
+                                        </div>
                                         <?php if ($transactionPayments !== []): ?>
                                             <span class="badge text-bg-light border text-muted small"><?= count($transactionPayments) ?> record<?= count($transactionPayments) > 1 ? 's' : '' ?></span>
                                         <?php endif; ?>
@@ -830,8 +997,8 @@ $progressStages = [
                                     <?php endif; ?>
                                     <?php if ($canSubmitPayment): ?>
                                         <form method="POST" class="mt-3 p-3 border rounded-3 bg-light" data-confirm="Submit this offline payment report for staff verification? This does not transfer money.">
-                                            <h5 class="h6 fw-bold mb-2">Report a payment made</h5>
-                                            <p class="small text-muted mb-3">This records an offline payment for staff verification; it does not transfer money or verify a bank transaction.</p>
+                                            <h6 class="fw-bold mb-1 text-dark"><i class="bi bi-cloud-arrow-up me-1 text-primary"></i> Report an Offline Payment / Deposit</h6>
+                                            <p class="small text-muted mb-3" style="font-size: 0.78rem;">If you paid an installment or reservation deposit via bank wire, check, or cash deposit, report the details here for your agent to verify.</p>
                                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                                             <input type="hidden" name="transactionID" value="<?= $transactionId ?>">
                                             <input type="hidden" name="payment_submission_token" value="<?= htmlspecialchars($paymentSubmissionToken, ENT_QUOTES, 'UTF-8') ?>">
@@ -841,20 +1008,20 @@ $progressStages = [
                                                     <input id="client-payment-amount-<?= $transactionId ?>" type="number" name="paymentAmount" class="form-control form-control-sm" min="0.01" max="9999999999.99" step="0.01" required>
                                                 </div>
                                                 <div class="col-sm-6">
-                                                    <label class="form-label small fw-semibold mb-1" for="client-payment-method-<?= $transactionId ?>">Payment method</label>
+                                                    <label class="form-label small fw-semibold mb-1" for="client-payment-method-<?= $transactionId ?>">Remittance Channel</label>
                                                     <select id="client-payment-method-<?= $transactionId ?>" name="paymentMethod" class="form-select form-select-sm" required>
-                                                        <option value="">Choose method</option>
-                                                        <?php foreach (property_client_payment_methods() as $clientPaymentMethod): ?>
-                                                            <option value="<?= htmlspecialchars($clientPaymentMethod, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($clientPaymentMethod, ENT_QUOTES, 'UTF-8') ?></option>
-                                                        <?php endforeach; ?>
+                                                        <option value="">Choose channel</option>
+                                                        <option value="Bank Transfer">🏦 Bank Wire / Online Transfer</option>
+                                                        <option value="Cash">💵 Cash Deposit</option>
+                                                        <option value="Check">📝 Manager's Check / Cheque</option>
                                                     </select>
                                                 </div>
                                                 <div class="col-12">
-                                                    <label class="form-label small fw-semibold mb-1" for="client-payment-reference-<?= $transactionId ?>">Reference / receipt number (optional)</label>
-                                                    <input id="client-payment-reference-<?= $transactionId ?>" type="text" name="referenceNumber" class="form-control form-control-sm" maxlength="100">
+                                                    <label class="form-label small fw-semibold mb-1" for="client-payment-reference-<?= $transactionId ?>">Deposit Slip / Reference / OR # (optional)</label>
+                                                    <input id="client-payment-reference-<?= $transactionId ?>" type="text" name="referenceNumber" class="form-control form-control-sm" maxlength="100" placeholder="e.g. Bank Ref # or Branch Deposit Receipt">
                                                 </div>
                                             </div>
-                                            <button type="submit" name="submit_client_payment" value="1" class="btn btn-sm btn-primary mt-3">Submit for verification</button>
+                                            <button type="submit" name="submit_client_payment" value="1" class="btn btn-sm btn-primary mt-3">Submit Receipt for Staff Verification</button>
                                         </form>
                                     <?php endif; ?>
                                 </div>
@@ -936,36 +1103,32 @@ $progressStages = [
         <div class="text-muted">You do not have any viewing requests yet. <a href="index.php">Browse available properties</a>.</div>
     <?php endif; ?>
 </section>
+</div>
+</div>
+</div>
 
-<section class="card p-3 p-lg-4" id="client-inquiries">
-    <div class="kq-panel-header mb-3">
-        <div>
-            <div class="page-eyebrow">Messages</div>
-            <h2 class="h4 fw-bold mb-0">Your property inquiries</h2>
-        </div>
-    </div>
-    <?php if ($inquiryRows !== []): ?>
-        <div class="table-responsive">
-            <table class="table align-middle mb-0">
-                <thead><tr><th>Property</th><th>Your message</th><th>Sent</th><th>Status</th></tr></thead>
-                <tbody>
-                <?php foreach ($inquiryRows as $inquiry): ?>
-                    <tr>
-                        <td class="fw-semibold"><?= htmlspecialchars($inquiry['title'], ENT_QUOTES, 'UTF-8') ?></td>
-                        <td class="text-break"><?= htmlspecialchars($inquiry['message'], ENT_QUOTES, 'UTF-8') ?></td>
-                        <td><?= htmlspecialchars($inquiry['createdAt'], ENT_QUOTES, 'UTF-8') ?></td>
-                        <td><span class="badge rounded-pill text-bg-light"><?= htmlspecialchars($inquiry['status'], ENT_QUOTES, 'UTF-8') ?></span></td>
-                    </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    <?php else: ?>
-        <div class="text-muted">No property inquiries yet.</div>
-    <?php endif; ?>
-</section>
-</div>
-</div>
-</div>
+<script>
+// Session keepalive to prevent dashboard timeout while viewing
+setInterval(function() {
+    fetch('chat_api.php?action=heartbeat', { cache: 'no-store', credentials: 'same-origin' }).catch(function(){});
+}, 300000);
+
+// Auto-reopen tracking modal when confirming actions or encountering validation feedback
+document.addEventListener('DOMContentLoaded', function() {
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const openModalId = urlParams.get('open_modal') || '<?= (int)($_POST['transactionID'] ?? 0) ?>';
+        if (openModalId && parseInt(openModalId, 10) > 0) {
+            const modalEl = document.getElementById('trackingModal' + openModalId);
+            if (modalEl && typeof bootstrap !== 'undefined') {
+                const modalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
+                modalInstance.show();
+            }
+        }
+    } catch (e) {
+        console.warn('Could not auto-open tracking modal:', e);
+    }
+});
+</script>
 
 <?php include 'includes/footer.php'; ?>

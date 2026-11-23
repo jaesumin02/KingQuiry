@@ -3,6 +3,144 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-23 — Client Menu Contrast Fix, Messenger Chat Send Icon & Reverted Market Analysis
+
+- **Client Menu / Portal Sidebar Text Contrast Fix**:
+  - Removed the redundant `"Notifications"` link from the **Client Menu** sidebar (`#client-navigation` in [client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php)), keeping only the active dashboard sections (*Overview*, *Transaction tracking*, and *Viewing requests*).
+  - Resolved the unreadable dark blue text bug on inactive links in the **Client Menu** (`#client-navigation` in [client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php)) where `"Transaction tracking"` and `"Viewing requests"` turned dark blue on a dark slate background.
+  - In [assets/js/app.js](file:///c:/xampp/htdocs/kingquiry/assets/js/app.js), stopped applying `.btn-outline-primary` and `.btn-primary` button classes to `.kq-portal-nav` links (restricting button styling to the admin dashboard nav).
+  - In [assets/css/style.css](file:///c:/xampp/htdocs/kingquiry/assets/css/style.css), [client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php), and [agent_dashboard.php](file:///c:/xampp/htdocs/kingquiry/agent_dashboard.php), enforced high-contrast `#f1f5f9` text and crisp background styling across all portal sidebar links (`:link`, `:visited`, `:hover`, and `[aria-current="location"]`).
+- **Messenger Chatbox Send Button Icon**:
+  - Replaced the plaintext unicode plane (`✈`) on the chatbox submit button in [includes/direct_chat_modal.php](file:///c:/xampp/htdocs/kingquiry/includes/direct_chat_modal.php) with the modern solid Messenger-style send arrow SVG (`<svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>`).
+- **Client Top Navigation Cleanliness**:
+  - Removed the extra `"Transaction Tracking"` link from the client top navigation bar in [includes/header.php](file:///c:/xampp/htdocs/kingquiry/includes/header.php), preserving a clean, dedicated top bar for buyers (`Home`, `Resources & Guides`, `Dashboard`, `Contact Us`, `Chat an Agent`).
+- **Reverted Comparative Market Analysis Features**:
+  - Undid the automated comparative market analysis in [chat_api.php](file:///c:/xampp/htdocs/kingquiry/chat_api.php) per request, removing the `$isAnalysisQuery` regex and automated comparative valuation message generator.
+  - Removed the `"Ask for Comparative Market Analysis"` button from the Direct Communication Card on [property_detail.php](file:///c:/xampp/htdocs/kingquiry/property_detail.php), retaining only the primary `"Message an Agent about this property"` action.
+  - Removed the `📊 Market analysis` chip and `openPropertyChatWithPrompt()` function from [includes/direct_chat_modal.php](file:///c:/xampp/htdocs/kingquiry/includes/direct_chat_modal.php).
+- **Price Consistency & Rounding Precision Fixes (Preserved)**:
+  - Preserved whole-number pricing across appraisal and acquisition tools:
+    - In [property_detail.php](file:///c:/xampp/htdocs/kingquiry/property_detail.php), the **Land Estimation & Acquisition Calculator** calculation engine remains locked to the canonical asking price (`₱2,650,000.00` and `₱530,000.00` down payment), eliminating fractional cent drift caused by rate multiplication (`28 * 94,642.86`).
+- **Navigation Polish & Active Highlight Robustness (Preserved)**:
+  - Preserved enhanced `$currentPageName` detection in [includes/header.php](file:///c:/xampp/htdocs/kingquiry/includes/header.php) using URL path parsing so active navigation pills accurately distinguish `index.php`, `client_dashboard.php`, `agent_dashboard.php`, and `transaction_tracking.php`.
+  - Retained `#appointments` scroll anchor in [agent_dashboard.php](file:///c:/xampp/htdocs/kingquiry/agent_dashboard.php).
+
+## 2026-11-23 — Modal Persistence on Confirmation, Navbar Active State Highlights & POV Alignment
+
+- **Feature Removals (Client Inquiries Table & Comparable Listing Analysis)**:
+  - Removed the legacy `"Your property inquiries"` section (`#client-inquiries`) from [client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php), removing redundant static inquiry rows in favor of the interactive **Transaction tracking** pipeline.
+  - Removed the Inquiries sidebar link and summary KPI metric card from [client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php), neatly balancing the remaining 5 client metric cards.
+  - Removed the `"Comparable listing analysis / Indicative market estimate"` card from [property_detail.php](file:///c:/xampp/htdocs/kingquiry/property_detail.php) to streamline property details.
+- **Role-Scoped Property Actions (Hiding "Message Agent" for Staff Accounts)**:
+  - Addressed the issue where logged-in Sales Agents and Admins saw client-facing `"Message Agent"` buttons on property cards on [index.php](file:///c:/xampp/htdocs/kingquiry/index.php).
+  - In [index.php](file:///c:/xampp/htdocs/kingquiry/index.php), conditionally hide the `"Message Agent"` button on Featured Properties and listing cards for Sales Agents and Admins, rendering a full-width `"View property"` / `"View details"` button instead.
+  - In [property_detail.php](file:///c:/xampp/htdocs/kingquiry/property_detail.php), replaced buyer-facing cards ("Message an Agent", "Sign in with a client account to request a viewing", and "Sign in with a client account to send an inquiry") with a dedicated **Staff View Portal Card** featuring quick actions to the Transaction Pipeline, Scheduled Viewings, and Listing Management.
+  - In [chat_api.php](file:///c:/xampp/htdocs/kingquiry/chat_api.php), added authorization guards preventing staff accounts from calling `initiate_property_chat`.
+- **Modal Persistence on Confirmation (No Drop-Back to Front Page)**:
+  - Fixed client and agent form submissions inside modals closing and returning users to the dashboard root / transaction table:
+    - In [client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php), updated `submit_client_payment` and `choose_payment_scheme` redirects to append `?open_modal=<ID>#transaction-tracking`.
+    - In [transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/transaction_tracking.php), updated `update_transaction`, `record_agent_payment`, `submit_payment_review`, `assign_agent_to_transaction`, and `claim_transaction` redirects to append `&open_modal=<ID>#transactions`.
+    - Added auto-open scripts listening on `open_modal` URL parameters or validation error states to immediately re-launch the corresponding modal (`#trackingModal<ID>` or `#recordNextModal<ID>`) using Bootstrap 5's modal API.
+    - Added inline alert banners rendered directly at the top of each modal body to show confirmation success (`alert-success`) or validation feedback (`alert-danger`) right where the action occurred.
+- **Top Navigation Active State & Logo Brand Fix**:
+  - In [includes/header.php](file:///c:/xampp/htdocs/kingquiry/includes/header.php):
+    - Removed the extraneous `<span class="kq-navbar-wordmark">Home</span>` from `.navbar-brand`, eliminating the confusing permanently white "Home" label beside the logo.
+    - Added a dedicated, properly routed `Home` nav item linking to `index.php`.
+    - Updated active navigation highlighting: `Home` is highlighted only when on `index.php`, `Dashboard` is highlighted when on `client_dashboard.php` or `agent_dashboard.php`, and `Transaction Tracking` is highlighted on `transaction_tracking.php`.
+    - Enhanced nav-link CSS: inactive links are cleanly muted (`rgba(255,255,255,0.72)`), while `.active` links feature bold white text, translucent background container, and subtle gold accent indicators (`var(--kq-gold)`).
+- **Simultaneous Green/Red Banner Elimination & Direct Chat POV Alignment**:
+  - In [transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/transaction_tracking.php), strictly enforced that whenever `$formError` is set, `$formSuccess` is emptied, preventing simultaneous green and red alert banners from appearing at the same time.
+  - In [chat_api.php](file:///c:/xampp/htdocs/kingquiry/chat_api.php) and [includes/direct_chat_modal.php](file:///c:/xampp/htdocs/kingquiry/includes/direct_chat_modal.php), aligned the point-of-view (POV) for automated out-of-office messages: rendered on the right (outgoing staff bubble with `⚡ Automated Reply` badge) from the agent's POV, and on the left (incoming bubble with agent details) from the client's POV.
+
+## 2026-11-23 — Client Payment Scheme Selection & Milestone-Specific Transaction Interfaces
+
+- **Client-Driven Payment Scheme Selection (`paymentMethod`)**:
+  - Implemented `property_transaction_payment_schemes()` in [includes/transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/includes/transaction_tracking.php) defining the 4 real estate financing methods:
+    1. **⚡ Spot Cash (Full Payment)**: Full payment up-front, fastest property turnover, immediate Deed of Absolute Sale (DOAS) execution, expedited document verification.
+    2. **🏦 Bank Financing / Bank Transfer**: Initial down payment + bank loan/wire, standard title deed/clearance verification.
+    3. **📝 Installment (Post-Dated Checks)**: Reservation deposit + structured monthly post-dated checks under Contract to Sell (CTS).
+    4. **🤝 Paperwork (Face-to-face Agreement)**: Sales office coordination with assigned agent for customized terms and official receipts.
+  - Added dedicated client-side selection UI in [client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php):
+    - Interactive card allowing clients to select or switch their preferred payment scheme and include an optional message for their agent.
+    - Added backend handler `set_property_transaction_payment_method()` in [includes/transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/includes/transaction_tracking.php) which atomically updates `property_transactions.paymentMethod`, logs a timeline event, and notifies the assigned agent.
+- **Distinct, Functional Milestone Interfaces in Agent Tracking**:
+  - Replaced the single generic advance dropdown in [transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/transaction_tracking.php) with **tailored, milestone-specific interfaces**:
+    - **Step 1: Viewing Requested**: Scoped decision card to Accept viewing (`reviewing_schedule`) or Cancel.
+    - **Step 2: Reviewing Schedule**: Displays proposed schedule, Direct Chat shortcut, and actions to Confirm Schedule (`viewing_confirmed`) or mark already conducted (`viewing_completed`).
+    - **Step 3: Conduct Viewing**: Highlights meeting time/location and provides a tour completion confirmation (`viewing_completed`) with buyer feedback logging.
+    - **Step 4: Reservation & Terms Agreement**: Displays the buyer's selected payment scheme and includes dedicated reservation deposit recording (amount, scheme, receipt #) advancing to `payment_in_process`.
+    - **Step 5: Payment Processing & Accounting**: Displays financial summary of verified payments, payment recording form, and dynamic branch routing (`payment_confirmation` for Spot Cash, `document_verification` for Installment).
+    - **Step 6: Legal & Document Verification**: Features an interactive compliance checklist (TCT/CCT Title, Real Property Tax Clearance, IDs/TIN, signed CTS) and document findings logger advancing to `payment_confirmation`.
+    - **Step 7: Final Payment Confirmation & Turnover**: Financial reconciliation summary with required verified sale price field advancing to `completed` and marking property as **Sold**.
+    - **Closed Stages**: Celebratory summary for `completed` and cancellation notices for `cancelled`.
+- **Comprehensive Milestone Guidance for Clients**:
+  - Updated [client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php) with milestone-specific status alerts across all 9 stages, informing clients in real time about their current transaction status and what to expect next.
+
+## 2026-11-23 — Reviewing Schedule Milestone, Duplicate Claim Prevention & Notification Resilience
+
+- **"Reviewing Schedule" Milestone (`reviewing_schedule`) & Duplicate Viewing Resolution**:
+  - Introduced the dedicated milestone `'reviewing_schedule'` ("Reviewing schedule") between `'viewing_requested'` and `'viewing_confirmed'` across [includes/transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/includes/transaction_tracking.php), [client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php), [transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/transaction_tracking.php), [admin_dashboard.php](file:///c:/xampp/htdocs/kingquiry/admin_dashboard.php), and [agent_dashboard.php](file:///c:/xampp/htdocs/kingquiry/agent_dashboard.php).
+  - Fixed the duplicate `'Viewing requested'` timeline entry: claiming an unassigned transaction via `claim_transaction` in [transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/transaction_tracking.php) now immediately transitions the stage to `reviewing_schedule` and logs an event signed with `"Viewing accepted by [agent name]"`.
+  - Streamlined the "Record Next Step" modal on [transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/transaction_tracking.php):
+    - For `viewing_requested`: displays `✓ Accept viewing (Reviewing schedule)` and `❌ Cancel viewing`, advancing to `reviewing_schedule` with note `"Viewing accepted by [agent name]"`.
+    - For `reviewing_schedule`: displays dedicated guidance and allowed next steps: `📅 1. Confirm viewing schedule (Schedule approved)`, `✓ 2. Mark viewing as completed`, and `❌ Cancel Transaction`.
+- **Simultaneous Success/Error Banner Suppression**:
+  - In [transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/transaction_tracking.php), guaranteed that any `$formError` suppresses `$formSuccess` so conflicting green and red banners never render simultaneously when resubmitting or retrying.
+  - Set explicit `action="transaction_tracking.php"` on modal forms to prevent inheriting stale query strings.
+- **MySQLi Prepared Statement & Query Buffer Hardening**:
+  - Closed all unclosed prepared statements and buffered agent query results in [includes/notifications.php](file:///c:/xampp/htdocs/kingquiry/includes/notifications.php) (`create_user_notification`, `notify_agents_new_viewing`, `notify_agents_new_inquiry`, `get_user_notifications`, `mark_notification_as_read`, etc.), eliminating MySQLi `Commands out of sync; you can't run this command now` errors during transaction updates and notification dispatch.
+
+## 2026-11-23 — Initial Viewing Request Workflow, Scoped Agent Viewing Decisions & Property Photo Integration
+
+- **First-Time Client Viewing Initiation (`viewing_requested`)**:
+  - Configured initial property interactions on the client side (direct chat initiation via `initiate_property_chat` in [chat_api.php](file:///c:/xampp/htdocs/kingquiry/chat_api.php) and inquiries in [includes/transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/includes/transaction_tracking.php)) to start immediately in the `viewing_requested` ("Viewing requested") transaction stage.
+  - Automatically records the initial event timeline with note `"Client wants to view the property."`, setting clear expectations for both client and sales agent.
+- **Scoped Agent Viewing Decision in Transaction Tracking**:
+  - Tailored the "Record Next Step" modal on [transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/transaction_tracking.php) when a transaction is in `viewing_requested`:
+    - Removed redundant guidance alert text (`"Update transaction to the next verified milestone"` / `"The client wants to view this property. Select 'Accept viewing' or 'Cancel Viewing'"`) so the agent is presented directly with the action interface.
+    - Provides **strictly two action options**: `✓ Accept viewing` (`viewing_confirmed`) and `❌ Cancel Viewing` (`cancelled`).
+    - Includes a dedicated `Additional Message / Note (Optional)` input field with helper text confirming that on acceptance, the update will be signed as `"Viewing accepted by [agent name]"`.
+    - Completely suppresses confusing payment amount, payment method, payment reference, and CTS/DOAS legal reservation fields during the viewing request stage.
+- **Explicit Agent Attribution for Viewing Acceptance**:
+  - In [includes/transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/includes/transaction_tracking.php), `advance_property_transaction()` automatically formats the milestone event note as `"Viewing accepted by [agent name]"` (or `"Viewing accepted by [agent name]: [custom note]"` when additional instructions are provided), recording the update in `property_transaction_events`, client timeline updates, and client notifications.
+- **Property Photo Thumbnails in Transaction Tracking**:
+  - Integrated property representative photos into [transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/transaction_tracking.php):
+    - Selected `p.image` and `p.propertyType` in `$transactionsSql` and loaded [includes/property_images.php](file:///c:/xampp/htdocs/kingquiry/includes/property_images.php).
+    - Added responsive 64x64px rounded image thumbnail with `property_representative_image()` category fallback in the `Client / property` table column.
+    - Added property image banner inside the "Record Next Step" modal overview card for instant visual confirmation.
+- **Database Statement Synchronization & Viewing Confirmation Resilience**:
+  - Resolved `mysqli_sql_exception: Commands out of sync; you can't run this command now` by strictly closing prepared statements immediately after execution in `assert_staff_transaction_access()`, `advance_property_transaction()`, and `get_verified_transaction_payment_total()` in [includes/transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/includes/transaction_tracking.php).
+  - Updated `advance_property_transaction()` so `viewing_confirmed` succeeds for both appointment-booked transactions and chat/inquiry-initiated transactions without requiring an existing appointment record.
+  - Automatically synchronizes sales agent assignments on viewing approval and marks linked appointments as `Approved` or `Cancelled`.
+
+## 2026-11-23 — Agent Presence Tracking, Quick Ask Auto-Replies, Session Lifespan Resilience & Chat Alignment
+
+- **Agent Online/Offline Presence & Live Status Indicators**:
+  - Added user presence tracking columns (`is_online`, `availability_status`, `last_seen_at`) to the `users` table via `ensure_user_presence_columns()` in [includes/auth.php](file:///c:/xampp/htdocs/kingquiry/includes/auth.php).
+  - Integrated live presence toggle controls:
+    - Dedicated presence toggle pill button in the top navbar ([includes/header.php](file:///c:/xampp/htdocs/kingquiry/includes/header.php)) for logged-in Sales Agents (`🟢 Online` / `⚪ Offline`).
+    - Status badge and action toggle card in [agent_dashboard.php](file:///c:/xampp/htdocs/kingquiry/agent_dashboard.php) with instant feedback and API synchronization via `chat_api.php?action=toggle_presence` and `action=set_presence`.
+  - Added dynamic agent presence indicator badge (`🟢 Online` / `⚪ Offline`) directly inside the direct chat modal header ([includes/direct_chat_modal.php](file:///c:/xampp/htdocs/kingquiry/includes/direct_chat_modal.php)), informing clients in real time whether their assigned agent is available for live conversation or away.
+- **Universal Quick Ask Automated Replies & Offline-Only Chat Fallback**:
+  - In [chat_api.php](file:///c:/xampp/htdocs/kingquiry/chat_api.php), guaranteed that all Quick Ask FAQ inquiries (`📅 Viewing`, `💰 Payment terms`, `📄 Required docs`, `📍 Location`) **always trigger an immediate automated reply** with property details:
+    - *Agent Online*: Provides the property information and informs the client that their assigned agent is currently online to coordinate schedules or provide custom computations.
+    - *Agent Offline*: Provides the property information and informs the client that their assigned agent is away/offline and has been notified.
+  - Restricted general automated replies (e.g., greetings for `hehe`, `hello`) to trigger **only when the agent is offline**. When the agent is online, generic bot replies are suppressed so live human conversation flows naturally without bot interference.
+- **Dual-Perspective (POV) Automated Message Alignment**:
+  - Dynamically aligns automated messages based on viewer role (`$isMe = $isAutomated ? !$isClient : ($senderId === $currentUserId)`):
+    - **From the Agent's POV**: Automated replies are sent on behalf of the agent, rendering on the **Agent's side (right)** with the `⚡ Automated Reply` badge and royal blue bubble.
+    - **From the Client's POV**: Automated replies represent incoming agent communications, rendering on the **Agent's side (left)** with the `⚡ Automated` badge and white surface bubble.
+  - Guarded automated reply fallback attribution so bot messages are never assigned to the client's own user ID.
+- **Session Timeout Resolution & Authentication Resilience**:
+  - Resolved the `"You must be signed in to use the messaging service."` (HTTP 401) error caused by premature session expiration.
+  - Extended session inactivity timeout in [includes/auth.php](file:///c:/xampp/htdocs/kingquiry/includes/auth.php) from 30 minutes (`1800s`) to **24 hours (`86400s`)** in development/test (and 8 hours in production), matching `session.gc_maxlifetime`.
+  - Hardened `kq_sync_session_user()` in [includes/auth.php](file:///c:/xampp/htdocs/kingquiry/includes/auth.php) to protect active user sessions against destruction on transient database lookup errors.
+  - Added automatic 5-minute background session keepalive intervals on [client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php) and [agent_dashboard.php](file:///c:/xampp/htdocs/kingquiry/agent_dashboard.php) to maintain session freshness while viewing dashboard tabs.
+  - Enhanced [includes/direct_chat_modal.php](file:///c:/xampp/htdocs/kingquiry/includes/direct_chat_modal.php) with graceful session expiration handling: stops polling on 401, alerts `"Your session has expired. Please sign in again."`, and redirects to `client_login.php`.
+- **JSON API Normalization & Error Alert Suppression**:
+  - Standardized JSON responses in [chat_api.php](file:///c:/xampp/htdocs/kingquiry/chat_api.php) using `kq_json_send()` with output buffer clearing (`ob_end_clean()`) to eliminate stray PHP warning outputs.
+  - Implemented `kqSafeJson()` regex fallback parser in [includes/direct_chat_modal.php](file:///c:/xampp/htdocs/kingquiry/includes/direct_chat_modal.php) to eliminate `"Server response error (200)."` alert dialogs.
+
 ## 2026-11-22 — Dynamic Viewing Quick Ask Suppression & Property-Level Direct Agent Chat
 
 - **Dynamic Viewing Quick Ask Suppression**:

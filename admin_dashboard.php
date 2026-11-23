@@ -427,6 +427,7 @@ $adminStageLabels = function_exists('property_transaction_stages') ? property_tr
     'inquiry_received' => 'Inquiry Received',
     'contacting_client' => 'Contacting Client',
     'viewing_requested' => 'Viewing Requested',
+    'reviewing_schedule' => 'Reviewing Schedule',
     'viewing_confirmed' => 'Viewing Approved',
     'viewing_completed' => 'Viewing Completed',
     'payment_in_process' => 'Payment In Process',

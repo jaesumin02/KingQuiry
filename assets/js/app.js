@@ -123,12 +123,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (document.getElementById(sectionId)) {
                     navigation.querySelectorAll('a[aria-current="location"], a.active').forEach((link) => {
                         link.removeAttribute('aria-current');
-                        link.classList.remove('active', 'btn-primary');
-                        link.classList.add('btn-outline-primary');
+                        link.classList.remove('active');
+                        if (navigation.classList.contains('admin-nav')) {
+                            link.classList.remove('btn-primary');
+                            link.classList.add('btn-outline-primary');
+                        }
                     });
                     target.setAttribute('aria-current', 'location');
-                    target.classList.add('active', 'btn-primary');
-                    target.classList.remove('btn-outline-primary');
+                    target.classList.add('active');
+                    if (navigation.classList.contains('admin-nav')) {
+                        target.classList.add('btn-primary');
+                        target.classList.remove('btn-outline-primary');
+                    }
                 }
             }
 
@@ -631,3 +637,55 @@ function fallbackCopy(text, callback) {
     }
     document.body.removeChild(textarea);
 }
+
+/**
+ * Global handler for Sales Agent presence toggle in top navbar
+ */
+window.kqToggleHeaderAgentStatus = async function() {
+    const btn = document.getElementById('kqHeaderAgentStatusBtn');
+    const text = document.getElementById('kqHeaderStatusText');
+    const dot = document.getElementById('kqHeaderStatusDot');
+    if (!btn) return;
+
+    btn.disabled = true;
+    try {
+        const resp = await fetch('chat_api.php?action=toggle_presence', {
+            method: 'POST',
+            credentials: 'same-origin'
+        });
+        const raw = await resp.text();
+        let data = null;
+        try {
+            data = JSON.parse(raw);
+        } catch (e) {
+            const m = raw.match(/\{[\s\S]*\}/);
+            if (m) data = JSON.parse(m[0]);
+        }
+        if (data && data.ok) {
+            const isOnline = Boolean(data.is_online);
+            if (isOnline) {
+                btn.className = 'btn btn-sm rounded-pill fw-semibold shadow-sm d-inline-flex align-items-center gap-1 btn-outline-success text-success bg-success-subtle';
+                if (dot) dot.textContent = '🟢';
+                if (text) text.textContent = 'Online';
+            } else {
+                btn.className = 'btn btn-sm rounded-pill fw-semibold shadow-sm d-inline-flex align-items-center gap-1 btn-outline-secondary text-secondary bg-body';
+                if (dot) dot.textContent = '⚪';
+                if (text) text.textContent = 'Offline';
+            }
+            const dashBtn = document.getElementById('agentLiveStatusBtn');
+            if (dashBtn) {
+                dashBtn.className = isOnline ? 'btn btn-sm rounded-pill fw-bold d-inline-flex align-items-center gap-1 btn-success' : 'btn btn-sm rounded-pill fw-bold d-inline-flex align-items-center gap-1 btn-outline-secondary';
+                const dashLabel = document.getElementById('agentLiveStatusLabel');
+                const dashDot = document.getElementById('agentLiveStatusDot');
+                const dashHint = document.getElementById('agentLiveStatusHint');
+                if (dashLabel) dashLabel.textContent = isOnline ? 'Online (Live)' : 'Offline (Away)';
+                if (dashDot) dashDot.textContent = isOnline ? '🟢' : '⚪';
+                if (dashHint) dashHint.textContent = isOnline ? 'Clients can message you live in real time.' : 'Automated chat replies are active.';
+            }
+        }
+    } catch (err) {
+        console.error('Failed to toggle agent presence from header:', err);
+    } finally {
+        btn.disabled = false;
+    }
+};

@@ -33,6 +33,7 @@ function send_property_email_log(mysqli $conn, int $userId, string $subject, str
     $userStmt->bind_param('i', $userId);
     $userStmt->execute();
     $user = $userStmt->get_result()->fetch_assoc();
+    $userStmt->close();
     if (!$user || empty($user['email'])) {
         return false;
     }
@@ -108,6 +109,7 @@ function create_user_notification(
     );
     $stmt->bind_param('issss', $userId, $title, $message, $link, $type);
     $saved = $stmt->execute();
+    $stmt->close();
 
     // Also dispatch email log
     send_property_email_log($conn, $userId, $title, $message);
@@ -155,6 +157,7 @@ function notify_agents_new_viewing(
     $infoStmt->bind_param('ii', $propertyId, $clientId);
     $infoStmt->execute();
     $info = $infoStmt->get_result()->fetch_assoc();
+    $infoStmt->close();
 
     $propertyTitle = (string) ($info['propertyTitle'] ?? 'Requested Property');
     $clientName = (string) ($info['clientName'] ?? 'A Client');
@@ -181,9 +184,12 @@ function notify_agents_new_viewing(
         return false;
     }
 
+    $agents = $agentRes->fetch_all(MYSQLI_ASSOC);
+    $agentRes->free();
+
     $agentCount = 0;
     $allNotificationsSaved = true;
-    while ($agent = $agentRes->fetch_assoc()) {
+    foreach ($agents as $agent) {
         $agentCount++;
         $agentId = (int) $agent['userID'];
         if (!create_user_notification($conn, $agentId, $notifTitle, $notifMessage, $link, 'viewing_requested')) {
@@ -212,6 +218,7 @@ function notify_agents_new_inquiry(
     $infoStmt->bind_param('ii', $propertyId, $clientId);
     $infoStmt->execute();
     $info = $infoStmt->get_result()->fetch_assoc();
+    $infoStmt->close();
 
     $propertyTitle = (string) ($info['propertyTitle'] ?? 'Requested Property');
     $clientName = (string) ($info['clientName'] ?? 'A Client');
@@ -236,9 +243,12 @@ function notify_agents_new_inquiry(
         return false;
     }
 
+    $agents = $agentRes->fetch_all(MYSQLI_ASSOC);
+    $agentRes->free();
+
     $agentCount = 0;
     $allNotificationsSaved = true;
-    while ($agent = $agentRes->fetch_assoc()) {
+    foreach ($agents as $agent) {
         $agentCount++;
         $agentId = (int) $agent['userID'];
         if (!create_user_notification($conn, $agentId, $notifTitle, $notifMessage, $link, 'inquiry_received')) {
@@ -263,7 +273,9 @@ function get_user_notifications(mysqli $conn, int $userId, int $limit = 20): arr
     );
     $stmt->bind_param('ii', $userId, $limit);
     $stmt->execute();
-    return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $result = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+    return $result;
 }
 
 function get_user_unread_notification_count(mysqli $conn, int $userId): int
@@ -278,6 +290,7 @@ function get_user_unread_notification_count(mysqli $conn, int $userId): int
     $stmt->bind_param('i', $userId);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
     return (int) ($row['unreadCount'] ?? 0);
 }
 
@@ -291,7 +304,9 @@ function mark_notification_as_read(mysqli $conn, int $notificationId, int $userI
          WHERE notificationID = ? AND userID = ?'
     );
     $stmt->bind_param('ii', $notificationId, $userId);
-    return $stmt->execute();
+    $result = $stmt->execute();
+    $stmt->close();
+    return $result;
 }
 
 function mark_all_notifications_as_read(mysqli $conn, int $userId): bool
@@ -304,5 +319,7 @@ function mark_all_notifications_as_read(mysqli $conn, int $userId): bool
          WHERE userID = ? AND isRead = 0'
     );
     $stmt->bind_param('i', $userId);
-    return $stmt->execute();
+    $result = $stmt->execute();
+    $stmt->close();
+    return $result;
 }

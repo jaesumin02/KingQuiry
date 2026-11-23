@@ -16,6 +16,14 @@ if (!has_valid_csrf_token()) {
     exit('Your session expired. Refresh and try again.');
 }
 
+$logoutUserId = (int) ($_SESSION['user']['userID'] ?? 0);
+if ($logoutUserId > 0) {
+    require_once 'config/db.php';
+    if (isset($conn) && function_exists('update_user_presence')) {
+        update_user_presence($conn, $logoutUserId, false, 'offline');
+    }
+}
+
 $_SESSION = [];
 session_destroy();
 

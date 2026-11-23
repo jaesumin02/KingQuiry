@@ -69,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             try {
                 update_appointment_tracking_status($conn, (int) $appointmentID, $newStatus, $currentAgentId);
-                header('Location: agent_dashboard.php?updated=1');
+                header('Location: agent_dashboard.php?updated=1#appointments');
                 exit();
             } catch (InvalidArgumentException $exception) {
                 $statusError = $exception->getMessage();
@@ -239,6 +239,7 @@ $agentStageLabels = function_exists('property_transaction_stages') ? property_tr
     'inquiry_received' => 'Inquiry Received',
     'contacting_client' => 'Contacting Client',
     'viewing_requested' => 'Viewing Requested',
+    'reviewing_schedule' => 'Reviewing Schedule',
     'viewing_confirmed' => 'Viewing Approved',
     'viewing_completed' => 'Viewing Completed',
     'payment_in_process' => 'Payment In Process',
@@ -338,6 +339,37 @@ include 'includes/header.php';
         background: #f4f7fb;
     }
 
+    /* Force high-contrast crisp white typography on Sales Agent Menu portal sidebar */
+    .kq-portal-sidebar .kq-portal-nav a,
+    .kq-portal-sidebar .kq-portal-nav a:link,
+    .kq-portal-sidebar .kq-portal-nav a:visited {
+        display: flex;
+        min-height: 42px;
+        align-items: center;
+        padding: 0.55rem 0.85rem;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        border-radius: 0.65rem;
+        background: #1e323a !important;
+        color: #f1f5f9 !important;
+        font-size: 0.9rem;
+        font-weight: 600;
+        text-decoration: none !important;
+    }
+    .kq-portal-sidebar .kq-portal-nav a:hover,
+    .kq-portal-sidebar .kq-portal-nav a:focus,
+    .kq-portal-sidebar .kq-portal-nav a:focus-visible {
+        border-color: rgba(255, 255, 255, 0.35) !important;
+        background: #2b4652 !important;
+        color: #ffffff !important;
+    }
+    .kq-portal-sidebar .kq-portal-nav a[aria-current="location"],
+    .kq-portal-sidebar .kq-portal-nav a.active {
+        border-color: #d9a74a !important;
+        background: #1b4d6e !important;
+        color: #ffffff !important;
+        box-shadow: inset 0 -2px 0 #d9a74a, 0 0 0 1px rgba(217, 167, 74, 0.35) !important;
+    }
+
     @media (max-width: 767.98px) {
         .kq-agent-shell {
             padding-top: .75rem;
@@ -363,12 +395,30 @@ include 'includes/header.php';
             </nav>
         </aside>
         <div class="kq-portal-main">
-    <header class="kq-dashboard-hero" id="agent-overview">
-        <img class="kq-official-logo kq-logo-dashboard kq-logo-on-dark" src="assets/images/kings-land-properties-logo-light.png" alt="4 Kings Realty Services">
-        <div class="kq-dashboard-hero-copy">
-            <div class="page-eyebrow">SALES AGENT WORKSPACE</div>
-            <h1 class="page-title h2 mb-1">Sales Agent dashboard</h1>
-            <p class="text-muted mb-0">Welcome, <?= htmlspecialchars($_SESSION['user']['fullname'], ENT_QUOTES, 'UTF-8') ?>. Manage viewing requests and share transaction updates.</p>
+    <header class="kq-dashboard-hero d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3" id="agent-overview">
+        <div class="d-flex align-items-center gap-3">
+            <img class="kq-official-logo kq-logo-dashboard kq-logo-on-dark" src="assets/images/kings-land-properties-logo-light.png" alt="4 Kings Realty Services">
+            <div class="kq-dashboard-hero-copy">
+                <div class="page-eyebrow">SALES AGENT WORKSPACE</div>
+                <h1 class="page-title h2 mb-1">Sales Agent dashboard</h1>
+                <p class="text-muted mb-0">Welcome, <?= htmlspecialchars($_SESSION['user']['fullname'], ENT_QUOTES, 'UTF-8') ?>. Manage viewing requests and share transaction updates.</p>
+            </div>
+        </div>
+        <?php
+        $agentPresenceInfo = function_exists('get_agent_presence') ? get_agent_presence($conn, (int) $_SESSION['user']['userID']) : ['is_online' => true];
+        $isAgentOnlineNow = !empty($agentPresenceInfo['is_online']);
+        ?>
+        <div class="card border-0 shadow-sm p-2 px-3 rounded-4 bg-body align-self-start align-self-md-center flex-shrink-0" style="min-width: 210px;">
+            <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
+                <span class="small fw-bold text-uppercase text-muted" style="font-size: 0.68rem; letter-spacing: 0.04em;">Live Chat Status</span>
+                <button type="button" class="btn btn-sm rounded-pill fw-bold d-inline-flex align-items-center gap-1 <?= $isAgentOnlineNow ? 'btn-success' : 'btn-outline-secondary' ?>" id="agentLiveStatusBtn" onclick="toggleAgentLiveStatus()" title="Toggle your live chat availability">
+                    <span id="agentLiveStatusDot"><?= $isAgentOnlineNow ? '🟢' : '⚪' ?></span>
+                    <span id="agentLiveStatusLabel"><?= $isAgentOnlineNow ? 'Online (Live)' : 'Offline (Away)' ?></span>
+                </button>
+            </div>
+            <div class="small text-muted" style="font-size: 0.72rem; line-height: 1.25;" id="agentLiveStatusHint">
+                <?= $isAgentOnlineNow ? 'Clients can message you live.' : 'Automated chat replies are active.' ?>
+            </div>
         </div>
     </header>
 
@@ -1005,6 +1055,61 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 });
+
+async function toggleAgentLiveStatus() {
+    const btn = document.getElementById('agentLiveStatusBtn');
+    const label = document.getElementById('agentLiveStatusLabel');
+    const dot = document.getElementById('agentLiveStatusDot');
+    const hint = document.getElementById('agentLiveStatusHint');
+    if (!btn) return;
+
+    btn.disabled = true;
+    try {
+        const resp = await fetch('chat_api.php?action=toggle_presence', {
+            method: 'POST',
+            credentials: 'same-origin'
+        });
+        const text = await resp.text();
+        let data = null;
+        try { data = JSON.parse(text); } catch (e) {
+            const m = text.match(/\{[\s\S]*\}/);
+            if (m) data = JSON.parse(m[0]);
+        }
+        if (data && data.ok) {
+            const isOnline = Boolean(data.is_online);
+            if (isOnline) {
+                btn.className = 'btn btn-sm rounded-pill fw-bold d-inline-flex align-items-center gap-1 btn-success';
+                if (dot) dot.textContent = '🟢';
+                if (label) label.textContent = 'Online (Live)';
+                if (hint) hint.textContent = 'Clients can message you live in real time.';
+            } else {
+                btn.className = 'btn btn-sm rounded-pill fw-bold d-inline-flex align-items-center gap-1 btn-outline-secondary';
+                if (dot) dot.textContent = '⚪';
+                if (label) label.textContent = 'Offline (Away)';
+                if (hint) hint.textContent = 'Automated chat replies are active.';
+            }
+            const headerBtn = document.getElementById('kqHeaderAgentStatusBtn');
+            if (headerBtn) {
+                const hDot = document.getElementById('kqHeaderStatusDot');
+                const hText = document.getElementById('kqHeaderStatusText');
+                if (hDot) hDot.textContent = isOnline ? '🟢' : '⚪';
+                if (hText) hText.textContent = isOnline ? 'Online' : 'Offline';
+                headerBtn.className = isOnline
+                    ? 'btn btn-sm rounded-pill fw-semibold shadow-sm d-inline-flex align-items-center gap-1 btn-outline-success text-success bg-success-subtle'
+                    : 'btn btn-sm rounded-pill fw-semibold shadow-sm d-inline-flex align-items-center gap-1 btn-outline-secondary text-secondary bg-body';
+            }
+        }
+    } catch (err) {
+        console.error('Failed to toggle agent presence:', err);
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// Session keepalive to keep agent presence and session active while viewing dashboard
+setInterval(function() {
+    fetch('chat_api.php?action=heartbeat', { cache: 'no-store', credentials: 'same-origin' }).catch(function(){});
+}, 300000);
 </script>
 
 <?php include 'includes/footer.php'; ?>

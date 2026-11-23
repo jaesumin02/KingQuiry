@@ -246,15 +246,15 @@ function estimate_property_value(
             $prediction += $model['weights'][$index] * $value;
         }
 
-        $predictedPrice = $prediction * $model['priceStd'] + $model['priceMean'];
-        $pricePerSqm = max(1.0, $predictedPrice / max(1.0, $area));
+        $predictedPrice = round($prediction * $model['priceStd'] + $model['priceMean']);
+        $pricePerSqm = round(max(1.0, $predictedPrice / max(1.0, $area)));
         $estimatedValue = $predictedPrice;
 
         return [
-            'price_per_sqm' => round($pricePerSqm, 2),
-            'estimated_value' => round($estimatedValue, 2),
-            'low_estimate' => round($estimatedValue * 0.93, 2),
-            'high_estimate' => round($estimatedValue * 1.07, 2),
+            'price_per_sqm' => (float) $pricePerSqm,
+            'estimated_value' => (float) $estimatedValue,
+            'low_estimate' => (float) round($estimatedValue * 0.93),
+            'high_estimate' => (float) round($estimatedValue * 1.07),
             'location_name' => $selectedLocation['municipalityName'] . ', ' . $selectedLocation['provinceName'],
             'comparable_count' => $comparableCount,
             'exact_match_count' => $exactMatchCount,
@@ -263,11 +263,12 @@ function estimate_property_value(
         ];
     } catch (Throwable $exception) {
         $fallback = fallback_weighted_median_estimate($comparables, $area);
+        $estVal = round($fallback['estimated_value']);
         return [
-            'price_per_sqm' => round($fallback['price_per_sqm'], 2),
-            'estimated_value' => round($fallback['estimated_value'], 2),
-            'low_estimate' => round($fallback['low_estimate'], 2),
-            'high_estimate' => round($fallback['high_estimate'], 2),
+            'price_per_sqm' => (float) round($fallback['price_per_sqm']),
+            'estimated_value' => (float) $estVal,
+            'low_estimate' => (float) round($estVal * 0.93),
+            'high_estimate' => (float) round($estVal * 1.07),
             'location_name' => $selectedLocation['municipalityName'] . ', ' . $selectedLocation['provinceName'],
             'comparable_count' => $comparableCount,
             'exact_match_count' => $exactMatchCount,

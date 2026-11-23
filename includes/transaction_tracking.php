@@ -7,6 +7,7 @@ function property_transaction_stages(): array
         'inquiry_received' => 'Inquiry received',
         'contacting_client' => 'Contacting client',
         'viewing_requested' => 'Viewing requested',
+        'reviewing_schedule' => 'Reviewing schedule',
         'viewing_confirmed' => 'Viewing approved',
         'viewing_completed' => 'Viewing completed',
         'payment_in_process' => 'Payment in process',
@@ -27,6 +28,148 @@ function property_staff_payment_methods(): array
     return ['Spot Cash', 'Bank Transfer', 'Check', 'Paperwork (Face-to-face)'];
 }
 
+function property_transaction_payment_schemes(): array
+{
+    return [
+        'Spot Cash' => [
+            'label' => 'Spot Cash (Full Payment)',
+            'short' => 'Spot Cash',
+            'badge' => '⚡ Spot Cash',
+            'desc' => 'Pay the entire purchase balance in full. Fastest property turnover, immediate Deed of Absolute Sale (DOAS) preparation, and document verification is expedited.',
+            'icon' => '⚡',
+            'bypassesDocs' => true,
+        ],
+        'Bank Transfer' => [
+            'label' => 'Bank Financing / Bank Transfer',
+            'short' => 'Bank Financing',
+            'badge' => '🏦 Bank Financing',
+            'desc' => 'Pay an initial down payment followed by bank loan / wire transfer. Requires standard bank pre-approval and title deed/clearance verification.',
+            'icon' => '🏦',
+            'bypassesDocs' => false,
+        ],
+        'Check' => [
+            'label' => 'Installment (Post-Dated Checks)',
+            'short' => 'PDC Installment',
+            'badge' => '📝 PDC Installment',
+            'desc' => 'Pay initial reservation deposit followed by structured monthly post-dated checks under an official Contract to Sell (CTS).',
+            'icon' => '📝',
+            'bypassesDocs' => false,
+        ],
+        'Paperwork (Face-to-face)' => [
+            'label' => 'Paperwork (Face-to-face Agreement)',
+            'short' => 'Face-to-Face Agreement',
+            'badge' => '🤝 Face-to-Face Agreement',
+            'desc' => 'Visit the 4 Kings Realty sales office with your assigned agent to negotiate custom installment terms, signed paperwork, and physical receipts.',
+            'icon' => '🤝',
+            'bypassesDocs' => false,
+        ],
+    ];
+}
+
+function set_property_transaction_payment_method(
+    mysqli $conn,
+    int $transactionId,
+    int $clientId,
+    string $paymentMethod,
+    ?string $clientNote = null
+): void {
+    $schemes = property_transaction_payment_schemes();
+    if (!isset($schemes[$paymentMethod]) || $transactionId <= 0 || $clientId <= 0) {
+        throw new InvalidArgumentException('Choose a valid payment scheme for this transaction.');
+    }
+
+    $conn->begin_transaction();
+    try {
+        $txStmt = $conn->prepare(
+            'SELECT t.transactionID, t.propertyID, t.clientID, t.currentStage, t.appointmentID, t.inquiryID,
+                    p.title AS propertyTitle, u.fullname AS clientName
+             FROM property_transactions t
+             JOIN properties p ON p.propertyID = t.propertyID
+             JOIN users u ON u.userID = t.clientID
+             WHERE t.transactionID = ? AND t.clientID = ?
+             LIMIT 1
+             FOR UPDATE'
+        );
+        $txStmt->bind_param('ii', $transactionId, $clientId);
+        $txStmt->execute();
+        $tx = $txStmt->get_result()->fetch_assoc();
+        $txStmt->close();
+
+        if (!$tx) {
+            throw new InvalidArgumentException('Transaction not found or you are not authorized to update it.');
+        }
+
+        if (in_array($tx['currentStage'], ['completed', 'cancelled'], true)) {
+            throw new InvalidArgumentException('Cannot update the payment method for a closed transaction.');
+        }
+
+        $schemeInfo = $schemes[$paymentMethod];
+        $updStmt = $conn->prepare(
+            'UPDATE property_transactions
+             SET paymentMethod = ?, updatedAt = CURRENT_TIMESTAMP
+             WHERE transactionID = ?'
+        );
+        $updStmt->bind_param('si', $paymentMethod, $transactionId);
+        $updStmt->execute();
+        $updStmt->close();
+
+        $eventNote = 'Client selected payment scheme: ' . $schemeInfo['label'];
+        if ($clientNote !== null && trim($clientNote) !== '') {
+            $eventNote .= ' (Note: ' . trim($clientNote) . ')';
+        }
+        add_property_transaction_event($conn, $transactionId, (string) $tx['currentStage'], $eventNote, $clientId);
+
+        // Find assigned agent to notify
+        $assignedAgentId = 0;
+        $appointmentId = (int) ($tx['appointmentID'] ?? 0);
+        if ($appointmentId > 0) {
+            $agentStmt = $conn->prepare('SELECT agentID FROM appointments WHERE appointmentID = ? LIMIT 1');
+            $agentStmt->bind_param('i', $appointmentId);
+            $agentStmt->execute();
+            $aRow = $agentStmt->get_result()->fetch_assoc();
+            $agentStmt->close();
+            if (!empty($aRow['agentID'])) {
+                $assignedAgentId = (int) $aRow['agentID'];
+            }
+        }
+        if ($assignedAgentId === 0) {
+            $inquiryId = (int) ($tx['inquiryID'] ?? 0);
+            if ($inquiryId > 0) {
+                $inqStmt = $conn->prepare('SELECT agentID FROM agent_inquiry_assignments WHERE inquiryID = ? LIMIT 1');
+                $inqStmt->bind_param('i', $inquiryId);
+                $inqStmt->execute();
+                $iRow = $inqStmt->get_result()->fetch_assoc();
+                $inqStmt->close();
+                if (!empty($iRow['agentID'])) {
+                    $assignedAgentId = (int) $iRow['agentID'];
+                }
+            }
+        }
+
+        if ($assignedAgentId > 0) {
+            create_user_notification(
+                $conn,
+                $assignedAgentId,
+                'Buyer selected payment scheme',
+                sprintf(
+                    "Client %s chose '%s' as the payment scheme for '%s' (Transaction #KQT-%d).",
+                    $tx['clientName'],
+                    $schemeInfo['label'],
+                    $tx['propertyTitle'],
+                    $transactionId
+                ),
+                'transaction_tracking.php#transactions',
+                'payment_scheme_selected'
+            );
+        }
+
+        $conn->commit();
+    } catch (Throwable $e) {
+        $conn->rollback();
+        throw $e;
+    }
+}
+
 function is_valid_transaction_currency_amount(float $amount): bool
 {
     return is_finite($amount)
@@ -43,7 +186,8 @@ function property_transaction_next_stages(string $stage, ?string $paymentMethod 
     $transitions = [
         'inquiry_received' => ['contacting_client', 'viewing_requested', 'cancelled'],
         'contacting_client' => ['viewing_requested', 'cancelled'],
-        'viewing_requested' => ['viewing_confirmed', 'cancelled'],
+        'viewing_requested' => ['reviewing_schedule', 'viewing_confirmed', 'cancelled'],
+        'reviewing_schedule' => ['viewing_confirmed', 'viewing_completed', 'cancelled'],
         'viewing_confirmed' => ['viewing_completed', 'payment_in_process', 'cancelled'],
         'viewing_completed' => ['payment_in_process', 'document_verification', 'cancelled'],
         'payment_in_process' => $isSpotCash
@@ -78,6 +222,18 @@ function get_transaction_stage_notification(
                 $clientName,
                 $propertyTitle,
                 $cleanNote !== '' ? "\n\nReason: " . $cleanNote : ''
+            ),
+        ];
+    }
+
+    if ($newStage === 'reviewing_schedule') {
+        return [
+            'title' => 'Viewing request accepted — Reviewing schedule',
+            'message' => sprintf(
+                "Hello %s,\n\nYour viewing request for '%s' has been accepted by your Sales Agent. Your agent is now reviewing and coordinating the schedule details with you.%s\n\nCheck your dashboard or chat with your agent for updates.",
+                $clientName,
+                $propertyTitle,
+                $noteSection
             ),
         ];
     }
@@ -203,7 +359,7 @@ function create_property_transaction(
         throw new InvalidArgumentException('Invalid transaction tracking source.');
     }
 
-    $stage = $source === 'appointment' ? 'viewing_requested' : 'inquiry_received';
+    $stage = 'viewing_requested';
     $appointmentId = $source === 'appointment' ? $sourceId : null;
     $inquiryId = $source === 'inquiry' ? $sourceId : null;
     $sourceColumn = $source === 'appointment' ? 'appointmentID' : 'inquiryID';
@@ -220,11 +376,12 @@ function create_property_transaction(
     $existingStmt->bind_param('ii', $propertyId, $clientId);
     $existingStmt->execute();
     $existing = $existingStmt->get_result()->fetch_assoc();
+    $existingStmt->close();
 
     if ($existing) {
         $transactionId = (int) $existing['transactionID'];
         $currentStage = (string) $existing['currentStage'];
-        if ($source === 'appointment' && in_array($currentStage, ['inquiry_received', 'contacting_client'], true)) {
+        if (in_array($currentStage, ['inquiry_received', 'contacting_client'], true)) {
             $currentStage = 'viewing_requested';
         }
         $updateStmt = $conn->prepare(
@@ -234,10 +391,11 @@ function create_property_transaction(
         );
         $updateStmt->bind_param('isi', $sourceId, $currentStage, $transactionId);
         $updateStmt->execute();
+        $updateStmt->close();
 
         $note = $source === 'appointment'
             ? 'Client requested a property viewing for this tracked inquiry.'
-            : 'Client sent an additional property inquiry for this tracked request.';
+            : 'Client wants to view the property.';
         add_property_transaction_event($conn, $transactionId, $currentStage, $note, $actorId);
         return;
     }
@@ -251,9 +409,10 @@ function create_property_transaction(
     $stmt->execute();
 
     $transactionId = (int) $conn->insert_id;
+    $stmt->close();
     $note = $source === 'appointment'
         ? 'Client submitted a property viewing request.'
-        : 'Client submitted a property inquiry.';
+        : 'Client wants to view the property.';
     add_property_transaction_event($conn, $transactionId, $stage, $note, $actorId, 'initial');
 }
 
@@ -272,6 +431,7 @@ function add_property_transaction_event(
     );
     $stmt->bind_param('issis', $transactionId, $stage, $note, $actorId, $eventKey);
     $stmt->execute();
+    $stmt->close();
 }
 
 function get_verified_transaction_payment_total(mysqli $conn, int $transactionId): float
@@ -285,6 +445,7 @@ function get_verified_transaction_payment_total(mysqli $conn, int $transactionId
     $trackerStmt->bind_param('i', $transactionId);
     $trackerStmt->execute();
     $trackerRows = $trackerStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $trackerStmt->close();
 
     // Retrieve verified payments from payments (admin register)
     $registerStmt = $conn->prepare(
@@ -295,6 +456,7 @@ function get_verified_transaction_payment_total(mysqli $conn, int $transactionId
     $registerStmt->bind_param('i', $transactionId);
     $registerStmt->execute();
     $registerRows = $registerStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $registerStmt->close();
 
     // If only one ledger has records, return its sum directly
     if (empty($registerRows)) {
@@ -406,6 +568,8 @@ function assert_staff_transaction_access(mysqli $conn, array $transaction, int $
     $actorStmt->bind_param('i', $actorId);
     $actorStmt->execute();
     $actor = $actorStmt->get_result()->fetch_assoc();
+    $actorStmt->close();
+
     if (!$actor || ($actor['accountStatus'] ?? 'Inactive') !== 'Active') {
         throw new InvalidArgumentException('An active staff account is required to manage transactions.');
     }
@@ -418,17 +582,23 @@ function assert_staff_transaction_access(mysqli $conn, array $transaction, int $
         throw new InvalidArgumentException('Only an Admin or the assigned Sales Agent can manage this transaction.');
     }
 
+    $hasAssignedAppointmentAgent = false;
     $appointmentId = (int) ($transaction['appointmentID'] ?? 0);
     if ($appointmentId > 0) {
         $appointmentStmt = $conn->prepare('SELECT agentID FROM appointments WHERE appointmentID = ? LIMIT 1');
         $appointmentStmt->bind_param('i', $appointmentId);
         $appointmentStmt->execute();
         $appointment = $appointmentStmt->get_result()->fetch_assoc();
+        $appointmentStmt->close();
         if ($appointment && (int) ($appointment['agentID'] ?? 0) === $actorId) {
             return;
         }
+        if (!empty($appointment['agentID'])) {
+            $hasAssignedAppointmentAgent = true;
+        }
     }
 
+    $hasAssignedInquiryAgent = false;
     $inquiryId = (int) ($transaction['inquiryID'] ?? 0);
     if ($inquiryId > 0) {
         $inquiryStmt = $conn->prepare(
@@ -437,9 +607,18 @@ function assert_staff_transaction_access(mysqli $conn, array $transaction, int $
         $inquiryStmt->bind_param('i', $inquiryId);
         $inquiryStmt->execute();
         $inquiry = $inquiryStmt->get_result()->fetch_assoc();
-        if ($inquiry && (int) $inquiry['agentID'] === $actorId) {
+        $inquiryStmt->close();
+        if ($inquiry && (int) ($inquiry['agentID'] ?? 0) === $actorId) {
             return;
         }
+        if (!empty($inquiry['agentID'])) {
+            $hasAssignedInquiryAgent = true;
+        }
+    }
+
+    // If transaction is not yet assigned to any agent, allow the active sales agent to manage/claim it
+    if (!$hasAssignedAppointmentAgent && !$hasAssignedInquiryAgent) {
+        return;
     }
 
     throw new InvalidArgumentException('You may only manage transactions assigned to your account.');
@@ -508,6 +687,7 @@ function advance_property_transaction(
         $currentStmt->bind_param('i', $transactionId);
         $currentStmt->execute();
         $transaction = $currentStmt->get_result()->fetch_assoc();
+        $currentStmt->close();
         if (!$transaction) {
             throw new InvalidArgumentException('The selected transaction was not found.');
         }
@@ -524,35 +704,100 @@ function advance_property_transaction(
             throw new InvalidArgumentException('That step cannot follow the current status. Update the transaction in order or cancel it.');
         }
 
-        if ($newStage === 'viewing_confirmed') {
+        if ($newStage === 'reviewing_schedule' || $newStage === 'viewing_confirmed') {
             $appointmentId = (int) ($transaction['appointmentID'] ?? 0);
-            $assignedAgentStmt = $conn->prepare(
-                "SELECT a.agentID
-                 FROM appointments a
-                 JOIN users ag ON ag.userID = a.agentID
-                 WHERE a.appointmentID = ?
-                   AND a.status = 'Pending'
-                   AND ag.role IN ('Agent', 'Sales Agent')
-                   AND ag.accountStatus = 'Active'
-                 FOR UPDATE"
-            );
-            $assignedAgentStmt->bind_param('i', $appointmentId);
-            $assignedAgentStmt->execute();
-            if ($appointmentId <= 0 || !$assignedAgentStmt->get_result()->fetch_assoc()) {
-                throw new InvalidArgumentException('Assign an active Sales Agent to the pending viewing request before approving it.');
+            if ($appointmentId > 0) {
+                $assignedAgentStmt = $conn->prepare(
+                    "SELECT a.agentID
+                     FROM appointments a
+                     JOIN users ag ON ag.userID = a.agentID
+                     WHERE a.appointmentID = ?
+                       AND ag.role IN ('Agent', 'Sales Agent')
+                       AND ag.accountStatus = 'Active'
+                     FOR UPDATE"
+                );
+                $assignedAgentStmt->bind_param('i', $appointmentId);
+                $assignedAgentStmt->execute();
+                $assignedAgentRow = $assignedAgentStmt->get_result()->fetch_assoc();
+                $assignedAgentStmt->close();
+
+                if (!$assignedAgentRow) {
+                    $assignApptStmt = $conn->prepare(
+                        "UPDATE appointments SET agentID = ? WHERE appointmentID = ? AND (agentID IS NULL OR agentID = 0)"
+                    );
+                    $assignApptStmt->bind_param('ii', $actorId, $appointmentId);
+                    $assignApptStmt->execute();
+                    $assignApptStmt->close();
+                }
+            }
+
+            $inquiryId = (int) ($transaction['inquiryID'] ?? 0);
+            if ($inquiryId > 0) {
+                $inqAssignStmt = $conn->prepare(
+                    "INSERT INTO agent_inquiry_assignments (inquiryID, agentID, assignedAt)
+                     VALUES (?, ?, CURRENT_TIMESTAMP)
+                     ON DUPLICATE KEY UPDATE agentID = COALESCE(agentID, VALUES(agentID))"
+                );
+                $inqAssignStmt->bind_param('ii', $inquiryId, $actorId);
+                $inqAssignStmt->execute();
+                $inqAssignStmt->close();
             }
         }
 
-        $defaultNotes = [
-            'viewing_confirmed' => 'Sales Agent team approved the requested property viewing schedule.',
-            'viewing_completed' => 'Sales Agent team completed the property viewing with the Client.',
-            'payment_in_process' => 'Payment processing initiated: Sales Agent is coordinating payment terms and paperwork.',
-            'document_verification' => 'Payment processing completed. Sales Agent is verifying property title deeds, clearances, and documents.',
-            'payment_confirmation' => 'Document verification completed. Sales Agent is finalizing payment confirmation and receipts.',
-            'completed' => 'Payment confirmation complete. Transaction finalized and property successfully turned over.',
-            'cancelled' => 'Transaction was cancelled.',
-        ];
-        $effectiveNote = $note !== '' ? $note : ($defaultNotes[$newStage] ?? 'Transaction advanced to ' . str_replace('_', ' ', $newStage));
+        // Retrieve acting staff's name for explicit update attribution
+        $actorName = 'Sales Agent';
+        $actorNameStmt = $conn->prepare('SELECT fullname FROM users WHERE userID = ? LIMIT 1');
+        $actorNameStmt->bind_param('i', $actorId);
+        $actorNameStmt->execute();
+        $actorNameRow = $actorNameStmt->get_result()->fetch_assoc();
+        $actorNameStmt->close();
+        if (!empty($actorNameRow['fullname'])) {
+            $actorName = trim((string) $actorNameRow['fullname']);
+        }
+
+        $cleanNote = trim($note);
+        if ($currentStage === 'viewing_requested' && ($newStage === 'reviewing_schedule' || $newStage === 'viewing_confirmed')) {
+            $viewingAcceptedPrefix = 'Viewing accepted by ' . $actorName;
+            if ($cleanNote !== '') {
+                if (stripos($cleanNote, 'viewing accepted') !== false) {
+                    $effectiveNote = $cleanNote;
+                } else {
+                    $effectiveNote = $viewingAcceptedPrefix . ': ' . $cleanNote;
+                }
+            } else {
+                $effectiveNote = $viewingAcceptedPrefix;
+            }
+        } elseif ($newStage === 'cancelled' && $currentStage === 'viewing_requested') {
+            $viewingCancelledPrefix = 'Viewing cancelled by ' . $actorName;
+            if ($cleanNote !== '') {
+                $effectiveNote = $viewingCancelledPrefix . ': ' . $cleanNote;
+            } else {
+                $effectiveNote = $viewingCancelledPrefix;
+            }
+        } elseif ($currentStage === 'reviewing_schedule' && $newStage === 'viewing_confirmed') {
+            $confirmPrefix = 'Viewing schedule confirmed by ' . $actorName;
+            if ($cleanNote !== '') {
+                if (stripos($cleanNote, 'confirmed by') !== false || stripos($cleanNote, 'viewing schedule confirmed') !== false) {
+                    $effectiveNote = $cleanNote;
+                } else {
+                    $effectiveNote = $confirmPrefix . ': ' . $cleanNote;
+                }
+            } else {
+                $effectiveNote = $confirmPrefix . '.';
+            }
+        } else {
+            $defaultNotes = [
+                'reviewing_schedule' => 'Viewing accepted by ' . $actorName,
+                'viewing_confirmed' => 'Viewing schedule confirmed by ' . $actorName . '.',
+                'viewing_completed' => 'Sales Agent team completed the property viewing with the Client.',
+                'payment_in_process' => 'Payment processing initiated: Sales Agent is coordinating payment terms and paperwork.',
+                'document_verification' => 'Payment processing completed. Sales Agent is verifying property title deeds, clearances, and documents.',
+                'payment_confirmation' => 'Document verification completed. Sales Agent is finalizing payment confirmation and receipts.',
+                'completed' => 'Payment confirmation complete. Transaction finalized and property successfully turned over.',
+                'cancelled' => 'Transaction was cancelled.',
+            ];
+            $effectiveNote = $cleanNote !== '' ? $cleanNote : ($defaultNotes[$newStage] ?? 'Transaction advanced to ' . str_replace('_', ' ', $newStage));
+        }
 
         // Record payment if agent provided payment details in this submission so it counts toward verification
         $clientId = (int) $transaction['clientID'];
@@ -574,6 +819,7 @@ function advance_property_transaction(
             );
             $insPayment->bind_param('iidssis', $transactionId, $clientId, $paymentAmount, $effectivePaymentMethod, $refNumber, $actorId, $effectiveNote);
             $insPayment->execute();
+            $insPayment->close();
         }
 
         if ($newStage === 'completed') {
@@ -584,6 +830,7 @@ function advance_property_transaction(
             $propertyStmt->bind_param('i', $propertyId);
             $propertyStmt->execute();
             $property = $propertyStmt->get_result()->fetch_assoc();
+            $propertyStmt->close();
             if (!$property || (int) $property['isDeleted'] !== 0 || $property['status'] !== 'Available') {
                 throw new InvalidArgumentException('This property is no longer available for sale.');
             }
@@ -602,11 +849,13 @@ function advance_property_transaction(
             );
             $updateStmt->bind_param('sdsi', $newStage, $salePrice, $effectivePaymentMethod, $transactionId);
             $updateStmt->execute();
+            $updateStmt->close();
 
             // Property officially sold & turned over: mark as 'Sold' so it disappears from public listings
             $soldStmt = $conn->prepare("UPDATE properties SET status = 'Sold' WHERE propertyID = ?");
             $soldStmt->bind_param('i', $propertyId);
             $soldStmt->execute();
+            $soldStmt->close();
         } else {
             $updateStmt = $conn->prepare(
                 'UPDATE property_transactions
@@ -615,6 +864,7 @@ function advance_property_transaction(
             );
             $updateStmt->bind_param('ssi', $newStage, $effectivePaymentMethod, $transactionId);
             $updateStmt->execute();
+            $updateStmt->close();
         }
         add_property_transaction_event($conn, $transactionId, $newStage, $effectiveNote, $actorId);
 
@@ -631,11 +881,12 @@ function advance_property_transaction(
             $appointmentStmt = $conn->prepare(
                 'UPDATE appointments a
                  JOIN property_transactions t ON t.appointmentID = a.appointmentID
-                 SET a.status = ?
+                 SET a.status = ?, a.agentID = COALESCE(a.agentID, ?)
                  WHERE t.transactionID = ?'
             );
-            $appointmentStmt->bind_param('si', $appointmentStatus, $transactionId);
+            $appointmentStmt->bind_param('sii', $appointmentStatus, $actorId, $transactionId);
             $appointmentStmt->execute();
+            $appointmentStmt->close();
         }
 
         $detailsStmt = $conn->prepare(
@@ -649,6 +900,7 @@ function advance_property_transaction(
         $detailsStmt->bind_param('i', $transactionId);
         $detailsStmt->execute();
         $details = $detailsStmt->get_result()->fetch_assoc();
+        $detailsStmt->close();
 
         if (is_array($details) && !empty($details['clientID'])) {
             $notification = get_transaction_stage_notification(

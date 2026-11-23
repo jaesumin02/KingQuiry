@@ -7,7 +7,10 @@ require_once __DIR__ . '/notifications.php';
 apply_secure_headers();
 $currentUser = $_SESSION['user'] ?? null;
 $currentRole = normalized_user_role($currentUser);
-$currentPageName = basename($_SERVER['PHP_SELF'] ?? '');
+$currentPageName = basename(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: ($_SERVER['PHP_SELF'] ?? ''));
+if ($currentPageName === '' || $currentPageName === 'kingquiry') {
+    $currentPageName = 'index.php';
+}
 $isAuthPage = in_array($currentPageName, ['register.php', 'client_login.php', 'agent_login.php', 'admin_login.php', 'login.php'], true);
 $needsLeaflet = in_array($currentPageName, ['property_detail.php', 'agent_dashboard.php', 'admin_dashboard.php'], true);
 $adminPage = ($currentRole === 'Admin' && function_exists('kq_admin_pages')) ? (kq_admin_pages()[$currentPageName] ?? null) : null;
@@ -58,7 +61,10 @@ if (!empty($currentUser['userID'])) {
 }
 
 $currentRole = normalized_user_role($currentUser);
-$currentPageName = basename($_SERVER['PHP_SELF'] ?? '');
+$currentPageName = basename(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: ($_SERVER['PHP_SELF'] ?? ''));
+if ($currentPageName === '' || $currentPageName === 'kingquiry') {
+    $currentPageName = 'index.php';
+}
 $adminPage = ($currentRole === 'Admin' && function_exists('kq_admin_pages')) ? (kq_admin_pages()[$currentPageName] ?? null) : null;
 $isAdminControlRoom = $adminPage !== null;
 $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
@@ -180,20 +186,27 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
             display: inline-flex;
             min-height: 44px;
             align-items: center;
-            padding: .52rem .8rem !important;
+            padding: .52rem .85rem !important;
             border: 1px solid transparent;
             border-radius: .6rem;
             background: transparent;
-            color: rgba(255,255,255,.9) !important;
+            color: rgba(255,255,255,.72) !important;
             font-size: .95rem;
-            font-weight: 600;
+            font-weight: 500;
             white-space: nowrap;
             transition: color .18s ease, background-color .18s ease, border-color .18s ease;
         }
         .navbar .nav-link:hover, .navbar .nav-link:focus {
             color: #fff !important;
-            border-color: rgba(255,255,255,.4);
-            background: rgba(255,255,255,.1);
+            border-color: rgba(255,255,255,.3);
+            background: rgba(255,255,255,.08);
+        }
+        .navbar .nav-link.active {
+            color: #fff !important;
+            font-weight: 700;
+            border-color: rgba(255,255,255,.45);
+            background: rgba(255,255,255,.16);
+            box-shadow: inset 0 -2px 0 var(--kq-gold, #e0a96d);
         }
         .navbar .nav-link.btn-primary {
             border-color: var(--kq-primary);
@@ -581,9 +594,8 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
 <body<?= $isAdminControlRoom || $isAuthPage ? ' class="' . ($isAdminControlRoom ? 'admin-control-room ' : '') . ($isAuthPage ? 'kq-auth-body' : '') . '"' : '' ?>>
     <nav class="navbar navbar-expand-xxl navbar-dark bg-dark shadow-sm">
         <div class="container-fluid px-3 px-sm-4 px-xl-5">
-            <a class="navbar-brand" href="index.php" aria-label="Home - KingQuiry by 4 Kings Realty Services">
+            <a class="navbar-brand d-inline-flex align-items-center" href="index.php" aria-label="KingQuiry by 4 Kings Realty Services">
                 <img class="kq-official-logo kq-logo-navbar kq-logo-on-dark" src="assets/images/kings-land-properties-logo-light.png" alt="4 Kings Realty Services">
-                <span class="kq-navbar-wordmark">Home</span>
             </a>
             <div class="d-flex align-items-center gap-2 order-xxl-3 ms-xxl-3">
                 <div class="kq-live-clock" id="kq-live-clock" data-server-epoch-ms="<?= (int) $clockEpochMs ?>" aria-label="Current time in the Philippines">
@@ -596,11 +608,16 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
             </div>
             <div class="collapse navbar-collapse justify-content-end order-xxl-2" id="navbarNav">
                 <ul class="navbar-nav">
-                    <li class="nav-item"><a class="nav-link" href="resources.php">Resources &amp; Guides</a></li>
+                    <li class="nav-item">
+                        <a class="nav-link<?= $currentPageName === 'index.php' ? ' active' : '' ?>" href="index.php"<?= $currentPageName === 'index.php' ? ' aria-current="page"' : '' ?>>Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link<?= $currentPageName === 'resources.php' ? ' active' : '' ?>" href="resources.php"<?= $currentPageName === 'resources.php' ? ' aria-current="page"' : '' ?>>Resources &amp; Guides</a>
+                    </li>
                     <?php
                     $dashboardRoute = $currentRole === 'Client'
                         ? 'client_dashboard.php'
-                        : ($currentRole === 'Sales Agent' ? 'agent_dashboard.php' : ($currentRole === 'Admin' ? 'admin_dashboard.php' : null));
+                        : (($currentRole === 'Sales Agent' || $currentRole === 'Agent') ? 'agent_dashboard.php' : ($currentRole === 'Admin' ? 'admin_dashboard.php' : null));
                     ?>
                     <?php if ($dashboardRoute !== null): ?>
                         <li class="nav-item">
@@ -635,7 +652,7 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                                     <?php endif; ?>
                                 </li>
                             <?php endif; ?>
-                        <?php elseif($currentRole === 'Sales Agent'): ?>
+                        <?php elseif($currentRole === 'Sales Agent' || $currentRole === 'Agent'): ?>
                             <?php if (!$isAuthPage): ?>
                                 <li class="nav-item ms-lg-2 kq-nav-actions-start">
                                     <a class="btn fw-bold px-3 d-inline-flex align-items-center gap-2 kq-chat-nav-btn text-white text-decoration-none" href="transaction_tracking.php#transactions" title="Open Client Messaging &amp; Transactions">
@@ -644,7 +661,7 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                                     </a>
                                 </li>
                             <?php endif; ?>
-                            <li class="nav-item"><a class="nav-link" href="transaction_tracking.php">Transaction Tracking</a></li>
+                            <li class="nav-item"><a class="nav-link<?= $currentPageName === 'transaction_tracking.php' ? ' active' : '' ?>" href="transaction_tracking.php"<?= $currentPageName === 'transaction_tracking.php' ? ' aria-current="page"' : '' ?>>Transaction Tracking</a></li>
                         <?php endif; ?>
                         <!-- Notifications Bell Dropdown -->
                         <li class="nav-item dropdown ms-lg-2 <?= $currentRole === 'Client' ? '' : 'kq-nav-actions-start' ?>">
@@ -712,6 +729,20 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                                 </li>
                             </ul>
                         </li>
+
+                        <?php if ($currentRole === 'Sales Agent' || $currentRole === 'Agent'):
+                            $hdrPres = function_exists('get_agent_presence') && isset($conn) && ($conn instanceof mysqli)
+                                ? get_agent_presence($conn, (int) ($currentUser['userID'] ?? 0))
+                                : ['is_online' => true];
+                            $isHdrOnline = !empty($hdrPres['is_online']);
+                        ?>
+                            <li class="nav-item ms-lg-2 d-flex align-items-center">
+                                <button type="button" class="btn btn-sm rounded-pill fw-semibold shadow-sm d-inline-flex align-items-center gap-1 <?= $isHdrOnline ? 'btn-outline-success text-success bg-success-subtle' : 'btn-outline-secondary text-secondary bg-body' ?>" id="kqHeaderAgentStatusBtn" onclick="kqToggleHeaderAgentStatus()" title="Toggle live chat availability (Online / Offline)">
+                                    <span id="kqHeaderStatusDot"><?= $isHdrOnline ? '🟢' : '⚪' ?></span>
+                                    <span id="kqHeaderStatusText"><?= $isHdrOnline ? 'Online' : 'Offline' ?></span>
+                                </button>
+                            </li>
+                        <?php endif; ?>
 
                         <!-- Account Management Dropdown (Logged In) -->
                         <li class="nav-item dropdown ms-lg-2">

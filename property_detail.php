@@ -3,7 +3,6 @@ include 'config/db.php';
 require_once 'includes/auth.php';
 require_once 'includes/location_directory.php';
 require_once 'includes/property_categories.php';
-require_once 'includes/property_estimator.php';
 require_once 'includes/property_images.php';
 require_once 'includes/notifications.php';
 require_once 'includes/transaction_tracking.php';
@@ -48,8 +47,6 @@ $categoryLabels = property_type_labels();
 $propertyTitle = (string) $property['title'];
 $isSampleListing = str_starts_with($propertyTitle, '[SAMPLE]');
 $displayTitle = $isSampleListing ? trim(substr($propertyTitle, 8)) : $propertyTitle;
-$comparableEstimate = null;
-$comparableEstimateError = '';
 
 if (!in_array((string) $property['status'], ['Available', 'Sold'], true)) {
     http_response_code(404);
@@ -57,25 +54,6 @@ if (!in_array((string) $property['status'], ['Available', 'Sold'], true)) {
     echo "<div class='alert alert-warning'>This property is not available.</div>";
     include 'includes/footer.php';
     exit();
-}
-
-if (
-    !$isSampleListing
-    && is_numeric($property['areaSqm'] ?? null)
-    && (float) $property['areaSqm'] > 0
-    && (int) ($property['locationID'] ?? 0) > 0
-) {
-    try {
-        $comparableEstimate = estimate_property_value(
-            $conn,
-            (float) $property['areaSqm'],
-            (string) $property['propertyType'],
-            (int) $property['locationID'],
-            $propertyID
-        );
-    } catch (InvalidArgumentException | RuntimeException $exception) {
-        $comparableEstimateError = $exception->getMessage();
-    }
 }
 
 $propertyMunicipality = (string) ($property['municipalityName'] ?? '');
@@ -109,6 +87,8 @@ if (!empty($_SESSION['flash_success'])) {
     unset($_SESSION['flash_success']);
 }
 
+$userRole = normalized_user_role($_SESSION['user'] ?? null);
+$isStaffUser = user_has_role($_SESSION['user'] ?? null, 'Sales Agent', 'Agent', 'Admin');
 $currentUserId = isset($_SESSION['user']['userID']) ? (int) $_SESSION['user']['userID'] : null;
 if (!$isSampleListing) {
     record_user_search_preference((string) $property['propertyType'], (int) ($property['locationID'] ?? 0), (float) $property['price']);
@@ -442,23 +422,6 @@ include 'includes/header.php';
                 <span class="text-muted">Price per Square Meter: <strong>₱<?= number_format($property['pricePerSqm'] ?? 0, 2) ?> / sq.m.</strong></span>
             </div>
 
-            <?php if (!$isSampleListing): ?>
-                <section class="card p-3 p-lg-4 mb-4 border rounded-3 shadow-sm" aria-labelledby="comparable-estimate-title">
-                    <div class="page-eyebrow mb-1">Comparable listing analysis</div>
-                    <h3 class="h5 fw-bold mb-2" id="comparable-estimate-title">Indicative market estimate</h3>
-                    <?php if ($comparableEstimate !== null): ?>
-                        <p class="h4 text-primary fw-bold mb-1">₱<?= number_format((float) $comparableEstimate['low_estimate'], 2) ?>–₱<?= number_format((float) $comparableEstimate['high_estimate'], 2) ?></p>
-                        <p class="small text-muted mb-0">
-                            Based on <?= number_format((int) $comparableEstimate['comparable_count']) ?> other available listing(s), including <?= number_format((int) $comparableEstimate['exact_match_count']) ?> in the same category and municipality. This is an indicative planning range, not a formal appraisal.
-                        </p>
-                    <?php elseif ($comparableEstimateError !== ''): ?>
-                        <p class="small text-muted mb-0"><?= htmlspecialchars($comparableEstimateError, ENT_QUOTES, 'UTF-8') ?></p>
-                    <?php else: ?>
-                        <p class="small text-muted mb-0">An estimate is not available because this listing is missing its area or municipality data.</p>
-                    <?php endif; ?>
-                </section>
-            <?php endif; ?>
-
             <h5 class="fw-bold"><?= $property['propertyType'] === 'Condo' ? 'Unit Characteristics' : 'Land Characteristics' ?></h5>
             <p class="text-dark mb-3"><?= htmlspecialchars($property['landCharacteristics'] ?: 'Contact our team for verified land characteristics.', ENT_QUOTES, 'UTF-8') ?></p>
 
@@ -489,17 +452,17 @@ include 'includes/header.php';
                 <div class="p-3 bg-white border rounded-2 mb-3">
                     <div class="d-flex justify-content-between align-items-center mb-1">
                         <span class="small text-muted">Estimated Total Asking Price:</span>
-                        <strong class="fs-5 text-primary" id="calc-total-display">₱<?= number_format((float) $property['price'], 2) ?></strong>
+                        <strong class="fs-5 text-primary" id="calc-total-display">₱<?= number_format(round((float) $property['price']), 2) ?></strong>
                     </div>
                     <div class="row g-2 mt-2 pt-2 border-top small">
                         <div class="col-6">
                             <span class="text-muted d-block">Spot Cash (DOAS):</span>
-                            <strong class="text-success" id="calc-spot-display">₱<?= number_format((float) $property['price'], 2) ?></strong>
+                            <strong class="text-success" id="calc-spot-display">₱<?= number_format(round((float) $property['price']), 2) ?></strong>
                             <div class="text-muted" style="font-size: 0.72rem;">Deed of Absolute Sale</div>
                         </div>
                         <div class="col-6">
                             <span class="text-muted d-block">20% Down Payment (CTS):</span>
-                            <strong class="text-dark" id="calc-dp-display">₱<?= number_format((float) $property['price'] * 0.20, 2) ?></strong>
+                            <strong class="text-dark" id="calc-dp-display">₱<?= number_format(round((float) $property['price'] * 0.20), 2) ?></strong>
                             <div class="text-muted" style="font-size: 0.72rem;">Contract to Sell term</div>
                         </div>
                     </div>
@@ -530,17 +493,31 @@ include 'includes/header.php';
                 const dpDisplay = document.getElementById('calc-dp-display');
 
                 if (areaInput && rateInput && totalDisplay && spotDisplay && dpDisplay) {
+                    const baseArea = parseFloat('<?= (float)($property['areaSqm'] ?? 0) ?>');
+                    const basePrice = Math.round(parseFloat('<?= (float)($property['price'] ?? 0) ?>'));
+
+                    const formatPeso = (num) => '₱' + Math.round(num).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
                     const updateCalc = () => {
                         const area = Math.max(0, parseFloat(areaInput.value) || 0);
                         const rate = Math.max(0, parseFloat(rateInput.value) || 0);
-                        const total = area * rate;
-                        const dp = total * 0.20;
-                        const formatPeso = (num) => '₱' + num.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+                        let total;
+                        if (baseArea > 0 && Math.abs(area - baseArea) < 0.001) {
+                            total = basePrice;
+                        } else {
+                            total = Math.round(area * rate);
+                        }
+                        const dp = Math.round(total * 0.20);
+
                         totalDisplay.textContent = formatPeso(total);
                         spotDisplay.textContent = formatPeso(total);
                         dpDisplay.textContent = formatPeso(dp);
                     };
+
                     areaInput.addEventListener('input', updateCalc);
+                    rateInput.addEventListener('input', updateCalc);
+                    updateCalc();
                 }
             });
             </script>
@@ -593,6 +570,34 @@ include 'includes/header.php';
                 <h4 class="h5 fw-bold mb-2">Property Officially Sold</h4>
                 <p class="text-muted small mb-3">This property is officially owned and is no longer available for site viewings or inquiries.</p>
                 <a href="index.php" class="btn btn-primary w-100">Browse Available Properties</a>
+            </div>
+        <?php elseif ($isStaffUser): ?>
+            <!-- Staff Quick Action Card -->
+            <div class="card p-3 p-md-4 mb-4 border-0 shadow-sm" style="background: linear-gradient(135deg, #142d4e 0%, #174a70 100%); color: #fff; border-radius: 14px;">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="fs-4">🛡️</span>
+                    <div>
+                        <div class="text-white-50 small fw-semibold" style="font-size: 0.72rem; letter-spacing: 0.05em; text-transform: uppercase;">Staff View</div>
+                        <h4 class="h6 fw-bold mb-0 text-white"><?= htmlspecialchars((string) $userRole, ENT_QUOTES, 'UTF-8') ?> Portal</h4>
+                    </div>
+                </div>
+                <p class="small text-white-50 mb-3" style="font-size: 0.82rem;">You are viewing this listing with internal sales staff permissions. Inquiries and viewing requests for this property are managed in your pipeline.</p>
+                <div class="d-grid gap-2">
+                    <a href="transaction_tracking.php#transactions" class="btn btn-sm btn-light fw-bold text-dark d-inline-flex align-items-center justify-content-center gap-2 shadow-sm py-2">
+                        <i class="bi bi-kanban-fill text-primary"></i>
+                        <span>Open Transaction Pipeline</span>
+                    </a>
+                    <a href="agent_dashboard.php#appointments" class="btn btn-sm btn-outline-light d-inline-flex align-items-center justify-content-center gap-2 py-2">
+                        <i class="bi bi-calendar-check-fill text-warning"></i>
+                        <span>View Scheduled Viewings</span>
+                    </a>
+                    <?php if ($userRole === 'Admin'): ?>
+                        <a href="admin_properties.php?edit=<?= (int)$propertyID ?>" class="btn btn-sm btn-warning fw-semibold text-dark d-inline-flex align-items-center justify-content-center gap-2 py-2">
+                            <i class="bi bi-pencil-square"></i>
+                            <span>Edit Listing Details</span>
+                        </a>
+                    <?php endif; ?>
+                </div>
             </div>
         <?php else: ?>
             <!-- Direct Agent Chat Card -->
@@ -697,9 +702,11 @@ include 'includes/header.php';
                                     <span class="fw-bold text-primary">₱<?= number_format((float) $rec['price'], 2) ?></span>
                                 </div>
                                 <div class="d-flex align-items-center gap-1">
-                                    <button type="button" class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 shadow-sm px-2" onclick="openPropertyChat(<?= (int) $rec['propertyID'] ?>, '<?= addslashes(htmlspecialchars($rec['title'], ENT_QUOTES, 'UTF-8')) ?>')" title="Message an Agent about this property">
-                                        <i class="bi bi-chat-dots-fill"></i>
-                                    </button>
+                                    <?php if (!$isStaffUser): ?>
+                                        <button type="button" class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 shadow-sm px-2" onclick="openPropertyChat(<?= (int) $rec['propertyID'] ?>, '<?= addslashes(htmlspecialchars($rec['title'], ENT_QUOTES, 'UTF-8')) ?>')" title="Message an Agent about this property">
+                                            <i class="bi bi-chat-dots-fill"></i>
+                                        </button>
+                                    <?php endif; ?>
                                     <a href="property_detail.php?id=<?= (int) $rec['propertyID'] ?>" class="btn btn-sm btn-primary px-3 fw-semibold">View</a>
                                 </div>
                             </div>
