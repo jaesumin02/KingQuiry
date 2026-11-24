@@ -349,19 +349,54 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0);
 
     /* Mobile Responsive Search Bar */
     @media (max-width: 880px) {
+        .hero-search-wrapper {
+            padding: 0.45rem;
+            margin: 0 auto;
+        }
         .hero-search-bar {
             flex-direction: column;
+            width: 100%;
+        }
+        .search-input-box {
+            flex: 0 0 auto;
+            width: 100%;
         }
         .search-input-box input {
             border-radius: 0.75rem 0.75rem 0 0;
+            height: 52px;
         }
         .search-select-box {
+            flex: 0 0 auto;
+            width: 100%;
             border-left: 0;
             border-top: 1px solid #e3eaf0;
+        }
+        .search-select-box select {
+            height: 52px;
+        }
+        .search-btn-box {
+            flex: 0 0 auto;
+            width: 100%;
         }
         .hero-search-submit {
             border-radius: 0 0 0.75rem 0.75rem;
             width: 100%;
+            height: 52px;
+        }
+    }
+
+    @media (max-width: 576px) {
+        .hero-banner {
+            padding: 3.5rem 1rem;
+            min-height: 380px;
+        }
+        .hero-title {
+            font-size: 1.85rem;
+            margin-bottom: 0.65rem;
+        }
+        .hero-subtitle {
+            font-size: 0.95rem;
+            margin-bottom: 1.75rem;
         }
     }
 

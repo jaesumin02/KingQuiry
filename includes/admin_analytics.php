@@ -8,7 +8,7 @@ function get_admin_summary_metrics(mysqli $conn): array
             (SELECT COUNT(*) FROM properties WHERE status = 'Available' AND isDeleted = 0) AS availableListings,
             (SELECT COUNT(*) FROM appointments WHERE status = 'Pending') AS pendingViewingRequests,
             (SELECT COUNT(*) FROM feedbackinquiries WHERE createdAt >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 30 DAY)) AS recentInquiries,
-            (SELECT COUNT(*) FROM property_transactions WHERE currentStage NOT IN ('completed', 'cancelled')) AS activePipeline,
+            (SELECT COUNT(*) FROM property_transactions WHERE currentStage NOT IN ('completed', 'cancelled', 'inquiry_received', 'contacting_client')) AS activePipeline,
             (SELECT COUNT(*) FROM property_transactions WHERE currentStage = 'completed') AS completedSales,
             (SELECT COALESCE(SUM(salePrice), 0) FROM property_transactions WHERE currentStage = 'completed' AND salePrice IS NOT NULL) AS actualRevenue"
     );

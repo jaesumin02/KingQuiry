@@ -508,11 +508,24 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
             background-color: #f0f7ff !important;
             border-left: 3px solid #174a70;
         }
-        .navbar-nav { align-items: stretch; padding: .5rem 0 1rem; }
+        .navbar {
+            position: relative;
+            z-index: 1050;
+        }
+        .navbar-collapse.show,
+        .navbar-collapse.collapsing {
+            position: relative;
+            z-index: 1051;
+        }
+        .navbar-nav { align-items: stretch; padding: .5rem 0 1rem; gap: .35rem; }
         .navbar .nav-link { width: 100%; }
         .navbar-nav .ms-lg-1,
         .navbar-nav .ms-lg-2 { margin-left: 0 !important; }
-        .navbar .navbar-collapse { max-height: calc(100vh - 9rem); overflow-y: auto; }
+        .navbar .navbar-collapse {
+            max-height: calc(100vh - 5rem);
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
         .navbar .navbar-collapse .dropdown-menu { position: static; margin-top: 0; }
         .navbar .navbar-nav .nav-item > .btn,
         .navbar .navbar-nav .kq-contact-btn,
@@ -522,11 +535,57 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
             min-height: 44px;
             border-radius: .55rem;
             font-size: .875rem;
+            width: 100%;
         }
         .navbar .navbar-nav .kq-contact-btn { justify-content: flex-start; }
         .navbar .navbar-nav .kq-chat-nav-btn { justify-content: flex-start; }
         .navbar .navbar-nav .kq-help-btn { justify-content: flex-start; width: 100%; }
-        .navbar .navbar-nav .kq-theme-toggle-btn { justify-content: center; width: 100%; }
+        .navbar .navbar-nav .kq-theme-toggle-btn {
+            justify-content: flex-start;
+            width: 100%;
+            padding: 0.52rem 0.85rem !important;
+            gap: 0.5rem;
+        }
+        .navbar .navbar-nav .kq-theme-toggle-btn::after {
+            content: "Toggle Dark / Light Theme";
+            font-size: .875rem;
+            font-weight: 500;
+        }
+        .navbar .navbar-nav .kq-notif-bell-btn {
+            justify-content: flex-start !important;
+            width: 100%;
+            gap: 0.5rem;
+            padding: 0.52rem 0.85rem !important;
+        }
+        .navbar .navbar-nav .kq-notif-bell-btn::after {
+            content: "Notifications";
+            font-size: .875rem;
+            font-weight: 500;
+        }
+        .navbar .navbar-nav .kq-notif-bell-btn .badge {
+            position: static !important;
+            transform: none !important;
+            margin-left: auto;
+        }
+        @media (max-width: 1399.98px) {
+            .navbar .nav-link {
+                border-radius: .55rem;
+                padding: .55rem .85rem !important;
+                border-color: transparent !important;
+            }
+            .navbar .nav-link:hover,
+            .navbar .nav-link:focus {
+                background: rgba(255, 255, 255, 0.08);
+                color: #fff !important;
+            }
+            .navbar .nav-link.active {
+                background: rgba(255, 255, 255, 0.12) !important;
+                border-color: rgba(255, 255, 255, 0.2) !important;
+                border-left: 3px solid var(--kq-gold, #e0a96d) !important;
+                border-radius: 0 .55rem .55rem 0 !important;
+                box-shadow: none !important;
+            }
+        }
         @media (min-width: 1400px) {
             .navbar .navbar-collapse {
                 max-height: none;
@@ -565,11 +624,31 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                 padding: .48rem .85rem !important;
                 font-size: .92rem;
                 white-space: nowrap;
+                width: auto;
             }
             .navbar .navbar-nav .kq-help-btn { width: auto; justify-content: center; }
             .navbar .navbar-nav .kq-theme-toggle-btn {
-                width: 44px;
+                width: 44px !important;
                 padding: .48rem 0 !important;
+                justify-content: center !important;
+            }
+            .navbar .navbar-nav .kq-theme-toggle-btn::after {
+                display: none;
+            }
+            .navbar .navbar-nav .kq-notif-bell-btn {
+                justify-content: center !important;
+                width: auto !important;
+                padding: .48rem .65rem !important;
+            }
+            .navbar .navbar-nav .kq-notif-bell-btn::after {
+                display: none;
+            }
+            .navbar .navbar-nav .kq-notif-bell-btn .badge {
+                position: absolute !important;
+                top: 0 !important;
+                left: 100% !important;
+                transform: translate(-50%, -50%) !important;
+                margin-left: 0 !important;
             }
         }
         @media (max-width: 767.98px) {
@@ -578,8 +657,8 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                 border-left: none;
                 padding-left: 0;
             }
-            .kq-live-clock-date { font-size: .68rem; }
-            .kq-live-clock-time { font-size: .88rem; }
+            .kq-live-clock-date { display: none; }
+            .kq-live-clock-time { font-size: .84rem; font-weight: 600; }
         }
         @media (max-width: 480px) {
             .kq-live-clock-date { display: none; }

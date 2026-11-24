@@ -211,12 +211,13 @@ $statsRow = $stats && $stats->num_rows > 0 ? $stats->fetch_assoc() : ['total_app
 
 $txStatsStmt = $conn->prepare(
     "SELECT
-        COALESCE(SUM(CASE WHEN t.currentStage NOT IN ('completed', 'cancelled') THEN 1 ELSE 0 END), 0) AS active_transactions,
+        COALESCE(SUM(CASE WHEN t.currentStage NOT IN ('completed', 'cancelled', 'inquiry_received', 'contacting_client') THEN 1 ELSE 0 END), 0) AS active_transactions,
         COALESCE(SUM(CASE WHEN t.currentStage = 'completed' THEN 1 ELSE 0 END), 0) AS completed_transactions
      FROM property_transactions t
      LEFT JOIN appointments a ON a.appointmentID = t.appointmentID
      LEFT JOIN agent_inquiry_assignments ia ON ia.inquiryID = t.inquiryID
-     WHERE (a.agentID = ? OR ia.agentID = ?) OR (a.agentID IS NULL AND ia.agentID IS NULL)"
+     WHERE ((a.agentID = ? OR ia.agentID = ?) OR (a.agentID IS NULL AND ia.agentID IS NULL))
+       AND t.currentStage NOT IN ('inquiry_received', 'contacting_client')"
 );
 $txStatsStmt->bind_param('ii', $currentAgentId, $currentAgentId);
 $txStatsStmt->execute();
@@ -236,7 +237,8 @@ $agentTxStmt = $conn->prepare(
      LEFT JOIN users agentUser ON agentUser.userID = a.agentID
      LEFT JOIN agent_inquiry_assignments ia ON ia.inquiryID = t.inquiryID
      LEFT JOIN users inqAgentUser ON inqAgentUser.userID = ia.agentID
-     WHERE (a.agentID = ? OR ia.agentID = ?) OR (a.agentID IS NULL AND ia.agentID IS NULL)
+     WHERE ((a.agentID = ? OR ia.agentID = ?) OR (a.agentID IS NULL AND ia.agentID IS NULL))
+       AND t.currentStage NOT IN ('inquiry_received', 'contacting_client')
      ORDER BY (a.agentID IS NULL AND ia.agentID IS NULL) DESC, (t.currentStage IN ('completed', 'cancelled')) ASC, t.updatedAt DESC
      LIMIT 40"
 );
@@ -245,8 +247,6 @@ $agentTxStmt->execute();
 $agentTransactions = $agentTxStmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
 $agentStageLabels = function_exists('property_transaction_stages') ? property_transaction_stages() : [
-    'inquiry_received' => 'Inquiry Received',
-    'contacting_client' => 'Contacting Client',
     'viewing_requested' => 'Viewing Requested',
     'reviewing_schedule' => 'Reviewing Schedule',
     'viewing_confirmed' => 'Viewing Approved',

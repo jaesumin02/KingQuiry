@@ -3,6 +3,59 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-25 — Transaction Tracking Starting Point & Pipeline Clarification
+
+- **Homepage Hero Search Bar Mobile Responsiveness**:
+  - Fixed a vertical stretch bug on mobile / small screens where `.hero-search-bar` switched to `flex-direction: column`, causing `.search-input-box` (`flex: 1 1 400px`) and `.search-select-box` (`flex: 1 1 240px`) to interpret their flex-basis along the column axis, resulting in 400px and 240px tall empty boxes and a misplaced magnifying glass icon.
+  - Reset `.search-input-box`, `.search-select-box`, and `.search-btn-box` to `flex: 0 0 auto` with a clean `height: 52px` on viewports below 880px in [index.php](file:///d:/xampp/htdocs/KingQuiry/index.php).
+  - Vertically centered the search icon and dropdown inputs for mobile, ensuring proper padding, clean dividers, and full-width touch targets.
+  - Added placeholder styling for dark mode inputs in [assets/css/style.css](file:///d:/xampp/htdocs/KingQuiry/assets/css/style.css).
+- **Small Window & Mobile Header UI Polish**:
+  - Eliminated the floating sidebar menu toggle (`.kq-menu-toggle`, `z-index: 1040`) overlapping over mobile navbar links when the header menu is opened. Set `.navbar { position: relative; z-index: 1050; }` and `.navbar-collapse.show { position: relative; z-index: 1051; }` in [includes/header.php](file:///d:/xampp/htdocs/KingQuiry/includes/header.php) and [assets/css/style.css](file:///d:/xampp/htdocs/KingQuiry/assets/css/style.css).
+  - Eliminated the horizontal scrollbar on mobile viewport expansion by adding `overflow-x: hidden;` to `.navbar .navbar-collapse` and converting the absolute notification badge (`left: 100%`) into a native inline flex element (`position: static; margin-left: auto;`) for viewports below 1400px.
+  - Enhanced mobile touch accessibility by adding descriptive text labels to the notification bell ("Notifications") and the theme switcher ("Toggle Dark / Light Theme") on small screens.
+  - Replaced the clunky, boxed border on active navigation links with a sleek, gold left-border indicator (`border-left: 3px solid #e0a96d`) and subtle translucent background.
+  - Condensed the header clock on screens below 768px by hiding the long date string and keeping the bold, compact time stamp to prevent crowding the logo and hamburger toggle.
+  - Adjusted portal sidebar positioning on mobile screens (`@media (max-width: 991.98px)`) from `7rem` to `5rem` for seamless alignment underneath the navbar.
+- **Pure Status & Milestone Tracking (Option B Implementation)**:
+  - Streamlined the client transaction tracking modal in [client_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/client_dashboard.php) into a 100% pure progress monitor.
+  - Removed the interactive "Payment & Financing Scheme" selection block and the "Change Financing Plan" form. Payment terms, financing structures (Spot Cash, Installments, Bank Loans), and notarized contracts (DOAS/CTS) are negotiated face-to-face with the sales agent.
+  - Removed the client offline payment submission form and unverified receipt list from the tracking modal; all payment checkpoints are transparently tracked via the chronological **Transaction Updates** / **Milestone History** timeline whenever verified by sales agents.
+  - Removed obsolete "Pending Buyer Choice" alerts from [transaction_tracking.php](file:///d:/xampp/htdocs/KingQuiry/transaction_tracking.php), displaying an "Agreed Payment Scheme" card only when formally designated.
+  - Fixed an undefined variable warning (`$clientChosenMethod`) in the agent modal select dropdowns in [transaction_tracking.php](file:///d:/xampp/htdocs/KingQuiry/transaction_tracking.php).
+  - Resolved a z-index stacking collision where clicking "Chat with Agent" from inside the client transaction tracking modal opened the direct chat modal behind the tracking window. Elevated `#directChatModal` to `z-index: 1085` and its backdrop to `1080` with automatic backdrop promotion and scroll retention in [includes/direct_chat_modal.php](file:///d:/xampp/htdocs/KingQuiry/includes/direct_chat_modal.php) and [assets/css/style.css](file:///d:/xampp/htdocs/KingQuiry/assets/css/style.css).
+- **Viewing Requests as Real Starting Point of Transaction Tracking**:
+  - Decoupled casual chat messages and property inquiries from formal transaction progress tracking: chatting is purely a communication channel, while an actual property viewing request appointment represents the true initial milestone (**`viewing_requested`** as Step 1).
+  - Removed `inquiry_received` and `contacting_client` from `property_transaction_stages()` and `property_transaction_next_stages()` in [includes/transaction_tracking.php](file:///d:/xampp/htdocs/KingQuiry/includes/transaction_tracking.php).
+  - Filtered out casual inquiries (`inquiry_received`, `contacting_client`) from transaction tracking queries across [transaction_tracking.php](file:///d:/xampp/htdocs/KingQuiry/transaction_tracking.php), [client_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/client_dashboard.php), [agent_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/agent_dashboard.php), [admin_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/admin_dashboard.php), and active pipeline counts in [includes/admin_analytics.php](file:///d:/xampp/htdocs/KingQuiry/includes/admin_analytics.php).
+  - Removed the confusing "Inquiry Follow-up Decision" (`Mark as Contacting Client`) forms and stage guidance from [transaction_tracking.php](file:///d:/xampp/htdocs/KingQuiry/transaction_tracking.php) so that the first action form presented to agents is **`Step 1: Viewing Request Decision`**.
+  - Updated [chat_api.php](file:///d:/xampp/htdocs/KingQuiry/chat_api.php) so new chats no longer generate milestone timeline events, and staff replies no longer auto-advance milestone stages.
+  - Enhanced new property chat assignment in [chat_api.php](file:///d:/xampp/htdocs/KingQuiry/chat_api.php) to prioritize active online sales agents (`is_online = 1`, `availability_status = 'online'`, and recent activity).
+
+## 2026-11-25 — Account Creation Password Confirmation & Cleanup
+
+- **Online Agent Chat Assignment Prioritization**:
+  - Updated agent assignment logic in [chat_api.php](file:///d:/xampp/htdocs/KingQuiry/chat_api.php#L242-L254) when a client starts a property conversation. The query now prioritizes sales agents who are actively online (`is_online = 1`, `availability_status = 'online'`, and `last_seen_at` within 15 minutes) before falling back to offline active agents if no one is currently online.
+- **Property Inquiry Lifecycle & Tracking Progress Fix**:
+  - Direct property chat conversations and catalog inquiries now initialize at **`inquiry_received`** (Step 1 of 10, 0% progress) rather than erroneously jumping straight to `viewing_requested` (Step 3 of 10, ~22% progress).
+  - Replying to a client's inquiry message dynamically advances the transaction to **`contacting_client`** (Step 2 of 10, ~11% progress).
+  - Transactions only transition to **`viewing_requested`** when an actual on-site viewing appointment is booked or explicitly recorded.
+  - Added stage alerts and client guidance for `inquiry_received` and `contacting_client` on [client_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/client_dashboard.php).
+  - Added dedicated milestone action forms and stage guidance for `inquiry_received` and `contacting_client` on [transaction_tracking.php](file:///d:/xampp/htdocs/KingQuiry/transaction_tracking.php).
+- **Admin Permanent Property Deletion Modal Fix**:
+  - Resolved an unclickable modal backdrop overlay bug when confirming permanent property deletion from the Archived Inventory (Trashbin) modal in [admin_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/admin_dashboard.php).
+  - Fixed a `z-index` collision in [assets/css/style.css](file:///d:/xampp/htdocs/KingQuiry/assets/css/style.css) where `.modal { z-index: 1055 !important; }` prevented nested confirmation dialogs from rendering above the second modal backdrop (`z-index: 1065`).
+  - Added dedicated stacking CSS rules (`.modal.confirm-delete-modal { z-index: 1070 !important; }`, `.modal-backdrop.confirm-delete-backdrop { z-index: 1065 !important; }`) and a MutationObserver to ensure the confirmation dialog always sits cleanly above all backdrops and responds to clicks immediately.
+- **Confirm Password on Account Creation**:
+  - Added a "Confirm password" input with password visibility toggle to the public registration form ([register.php](file:///d:/xampp/htdocs/KingQuiry/register.php)).
+  - Implemented real-time client-side matching validation (`setCustomValidity`) and server-side password match verification.
+  - Added a "Confirm password" field and matching validation to the administrator client account creation form in [admin_clients.php](file:///d:/xampp/htdocs/KingQuiry/admin_clients.php).
+  - Protected `initialize_kingquiry_schema()` with an idempotent existence check in [config/db.php](file:///d:/xampp/htdocs/KingQuiry/config/db.php).
+- **Project Decluttering & Test Cleanup**:
+  - Removed obsolete transaction integration test (`tests/transaction_records_test.php`).
+  - Removed unused Node/Playwright configuration (`package.json`).
+  - Removed legacy decommissioned chat stub (`includes/chat_widget.php`).
+
 ## 2026-11-24 — Activity Audit Logs, Payment Trend Chart & Property Sale/View Confirmation
 
 - **Authentication Activity in Audit Logs**:

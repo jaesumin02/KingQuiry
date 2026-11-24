@@ -5,8 +5,6 @@ require_once __DIR__ . '/appointment_management.php';
 function property_transaction_stages(): array
 {
     return [
-        'inquiry_received' => 'Inquiry received',
-        'contacting_client' => 'Contacting client',
         'viewing_requested' => 'Viewing requested',
         'reviewing_schedule' => 'Reviewing schedule',
         'viewing_confirmed' => 'Viewing approved',
@@ -185,8 +183,6 @@ function property_transaction_next_stages(string $stage, ?string $paymentMethod 
     $isSpotCash = $paymentMethod !== null && (strcasecmp($paymentMethod, 'Spot Cash') === 0 || strcasecmp($paymentMethod, 'Spot cash') === 0);
 
     $transitions = [
-        'inquiry_received' => ['contacting_client', 'viewing_requested', 'cancelled'],
-        'contacting_client' => ['viewing_requested', 'cancelled'],
         'viewing_requested' => ['reviewing_schedule', 'viewing_confirmed', 'cancelled'],
         'reviewing_schedule' => ['viewing_confirmed', 'viewing_completed', 'cancelled'],
         'viewing_confirmed' => ['viewing_completed', 'payment_in_process', 'cancelled'],
@@ -360,7 +356,7 @@ function create_property_transaction(
         throw new InvalidArgumentException('Invalid transaction tracking source.');
     }
 
-    $stage = 'viewing_requested';
+    $stage = $source === 'appointment' ? 'viewing_requested' : 'inquiry_received';
     $appointmentId = $source === 'appointment' ? $sourceId : null;
     $inquiryId = $source === 'inquiry' ? $sourceId : null;
     $sourceColumn = $source === 'appointment' ? 'appointmentID' : 'inquiryID';
@@ -382,7 +378,7 @@ function create_property_transaction(
     if ($existing) {
         $transactionId = (int) $existing['transactionID'];
         $currentStage = (string) $existing['currentStage'];
-        if (in_array($currentStage, ['inquiry_received', 'contacting_client'], true)) {
+        if ($source === 'appointment') {
             $currentStage = 'viewing_requested';
         }
         $updateStmt = $conn->prepare(
@@ -394,10 +390,9 @@ function create_property_transaction(
         $updateStmt->execute();
         $updateStmt->close();
 
-        $note = $source === 'appointment'
-            ? 'Client requested a property viewing for this tracked inquiry.'
-            : 'Client wants to view the property.';
-        add_property_transaction_event($conn, $transactionId, $currentStage, $note, $actorId);
+        if ($source === 'appointment') {
+            add_property_transaction_event($conn, $transactionId, 'viewing_requested', 'Client submitted a property viewing request.', $actorId);
+        }
         return;
     }
 
@@ -411,10 +406,9 @@ function create_property_transaction(
 
     $transactionId = (int) $conn->insert_id;
     $stmt->close();
-    $note = $source === 'appointment'
-        ? 'Client submitted a property viewing request.'
-        : 'Client wants to view the property.';
-    add_property_transaction_event($conn, $transactionId, $stage, $note, $actorId, 'initial');
+    if ($source === 'appointment') {
+        add_property_transaction_event($conn, $transactionId, 'viewing_requested', 'Client submitted a property viewing request.', $actorId, 'initial');
+    }
 }
 
 function add_property_transaction_event(
@@ -1323,7 +1317,7 @@ function record_staff_transaction_payment(
 
         $newStage = $currentStage;
         $shouldAdvance = $advanceToPaymentInProcess || in_array($currentStage, ['viewing_completed', 'viewing_confirmed'], true);
-        if ($shouldAdvance && in_array($currentStage, ['inquiry_received', 'contacting_client', 'viewing_requested', 'viewing_confirmed', 'viewing_completed'], true)) {
+        if ($shouldAdvance && in_array($currentStage, ['viewing_requested', 'reviewing_schedule', 'viewing_confirmed', 'viewing_completed'], true)) {
             $newStage = 'payment_in_process';
             $updateStageStmt = $conn->prepare(
                 'UPDATE property_transactions SET currentStage = ?, updatedAt = CURRENT_TIMESTAMP WHERE transactionID = ?'

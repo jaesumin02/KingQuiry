@@ -1,5 +1,5 @@
 <?php
-include 'config/db.php';
+require_once __DIR__ . '/config/db.php';
 require_once 'includes/auth.php';
 require_once 'includes/rate_limit.php';
 
@@ -20,6 +20,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $fullname = is_string($_POST['fullname'] ?? null) ? trim($_POST['fullname']) : '';
     $email = is_string($_POST['email'] ?? null) ? strtolower(trim($_POST['email'])) : '';
     $rawPassword = $_POST['password'] ?? '';
+    $confirmPassword = $_POST['confirm_password'] ?? '';
 
     if (!has_valid_csrf_token()) {
         $error = 'Your session expired. Refresh the page and try again.';
@@ -35,6 +36,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $error = 'Enter a valid email address.';
     } elseif (!is_string($rawPassword) || strlen($rawPassword) < 8 || strlen($rawPassword) > 72) {
         $error = 'Use a password between 8 and 72 characters.';
+    } elseif (!is_string($confirmPassword) || $rawPassword !== $confirmPassword) {
+        $error = 'Passwords do not match. Please re-enter your password.';
     } else {
         $passwordHash = password_hash($rawPassword, PASSWORD_DEFAULT);
         if ($passwordHash === false) {
@@ -105,12 +108,20 @@ include 'includes/header.php';
                 </div>
 
                 <div class="kq-form-group">
-                    <label for="register-password">Password</label>
+                    <label for="register-pass">Password</label>
                     <div class="kq-password-wrap">
                         <input type="password" id="register-pass" name="password" required minlength="8" maxlength="72" placeholder="At least 8 characters" autocomplete="new-password">
                         <button type="button" class="kq-toggle-password" data-toggle-password="register-pass" aria-label="Show password" aria-pressed="false">Show</button>
                     </div>
                     <div class="form-text mt-2">Use at least 8 characters.</div>
+                </div>
+
+                <div class="kq-form-group">
+                    <label for="register-confirm-pass">Confirm password</label>
+                    <div class="kq-password-wrap">
+                        <input type="password" id="register-confirm-pass" name="confirm_password" required minlength="8" maxlength="72" placeholder="Re-enter your password" autocomplete="new-password">
+                        <button type="button" class="kq-toggle-password" data-toggle-password="register-confirm-pass" aria-label="Show password" aria-pressed="false">Show</button>
+                    </div>
                 </div>
 
                 <button type="submit" class="kq-auth-submit">Create account</button>
@@ -132,6 +143,24 @@ include 'includes/header.php';
         }
     });
 
+    const regForm = document.querySelector('.kq-auth-form');
+    const regPass = document.getElementById('register-pass');
+    const regConfirmPass = document.getElementById('register-confirm-pass');
+
+    if (regForm && regPass && regConfirmPass) {
+        function checkPasswordMatch() {
+            if (regConfirmPass.value && regPass.value !== regConfirmPass.value) {
+                regConfirmPass.setCustomValidity('Passwords do not match.');
+            } else {
+                regConfirmPass.setCustomValidity('');
+            }
+        }
+        regPass.addEventListener('input', checkPasswordMatch);
+        regConfirmPass.addEventListener('input', checkPasswordMatch);
+        regForm.addEventListener('submit', () => {
+            checkPasswordMatch();
+        });
+    }
 </script>
 
 <?php include 'includes/footer.php'; ?>

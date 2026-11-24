@@ -321,13 +321,15 @@ $transactionsSql =
 if ($role === 'Admin') {
     $transactions = $conn->query(
         $transactionsSql . "
+         WHERE t.currentStage NOT IN ('inquiry_received', 'contacting_client')
          ORDER BY (t.currentStage IN ('completed', 'cancelled')) ASC, t.updatedAt DESC, t.transactionID DESC
          LIMIT 300"
     );
 } else {
     $transactionsStmt = $conn->prepare(
         $transactionsSql . "
-         WHERE (a.agentID = ? OR ia.agentID = ?) OR (a.agentID IS NULL AND ia.agentID IS NULL)
+         WHERE t.currentStage NOT IN ('inquiry_received', 'contacting_client')
+           AND ((a.agentID = ? OR ia.agentID = ?) OR (a.agentID IS NULL AND ia.agentID IS NULL))
          ORDER BY (t.currentStage IN ('completed', 'cancelled')) ASC, t.updatedAt DESC, t.transactionID DESC
          LIMIT 300"
     );
@@ -666,27 +668,21 @@ include 'includes/header.php';
                             </div>
                         <?php endif; endif; ?>
 
-                        <!-- Buyer's Chosen Payment Scheme Information -->
+                        <!-- Agreed Payment Scheme Information -->
                         <?php
-                        $clientChosenMethod = (string) ($transaction['paymentMethod'] ?? '');
+                        $agreedMethod = (string) ($transaction['paymentMethod'] ?? '');
                         $allSchemes = property_transaction_payment_schemes();
-                        $schemeDetails = $allSchemes[$clientChosenMethod] ?? null;
+                        $schemeDetails = $allSchemes[$agreedMethod] ?? null;
+                        if ($schemeDetails !== null):
                         ?>
                         <div class="card p-3 mb-3 border shadow-none bg-light rounded-3">
                             <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                                <span class="small text-muted fw-semibold"><i class="bi bi-wallet2 me-1"></i> Buyer's Payment Scheme:</span>
-                                <?php if ($schemeDetails !== null): ?>
-                                    <span class="badge text-bg-success px-2 py-1"><?= htmlspecialchars($schemeDetails['badge'], ENT_QUOTES, 'UTF-8') ?></span>
-                                <?php else: ?>
-                                    <span class="badge text-bg-secondary px-2 py-1">Pending Buyer Choice</span>
-                                <?php endif; ?>
+                                <span class="small text-muted fw-semibold"><i class="bi bi-wallet2 me-1"></i> Agreed Payment Scheme:</span>
+                                <span class="badge text-bg-success px-2 py-1"><?= htmlspecialchars($schemeDetails['badge'], ENT_QUOTES, 'UTF-8') ?></span>
                             </div>
-                            <?php if ($schemeDetails !== null): ?>
-                                <div class="small text-muted mt-1"><?= htmlspecialchars($schemeDetails['desc'], ENT_QUOTES, 'UTF-8') ?></div>
-                            <?php else: ?>
-                                <div class="small text-muted mt-1">The buyer has not yet chosen their preferred payment scheme on their dashboard. You can also specify it during payment processing below.</div>
-                            <?php endif; ?>
+                            <div class="small text-muted mt-1"><?= htmlspecialchars($schemeDetails['desc'], ENT_QUOTES, 'UTF-8') ?></div>
                         </div>
+                        <?php endif; ?>
 
                         <!-- Milestone-Specific Functional Forms -->
                         <?php if ($currentStage === 'viewing_requested'): ?>
@@ -840,7 +836,7 @@ include 'includes/header.php';
                                                 <label class="form-label small mb-1 fw-semibold" for="modal-payment-method-<?= $tId ?>">Payment Scheme</label>
                                                 <select id="modal-payment-method-<?= $tId ?>" name="paymentMethod" class="form-select form-select-sm">
                                                     <?php foreach ($allSchemes as $sKey => $sVal): ?>
-                                                        <option value="<?= htmlspecialchars($sKey, ENT_QUOTES, 'UTF-8') ?>" <?= strcasecmp($clientChosenMethod, $sKey) === 0 ? 'selected' : '' ?>>
+                                                        <option value="<?= htmlspecialchars($sKey, ENT_QUOTES, 'UTF-8') ?>" <?= strcasecmp($agreedMethod, $sKey) === 0 ? 'selected' : '' ?>>
                                                             <?= htmlspecialchars($sVal['badge'] . ' — ' . $sVal['short'], ENT_QUOTES, 'UTF-8') ?>
                                                         </option>
                                                     <?php endforeach; ?>
@@ -909,7 +905,7 @@ include 'includes/header.php';
                                                 <label class="form-label small mb-1 fw-semibold" for="modal-payment-method-<?= $tId ?>">Payment Scheme</label>
                                                 <select id="modal-payment-method-<?= $tId ?>" name="paymentMethod" class="form-select form-select-sm">
                                                     <?php foreach ($allSchemes as $sKey => $sVal): ?>
-                                                        <option value="<?= htmlspecialchars($sKey, ENT_QUOTES, 'UTF-8') ?>" <?= strcasecmp($clientChosenMethod, $sKey) === 0 ? 'selected' : '' ?>>
+                                                        <option value="<?= htmlspecialchars($sKey, ENT_QUOTES, 'UTF-8') ?>" <?= strcasecmp($agreedMethod, $sKey) === 0 ? 'selected' : '' ?>>
                                                             <?= htmlspecialchars($sVal['badge'] . ' — ' . $sVal['short'], ENT_QUOTES, 'UTF-8') ?>
                                                         </option>
                                                     <?php endforeach; ?>

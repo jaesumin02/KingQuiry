@@ -453,13 +453,12 @@ $adminRecentTx = $conn->query(
      LEFT JOIN users agentUser ON agentUser.userID = a.agentID
      LEFT JOIN agent_inquiry_assignments ia ON ia.inquiryID = t.inquiryID
      LEFT JOIN users inqAgentUser ON inqAgentUser.userID = ia.agentID
+     WHERE t.currentStage NOT IN ('inquiry_received', 'contacting_client')
      ORDER BY (a.agentID IS NULL AND ia.agentID IS NULL) DESC, t.updatedAt DESC, t.transactionID DESC
      LIMIT 25"
 )->fetch_all(MYSQLI_ASSOC);
 
 $adminStageLabels = function_exists('property_transaction_stages') ? property_transaction_stages() : [
-    'inquiry_received' => 'Inquiry Received',
-    'contacting_client' => 'Contacting Client',
     'viewing_requested' => 'Viewing Requested',
     'reviewing_schedule' => 'Reviewing Schedule',
     'viewing_confirmed' => 'Viewing Approved',
@@ -1086,22 +1085,46 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     // Nested modal support for delete confirmations over Trashbin modal
-    document.addEventListener('show.bs.modal', function(e) {
-        if (e.target && e.target.classList.contains('confirm-delete-modal')) {
-            e.target.style.zIndex = '1070';
-            setTimeout(() => {
-                const backdrops = document.querySelectorAll('.modal-backdrop');
-                if (backdrops.length > 1) {
-                    backdrops[backdrops.length - 1].style.zIndex = '1065';
-                }
-            }, 10);
+    function promoteConfirmDeleteBackdrop() {
+        const backdrops = document.querySelectorAll('.modal-backdrop');
+        if (backdrops.length > 1) {
+            const topBackdrop = backdrops[backdrops.length - 1];
+            topBackdrop.classList.add('confirm-delete-backdrop');
+            topBackdrop.style.setProperty('z-index', '1065', 'important');
+        }
+    }
+
+    const backdropObserver = new MutationObserver(() => {
+        const activeModal = document.querySelector('.confirm-delete-modal.show, .confirm-delete-modal.showing');
+        if (activeModal) {
+            promoteConfirmDeleteBackdrop();
         }
     });
+    backdropObserver.observe(document.body, { childList: true });
+
+    document.addEventListener('show.bs.modal', function(e) {
+        if (e.target && e.target.classList.contains('confirm-delete-modal')) {
+            e.target.style.setProperty('z-index', '1070', 'important');
+            promoteConfirmDeleteBackdrop();
+            setTimeout(promoteConfirmDeleteBackdrop, 10);
+            setTimeout(promoteConfirmDeleteBackdrop, 50);
+            setTimeout(promoteConfirmDeleteBackdrop, 150);
+        }
+    });
+
+    document.addEventListener('shown.bs.modal', function(e) {
+        if (e.target && e.target.classList.contains('confirm-delete-modal')) {
+            e.target.style.setProperty('z-index', '1070', 'important');
+            promoteConfirmDeleteBackdrop();
+        }
+    });
+
     document.addEventListener('hidden.bs.modal', function(e) {
         if (e.target && e.target.classList.contains('confirm-delete-modal')) {
             const trashModal = document.getElementById('trashbinModal');
             if (trashModal && trashModal.classList.contains('show')) {
                 document.body.classList.add('modal-open');
+                trashModal.style.overflowY = 'auto';
             }
         }
     });

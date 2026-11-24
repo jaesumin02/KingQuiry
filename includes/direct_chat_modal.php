@@ -62,6 +62,12 @@ $csrfToken = function_exists('csrf_token') ? csrf_token() : ((string) ($_SESSION
 </div>
 
 <style>
+#directChatModal.modal {
+    z-index: 1085 !important;
+}
+.modal-backdrop.direct-chat-backdrop {
+    z-index: 1080 !important;
+}
 .kq-bubble-mine {
     background: linear-gradient(135deg, #174a70 0%, #0f324e 100%) !important;
     color: #ffffff !important;
@@ -189,8 +195,11 @@ $csrfToken = function_exists('csrf_token') ? csrf_token() : ((string) ($_SESSION
         document.getElementById('kqChatEmptyState').classList.add('d-none');
         knownMessageCount = 0;
 
+        modalEl.style.setProperty('z-index', '1085', 'important');
         const modalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
         modalInstance.show();
+        promoteDirectChatBackdrop();
+        setTimeout(promoteDirectChatBackdrop, 30);
 
         fetchMessages();
         startPolling();
@@ -531,16 +540,52 @@ $csrfToken = function_exists('csrf_token') ? csrf_token() : ((string) ($_SESSION
         return false;
     };
 
+    function promoteDirectChatBackdrop() {
+        const modalEl = document.getElementById('directChatModal');
+        if (!modalEl || (!modalEl.classList.contains('show') && !modalEl.classList.contains('showing'))) return;
+        modalEl.style.setProperty('z-index', '1085', 'important');
+        const backdrops = document.querySelectorAll('.modal-backdrop');
+        if (backdrops.length > 1) {
+            const topBackdrop = backdrops[backdrops.length - 1];
+            topBackdrop.classList.add('direct-chat-backdrop');
+            topBackdrop.style.setProperty('z-index', '1080', 'important');
+        }
+    }
+
+    const chatBackdropObserver = new MutationObserver(() => {
+        const modalEl = document.getElementById('directChatModal');
+        if (modalEl && (modalEl.classList.contains('show') || modalEl.classList.contains('showing'))) {
+            promoteDirectChatBackdrop();
+        }
+    });
+    if (document.body) {
+        chatBackdropObserver.observe(document.body, { childList: true });
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
         const modalEl = document.getElementById('directChatModal');
         if (modalEl) {
+            modalEl.addEventListener('show.bs.modal', function() {
+                modalEl.style.setProperty('z-index', '1085', 'important');
+                promoteDirectChatBackdrop();
+                setTimeout(promoteDirectChatBackdrop, 20);
+                setTimeout(promoteDirectChatBackdrop, 100);
+            });
+            modalEl.addEventListener('shown.bs.modal', function() {
+                modalEl.style.setProperty('z-index', '1085', 'important');
+                promoteDirectChatBackdrop();
+                const input = document.getElementById('kqChatMessageInput');
+                if (input) input.focus();
+            });
             modalEl.addEventListener('hidden.bs.modal', function() {
                 stopPolling();
                 activeChatTxId = 0;
-            });
-            modalEl.addEventListener('shown.bs.modal', function() {
-                const input = document.getElementById('kqChatMessageInput');
-                if (input) input.focus();
+                // If another modal (e.g. trackingModal or recordNextModal) is still open, keep body scroll-locked for it
+                const anyOpenModal = document.querySelector('.modal.show:not(#directChatModal)');
+                if (anyOpenModal) {
+                    document.body.classList.add('modal-open');
+                    anyOpenModal.style.overflowY = 'auto';
+                }
             });
         }
     });

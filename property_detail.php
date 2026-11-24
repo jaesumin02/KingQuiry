@@ -333,7 +333,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $clientID,
                                 'Property inquiry received',
                                 "Thank you for reaching out about '{$property['title']}'. Your inquiry has been received and our team will review it shortly. Please check your dashboard for updates.",
-                                'client_dashboard.php#transaction-tracking',
+                                'client_dashboard.php#inquiries',
                                 'inquiry_received'
                             );
                             $agentsNotified = notify_agents_new_inquiry($conn, $inquiryId, $propertyID, $clientID, $message);
@@ -347,8 +347,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
 
                         $_SESSION['flash_success'] = $notificationFailed
-                            ? 'Your inquiry was saved, but we could not create all notifications. You can track it from your dashboard.'
-                            : 'Your inquiry has been sent. Track the progress from your dashboard.';
+                            ? 'Your inquiry was saved, but we could not create all notifications. You can view your inquiries from your dashboard.'
+                            : 'Your inquiry has been sent to our sales team.';
                         $_SESSION['flash_success_action'] = 'inquiry';
                         header('Location: property_detail.php?id=' . $propertyID . '#inquiry-confirmation');
                         exit();

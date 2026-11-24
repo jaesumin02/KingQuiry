@@ -69,6 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['client_action'])) {
         try {
             if ($action === 'create_client') {
                 $password = is_string($_POST['password'] ?? null) ? $_POST['password'] : '';
+                $confirmPassword = is_string($_POST['confirm_password'] ?? null) ? $_POST['confirm_password'] : '';
 
                 if (strlen($fullname) < 2 || strlen($fullname) > 100 || !preg_match("/^[\p{L}\p{M} .'-]+$/u", $fullname)) {
                     throw new InvalidArgumentException('Enter a valid client name using letters and standard punctuation.');
@@ -84,6 +85,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['client_action'])) {
                 }
                 if (strlen($password) < 8 || strlen($password) > 72) {
                     throw new InvalidArgumentException('Use a temporary password between 8 and 72 characters.');
+                }
+                if ($password !== $confirmPassword) {
+                    throw new InvalidArgumentException('Passwords do not match. Please re-enter.');
                 }
 
                 $passwordHash = password_hash($password, PASSWORD_DEFAULT);
@@ -434,10 +438,14 @@ include 'includes/header.php';
                 </select>
             </div>
             <?php if ($showPasswordField): ?>
-                <div class="col-md-8">
+                <div class="col-md-4">
                     <label class="form-label fw-semibold" for="client-password">Temporary password</label>
                     <input id="client-password" type="password" name="password" class="form-control" minlength="8" maxlength="72" required autocomplete="new-password" placeholder="At least 8 characters">
-                    <div class="form-text">Share the temporary password securely. The client can sign in through the client portal immediately.</div>
+                    <div class="form-text">Share the temporary password securely.</div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label fw-semibold" for="client-confirm-password">Confirm password</label>
+                    <input id="client-confirm-password" type="password" name="confirm_password" class="form-control" minlength="8" maxlength="72" required autocomplete="new-password" placeholder="Re-enter password">
                 </div>
             <?php endif; ?>
             <div class="col-12 d-flex flex-wrap gap-2">

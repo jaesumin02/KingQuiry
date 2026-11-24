@@ -42,6 +42,17 @@ body.admin-control-room {
     background: var(--admin-canvas);
 }
 
+.navbar {
+    position: relative;
+    z-index: 1050;
+}
+
+.navbar-collapse.show,
+.navbar-collapse.collapsing {
+    position: relative;
+    z-index: 1051;
+}
+
 .admin-control-room .navbar {
     background: var(--admin-navbar) !important;
 }
@@ -1548,6 +1559,10 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
     color: #f1f5f9 !important;
 }
 
+[data-bs-theme="dark"] .search-input-box input::placeholder {
+    color: #94a3b8 !important;
+}
+
 [data-bs-theme="dark"] .search-select-box {
     border-color: #1e3a4e !important;
 }
@@ -1915,7 +1930,25 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
     left: 0 !important;
     width: 100vw !important;
     height: 100vh !important;
-    z-index: 1055 !important;
+    z-index: 1055;
+}
+
+/* Stacked confirmation modals over parent modals (e.g. Trashbin) */
+.modal.confirm-delete-modal {
+    z-index: 1070 !important;
+}
+
+.modal-backdrop.confirm-delete-backdrop {
+    z-index: 1065 !important;
+}
+
+/* Stacked direct chat modal over tracking modals */
+#directChatModal.modal {
+    z-index: 1085 !important;
+}
+
+.modal-backdrop.direct-chat-backdrop {
+    z-index: 1080 !important;
 }
 
 .modal-dialog {
@@ -2093,7 +2126,7 @@ body.kq-auth-body {
         gap: 1rem;
     }
     .kq-portal-sidebar {
-        top: 7rem;
+        top: 5rem;
     }
 }
 

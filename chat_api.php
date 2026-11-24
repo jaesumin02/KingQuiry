@@ -239,7 +239,18 @@ if ($action === 'initiate_property_chat') {
     $newInqId = (int) $conn->insert_id;
     $inqStmt->close();
 
-    $staffRes = $conn->query("SELECT userID, fullname FROM users WHERE role IN ('Agent', 'Sales Agent') AND accountStatus = 'Active' ORDER BY (role = 'Sales Agent') DESC, RAND() LIMIT 1");
+    ensure_user_presence_columns($conn);
+    $staffRes = $conn->query(
+        "SELECT userID, fullname 
+         FROM users 
+         WHERE role IN ('Agent', 'Sales Agent') 
+           AND accountStatus = 'Active' 
+         ORDER BY 
+           (is_online = 1 AND availability_status = 'online' AND last_seen_at >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)) DESC,
+           (role = 'Sales Agent') DESC, 
+           RAND() 
+         LIMIT 1"
+    );
     $assignedAgentId = null;
     $assignedAgentName = 'Assigned Sales Agent';
     if ($staffRes && ($agentRow = $staffRes->fetch_assoc())) {
@@ -251,15 +262,11 @@ if ($action === 'initiate_property_chat') {
         $asStmt->close();
     }
 
-    $newTxStmt = $conn->prepare("INSERT INTO property_transactions (propertyID, clientID, inquiryID, currentStage) VALUES (?, ?, ?, 'viewing_requested')");
+    $newTxStmt = $conn->prepare("INSERT INTO property_transactions (propertyID, clientID, inquiryID, currentStage) VALUES (?, ?, ?, 'inquiry_received')");
     $newTxStmt->bind_param('iii', $propId, $currentUserId, $newInqId);
     $newTxStmt->execute();
     $newTxId = (int) $conn->insert_id;
     $newTxStmt->close();
-
-    if (function_exists('add_property_transaction_event')) {
-        add_property_transaction_event($conn, $newTxId, 'viewing_requested', 'Client wants to view the property.', $currentUserId);
-    }
 
     $conn->commit();
     $propertyChatTransactionStarted = false;

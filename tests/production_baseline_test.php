@@ -69,6 +69,19 @@ expect_true(
     'Invalid appointment times must be rejected.'
 );
 expect_true(
+    !array_key_exists('inquiry_received', property_transaction_stages())
+        && !array_key_exists('contacting_client', property_transaction_stages()),
+    'Transaction tracking stages must exclude casual chat inquiries.'
+);
+expect_true(
+    array_key_first(property_transaction_stages()) === 'viewing_requested',
+    'Transaction tracking stages must start at viewing_requested.'
+);
+expect_true(
+    in_array('reviewing_schedule', property_transaction_next_stages('viewing_requested'), true),
+    'Viewing requests must transition to reviewing_schedule on agent acceptance.'
+);
+expect_true(
     !in_array('completed', property_transaction_next_stages('payment_in_process'), true),
     'Transactions must not skip directly from payment processing to completion.'
 );

@@ -48,22 +48,24 @@ if (!function_exists('flush_multi_query_results')) {
     }
 }
 
-function initialize_kingquiry_schema(mysqli $connection): void
-{
-    $schemaPath = dirname(__DIR__) . '/database/schema.sql';
-    if (!is_file($schemaPath)) {
-        throw new RuntimeException('Missing database schema file at ' . $schemaPath);
-    }
+if (!function_exists('initialize_kingquiry_schema')) {
+    function initialize_kingquiry_schema(mysqli $connection): void
+    {
+        $schemaPath = dirname(__DIR__) . '/database/schema.sql';
+        if (!is_file($schemaPath)) {
+            throw new RuntimeException('Missing database schema file at ' . $schemaPath);
+        }
 
-    $schemaSql = file_get_contents($schemaPath);
-    if ($schemaSql === false) {
-        throw new RuntimeException('Unable to read database schema file at ' . $schemaPath);
-    }
+        $schemaSql = file_get_contents($schemaPath);
+        if ($schemaSql === false) {
+            throw new RuntimeException('Unable to read database schema file at ' . $schemaPath);
+        }
 
-    if (!$connection->multi_query($schemaSql)) {
-        throw new RuntimeException('Unable to initialize the KingQuiry database schema: ' . $connection->error);
+        if (!$connection->multi_query($schemaSql)) {
+            throw new RuntimeException('Unable to initialize the KingQuiry database schema: ' . $connection->error);
+        }
+        flush_multi_query_results($connection);
     }
-    flush_multi_query_results($connection);
 }
 
 function ensure_required_database_tables(mysqli $connection, bool $allowSchemaChanges): void
