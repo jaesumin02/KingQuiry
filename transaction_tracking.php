@@ -994,7 +994,12 @@ include 'includes/header.php';
 
                                 <div class="alert alert-warning small py-2 px-3 mb-3">
                                     <i class="bi bi-info-circle-fill me-1"></i>
-                                    <strong>Final Closing Requirement:</strong> Enter the final verified sale price. Marking as completed will finalize the sale, record the turnover date, and mark this property as <strong>Sold</strong> in the public catalog.
+                                    <strong>Final Closing Requirement:</strong> Enter the final verified sale price. Marking as completed will finalize the sale and record the turnover date.
+                                    <?php if ($role === 'Admin'): ?>
+                                        The property will be marked <strong>Sold</strong> in the admin inventory and hidden from public listings.
+                                    <?php else: ?>
+                                        The property will become unavailable to other buyers.
+                                    <?php endif; ?>
                                 </div>
 
                                 <form method="POST" action="transaction_tracking.php" class="d-grid gap-3" id="advanceForm<?= $tId ?>" data-confirm="Finalize transaction and close this deal?">
@@ -1038,7 +1043,12 @@ include 'includes/header.php';
                                 <span class="fs-1 d-block mb-1">🎉</span>
                                 <h6 class="fw-bold text-success mb-1">Transaction Completed &amp; Property Turned Over</h6>
                                 <p class="small text-muted mb-0">
-                                    Verified Sale Price: <strong>₱<?= number_format((float) $transaction['salePrice'], 2) ?></strong> · Property status marked as <strong>Sold</strong>.
+                                    Verified Sale Price: <strong>₱<?= number_format((float) $transaction['salePrice'], 2) ?></strong>.
+                                    <?php if ($role === 'Admin'): ?>
+                                        Property status: <strong>Sold</strong>.
+                                    <?php else: ?>
+                                        This property is no longer available to other buyers.
+                                    <?php endif; ?>
                                 </p>
                             </div>
 

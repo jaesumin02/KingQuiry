@@ -56,6 +56,15 @@ if (!in_array((string) $property['status'], ['Available', 'Sold'], true)) {
     exit();
 }
 
+$isAdminUser = user_has_role($_SESSION['user'] ?? null, 'Admin');
+if ($property['status'] === 'Sold' && !$isAdminUser) {
+    http_response_code(404);
+    include 'includes/header.php';
+    echo "<div class='alert alert-warning'>This property is not available.</div>";
+    include 'includes/footer.php';
+    exit();
+}
+
 $propertyMunicipality = (string) ($property['municipalityName'] ?? '');
 if ($propertyMunicipality === '' && !empty($property['location'])) {
     $batangasMunicipalities = array_keys(get_batangas_municipality_coordinates());
@@ -81,11 +90,19 @@ $propertyLocationCoords = $hasExactPin
 
 $successMsg = "";
 $errorMsg = "";
+$appointmentDuplicateMessage = '';
+$successAction = is_string($_SESSION['flash_success_action'] ?? null)
+    ? $_SESSION['flash_success_action']
+    : '';
+$successDetails = is_array($_SESSION['flash_success_details'] ?? null)
+    ? $_SESSION['flash_success_details']
+    : [];
 
 if (!empty($_SESSION['flash_success'])) {
     $successMsg = (string) $_SESSION['flash_success'];
     unset($_SESSION['flash_success']);
 }
+unset($_SESSION['flash_success_action'], $_SESSION['flash_success_details']);
 
 $userRole = normalized_user_role($_SESSION['user'] ?? null);
 $isStaffUser = user_has_role($_SESSION['user'] ?? null, 'Sales Agent', 'Agent', 'Admin');
@@ -191,80 +208,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $transactionStarted = false;
                     $errorMsg = 'This property is no longer available for viewing requests.';
                 } else {
-                    $duplicate = $conn->prepare(
-                        "SELECT appointmentID FROM appointments
-                         WHERE propertyID = ? AND clientID = ? AND appointmentDate = ? AND appointmentTime = ?
-                           AND status IN ('Pending', 'Approved')
-                         LIMIT 1"
-                    );
-                    $duplicate->bind_param('iiss', $propertyID, $clientID, $date, $time);
-                    $duplicate->execute();
-
-                    if ($duplicate->get_result()->num_rows > 0) {
+                    $activeViewingRequest = get_active_property_viewing_request($conn, $propertyID);
+                    if ($activeViewingRequest !== null) {
                         $conn->rollback();
                         $transactionStarted = false;
-                        $errorMsg = 'You already have an active request for this property at that date and time.';
-                    } else {
-                        // ALGORITHM: Lock the listing, reject duplicate or overlapping active visits, then save booking and tracking atomically.
-                        $clashStmt = $conn->prepare(
-                            "SELECT appointmentDate, appointmentTime FROM appointments
-                             WHERE propertyID = ?
-                               AND status IN ('Pending', 'Approved')
-                               AND ABS(TIMESTAMPDIFF(
-                                   SECOND,
-                                   TIMESTAMP(appointmentDate, appointmentTime),
-                                   TIMESTAMP(?, ?)
-                               )) < 3600
-                             LIMIT 1"
+                        $existingDate = date('M j, Y', strtotime((string) $activeViewingRequest['appointmentDate']));
+                        $existingTime = date('g:i A', strtotime((string) $activeViewingRequest['appointmentTime']));
+                        $appointmentDuplicateMessage = sprintf(
+                            'Viewing reference #KQ-%d is already active for this property on %s at %s. Only one active viewing request is allowed per property. Please wait until the visit is completed or the existing request is cancelled.',
+                            1000 + (int) $activeViewingRequest['appointmentID'],
+                            $existingDate,
+                            $existingTime
                         );
-                        $clashStmt->bind_param('iss', $propertyID, $date, $time);
-                        $clashStmt->execute();
-                        $clashResult = $clashStmt->get_result()->fetch_assoc();
+                    } else {
+                        // ALGORITHM: Lock the listing, allow only one active viewing request, then save booking and tracking atomically.
+                        $bookStmt = $conn->prepare(
+                            "INSERT INTO appointments
+                                (propertyID, clientID, appointmentDate, appointmentTime, status)
+                             VALUES (?, ?, ?, ?, 'Pending')"
+                        );
+                        $bookStmt->bind_param('iiss', $propertyID, $clientID, $date, $time);
+                        $bookStmt->execute();
+                        $appointmentId = (int) $conn->insert_id;
+                        create_property_transaction($conn, $propertyID, $clientID, 'appointment', $appointmentId, $clientID);
+                        $conn->commit();
+                        $transactionStarted = false;
+                        unset($_SESSION['property_action_tokens'][$propertyID]['appointment']);
 
-                        if ($clashResult) {
-                            $conn->rollback();
-                            $transactionStarted = false;
-                            $clashTime = date('M j, Y', strtotime($clashResult['appointmentDate'])) . ' at ' . substr($clashResult['appointmentTime'], 0, 5);
-                            $errorMsg = "Schedule conflict: This property already has a scheduled property viewing {$clashTime}. To ensure dedicated Sales Agent assistance and avoid overlapping viewings, please choose a time at least one hour before or after.";
-                        } else {
-                            $bookStmt = $conn->prepare(
-                                "INSERT INTO appointments
-                                    (propertyID, clientID, appointmentDate, appointmentTime, status)
-                                 VALUES (?, ?, ?, ?, 'Pending')"
+                        $notificationFailed = false;
+                        try {
+                            $clientNotified = send_property_notification(
+                                $conn,
+                                $clientID,
+                                'Viewing request received',
+                                "Thank you for requesting a property viewing for '{$property['title']}'. Your viewing request has been received and is now being reviewed by our Sales Agent team. Please monitor your dashboard for updates.",
+                                'client_dashboard.php#transaction-tracking',
+                                'viewing_request'
                             );
-                            $bookStmt->bind_param('iiss', $propertyID, $clientID, $date, $time);
-                            $bookStmt->execute();
-                            $appointmentId = (int) $conn->insert_id;
-                            create_property_transaction($conn, $propertyID, $clientID, 'appointment', $appointmentId, $clientID);
-                            $conn->commit();
-                            $transactionStarted = false;
-                            unset($_SESSION['property_action_tokens'][$propertyID]['appointment']);
-
-                            $notificationFailed = false;
-                            try {
-                                $clientNotified = send_property_notification(
-                                    $conn,
-                                    $clientID,
-                                    'Viewing request received',
-                                    "Thank you for requesting a property viewing for '{$property['title']}'. Your viewing request has been received and is now being reviewed by our Sales Agent team. Please monitor your dashboard for updates.",
-                                    'client_dashboard.php#transaction-tracking',
-                                    'viewing_request'
-                                );
-                                $agentsNotified = notify_agents_new_viewing($conn, $appointmentId, $propertyID, $clientID, $date, $time);
-                                $notificationFailed = !$clientNotified || !$agentsNotified;
-                                if ($notificationFailed) {
-                                    error_log('KingQuiry viewing request notifications were incomplete for appointment ' . $appointmentId . '.');
-                                }
-                            } catch (Throwable $exception) {
-                                error_log('KingQuiry appointment notification failed: ' . $exception->getMessage());
-                                $notificationFailed = true;
+                            $agentsNotified = notify_agents_new_viewing($conn, $appointmentId, $propertyID, $clientID, $date, $time);
+                            $notificationFailed = !$clientNotified || !$agentsNotified;
+                            if ($notificationFailed) {
+                                error_log('KingQuiry viewing request notifications were incomplete for appointment ' . $appointmentId . '.');
                             }
-                            $_SESSION['flash_success'] = $notificationFailed
-                                ? 'Your viewing request was saved, but we could not send all notifications. You can track it from your dashboard.'
-                                : 'Your viewing request has been sent. Track its progress and updates from your dashboard.';
-                            header('Location: property_detail.php?id=' . $propertyID . '#appointment');
-                            exit();
+                        } catch (Throwable $exception) {
+                            error_log('KingQuiry appointment notification failed: ' . $exception->getMessage());
+                            $notificationFailed = true;
                         }
+                        $_SESSION['flash_success'] = $notificationFailed
+                            ? 'Your viewing request was saved, but we could not send all notifications. You can track it from your dashboard.'
+                            : 'Your preferred viewing schedule has been sent to the Sales Agent team for confirmation.';
+                        $_SESSION['flash_success_action'] = 'appointment';
+                        $_SESSION['flash_success_details'] = [
+                            'appointmentID' => $appointmentId,
+                            'date' => $date,
+                            'time' => $time,
+                        ];
+                        header('Location: property_detail.php?id=' . $propertyID . '#appointment-confirmation');
+                        exit();
                     }
                 }
             } catch (Throwable $exception) {
@@ -349,7 +349,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $_SESSION['flash_success'] = $notificationFailed
                             ? 'Your inquiry was saved, but we could not create all notifications. You can track it from your dashboard.'
                             : 'Your inquiry has been sent. Track the progress from your dashboard.';
-                        header('Location: property_detail.php?id=' . $propertyID . '#inquiry');
+                        $_SESSION['flash_success_action'] = 'inquiry';
+                        header('Location: property_detail.php?id=' . $propertyID . '#inquiry-confirmation');
                         exit();
                     }
                 }
@@ -372,8 +373,8 @@ include 'includes/header.php';
     </div>
 </div>
 
-<?php if($successMsg): ?><div class="alert alert-success" role="status"><?= htmlspecialchars($successMsg, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
-<?php if($errorMsg): ?><div class="alert alert-danger" role="alert"><?= htmlspecialchars($errorMsg, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
+<?php if ($successMsg !== '' && !in_array($successAction, ['appointment', 'inquiry'], true)): ?><div class="alert alert-success" role="status"><?= htmlspecialchars($successMsg, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
+<?php if ($errorMsg !== '' && $appointmentDuplicateMessage === ''): ?><div class="alert alert-danger" role="alert"><?= htmlspecialchars($errorMsg, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
 
 <div class="row">
     <!-- Property Detailed Information -->
@@ -618,11 +619,44 @@ include 'includes/header.php';
                 </button>
             </div>
 
-            <div class="card p-4 mb-4" id="appointment">
+            <div class="card p-4 mb-4 shadow-sm border-primary-subtle" id="appointment">
+                <?php if ($appointmentDuplicateMessage !== ''): ?>
+                    <div class="alert alert-warning mb-3" id="appointment-duplicate-alert" role="alert" tabindex="-1">
+                        <div class="fw-bold"><i class="bi bi-exclamation-triangle-fill me-1" aria-hidden="true"></i>Duplicate viewing request</div>
+                        <div class="small"><?= htmlspecialchars($appointmentDuplicateMessage, ENT_QUOTES, 'UTF-8') ?></div>
+                    </div>
+                <?php endif; ?>
+                <?php if ($successMsg !== '' && $successAction === 'appointment'): ?>
+                    <div class="alert alert-success border-success-subtle mb-4" id="appointment-confirmation" role="status" tabindex="-1" style="scroll-margin-top: 6rem;">
+                        <div class="d-flex align-items-start gap-3">
+                            <i class="bi bi-check-circle-fill fs-4 flex-shrink-0" aria-hidden="true"></i>
+                            <div class="flex-grow-1">
+                                <h4 class="h6 fw-bold mb-1">Viewing request submitted successfully</h4>
+                                <p class="small mb-2"><?= htmlspecialchars($successMsg, ENT_QUOTES, 'UTF-8') ?></p>
+                                <?php if (!empty($successDetails['date']) && !empty($successDetails['time'])): ?>
+                                    <div class="small fw-semibold mb-2">
+                                        Preferred schedule:
+                                        <?= htmlspecialchars(date('M j, Y', strtotime((string) $successDetails['date'])), ENT_QUOTES, 'UTF-8') ?>
+                                        at
+                                        <?= htmlspecialchars(date('g:i A', strtotime((string) $successDetails['time'])), ENT_QUOTES, 'UTF-8') ?>
+                                    </div>
+                                <?php endif; ?>
+                                <div class="d-flex flex-wrap align-items-center gap-2">
+                                    <span class="badge rounded-pill text-bg-warning">Awaiting Sales Agent confirmation</span>
+                                    <?php if (!empty($successDetails['appointmentID'])): ?>
+                                        <span class="small text-muted">Reference #KQ-<?= 1000 + (int) $successDetails['appointmentID'] ?></span>
+                                    <?php endif; ?>
+                                </div>
+                                <a href="client_dashboard.php#viewing-requests" class="btn btn-sm btn-success mt-3">Track viewing request</a>
+                            </div>
+                        </div>
+                    </div>
+                <?php endif; ?>
                 <div class="page-eyebrow mb-2">Visit the property</div>
-                <h3 class="h5 fw-bold mb-3">Request a viewing</h3>
+                <h3 class="h5 fw-bold mb-2">Request a viewing</h3>
+                <p class="text-muted small mb-3">Choose a preferred date and time. Your visit is confirmed only after a Sales Agent approves the schedule.</p>
                 <?php if(normalized_user_role($_SESSION['user'] ?? null) === 'Client'): ?>
-                    <form method="POST" data-confirm="Send a viewing request for this property? The assigned Sales Agent will be notified.">
+                    <form method="POST" data-confirm="Submit your preferred viewing date and time? Your request will be sent to a Sales Agent, and the visit is not confirmed until the agent approves it.">
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                         <input type="hidden" name="submission_token" value="<?= htmlspecialchars($_SESSION['property_action_tokens'][$propertyID]['appointment'], ENT_QUOTES, 'UTF-8') ?>">
                         <div class="mb-3">
@@ -633,7 +667,9 @@ include 'includes/header.php';
                             <label class="form-label fw-semibold" for="appointment-time">Preferred time</label>
                             <input type="time" id="appointment-time" name="appointmentTime" class="form-control" required>
                         </div>
-                        <button type="submit" name="book_appointment" class="btn btn-primary w-100">Request a viewing</button>
+                        <button type="submit" name="book_appointment" class="btn btn-primary w-100 py-2 fw-semibold">
+                            <i class="bi bi-calendar-check me-1" aria-hidden="true"></i>Request a viewing
+                        </button>
                     </form>
                 <?php else: ?>
                     <p class="text-muted small">Sign in with a client account to request a viewing.</p>
@@ -642,10 +678,21 @@ include 'includes/header.php';
             </div>
 
             <div class="card p-4" id="inquiry">
+                <?php if ($successMsg !== '' && $successAction === 'inquiry'): ?>
+                    <div class="alert alert-success" id="inquiry-confirmation" role="status" tabindex="-1" style="scroll-margin-top: 6rem;">
+                        <strong>Inquiry sent successfully.</strong>
+                        <div class="small"><?= htmlspecialchars($successMsg, ENT_QUOTES, 'UTF-8') ?></div>
+                        <a href="client_dashboard.php#transaction-tracking" class="btn btn-sm btn-success mt-2">Track inquiry</a>
+                    </div>
+                <?php endif; ?>
                 <div class="page-eyebrow mb-2">Have a question?</div>
                 <h3 class="h5 fw-bold mb-3">Contact the property team</h3>
                 <?php if(normalized_user_role($_SESSION['user'] ?? null) === 'Client'): ?>
-                    <form method="POST" data-confirm="Send this inquiry to the property team?">
+                    <form method="POST" data-single-submit data-confirm="<?= htmlspecialchars(
+                        'Send your inquiry about "' . $displayTitle . '" to the property team? Confirm to send it once.',
+                        ENT_QUOTES,
+                        'UTF-8'
+                    ) ?>">
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                         <input type="hidden" name="submission_token" value="<?= htmlspecialchars($_SESSION['property_action_tokens'][$propertyID]['inquiry'], ENT_QUOTES, 'UTF-8') ?>">
                         <div class="mb-3">
@@ -719,6 +766,7 @@ include 'includes/header.php';
 <?php endif; ?>
 
 <script>
+const hasDuplicateViewingRequest = <?= $appointmentDuplicateMessage !== '' ? 'true' : 'false' ?>;
 const hasExactPin = <?= $hasExactPin ? 'true' : 'false' ?>;
 const propertyLocationCoords = <?= json_encode($propertyLocationCoords, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
 const propertyDetailTitle = <?= json_encode((string) $property['title'], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
@@ -727,6 +775,32 @@ const propertyDetailCategory = <?= json_encode((string) ($categoryLabels[$proper
 const propertyDetailPrice = <?= json_encode('₱' . number_format((float) $property['price'], 2), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
 
 document.addEventListener('DOMContentLoaded', () => {
+    const successNoticeId = <?= json_encode(
+        $successAction === 'appointment' ? 'appointment-confirmation'
+            : ($successAction === 'inquiry' ? 'inquiry-confirmation' : '')
+    ) ?>;
+    if (successNoticeId !== '') {
+        const successNotice = document.getElementById(successNoticeId);
+        if (successNotice) {
+            successNotice.focus({ preventScroll: true });
+            requestAnimationFrame(() => {
+                successNotice.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                window.setTimeout(
+                    () => successNotice.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+                    300
+                );
+            });
+        }
+    }
+
+    if (hasDuplicateViewingRequest) {
+        const duplicateAlert = document.getElementById('appointment-duplicate-alert');
+        if (duplicateAlert) {
+            duplicateAlert.focus({ preventScroll: true });
+            duplicateAlert.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
+
     const mapContainer = document.getElementById('property-detail-map');
     if (!mapContainer) return;
     if (!propertyLocationCoords) {

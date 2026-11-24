@@ -37,7 +37,7 @@ $csrfToken = function_exists('csrf_token') ? csrf_token() : ((string) ($_SESSION
                 <div id="kqChatMessagesList" class="d-flex flex-column gap-2 mt-auto"></div>
             </div>
 
-            <div class="px-3 py-1 bg-body border-top <?= $isClientUser ? 'd-flex' : 'd-none' ?> gap-1 align-items-center flex-wrap" id="kqChatChipsBar">
+            <div class="px-3 py-2 bg-body border-top <?= $isClientUser ? 'd-flex' : 'd-none' ?> gap-1 align-items-center flex-wrap kq-chat-quick-ask-bar" id="kqChatChipsBar">
                 <span class="small text-muted me-1" style="font-size: 0.7rem;">Quick ask:</span>
                 <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2" id="kqChipViewing" style="font-size: 0.72rem;" onclick="kqInsertSuggestion('Can we schedule a property viewing?')">📅 Viewing</button>
                 <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2" id="kqChipPayment" style="font-size: 0.72rem;" onclick="kqInsertSuggestion('What are the payment terms and options?')">💰 Payment terms</button>
@@ -67,10 +67,14 @@ $csrfToken = function_exists('csrf_token') ? csrf_token() : ((string) ($_SESSION
     color: #ffffff !important;
     border-radius: 16px 16px 3px 16px;
     align-self: flex-end;
-    max-width: 82%;
+    width: fit-content;
+    min-width: 5.5rem;
+    max-width: min(80%, 26rem);
     padding: 0.55rem 0.95rem;
     box-shadow: 0 2px 8px rgba(23, 74, 112, 0.2);
     word-break: break-word;
+    font-size: 0.9rem;
+    line-height: 1.45;
 }
 .kq-bubble-theirs {
     background: var(--bs-card-bg, #ffffff) !important;
@@ -78,10 +82,43 @@ $csrfToken = function_exists('csrf_token') ? csrf_token() : ((string) ($_SESSION
     border: 1px solid var(--bs-border-color, #e2e8f0);
     border-radius: 16px 16px 16px 3px;
     align-self: flex-start;
-    max-width: 82%;
+    width: fit-content;
+    min-width: 5.5rem;
+    max-width: min(80%, 26rem);
     padding: 0.55rem 0.95rem;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
     word-break: break-word;
+    font-size: 0.9rem;
+    line-height: 1.45;
+}
+#kqChatMessagesList,
+.kq-chat-message-row {
+    width: 100%;
+}
+.kq-chat-quick-ask-bar.d-flex {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.4rem !important;
+}
+.kq-chat-quick-ask-bar > span {
+    grid-column: 1 / -1;
+}
+.kq-chat-quick-ask-bar > button {
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+@media (max-width: 575.98px) {
+    .kq-bubble-mine,
+    .kq-bubble-theirs {
+        max-width: 90%;
+    }
+
+    .kq-chat-quick-ask-bar.d-flex {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 [data-bs-theme="dark"] .kq-bubble-theirs {
     background: #162838 !important;
@@ -309,7 +346,7 @@ $csrfToken = function_exists('csrf_token') ? csrf_token() : ((string) ($_SESSION
                     } else {
                         statusBadge.className = 'badge rounded-pill bg-secondary text-white border border-light-subtle';
                         statusBadge.innerHTML = '⚪ Offline';
-                        statusBadge.title = 'Assigned sales agent is currently away (automated assistance active)';
+                        statusBadge.title = 'Assigned Sales Agent is currently away. Send a message and they will reply when available.';
                     }
                 } else {
                     statusBadge.classList.add('d-none');
@@ -360,47 +397,33 @@ $csrfToken = function_exists('csrf_token') ? csrf_token() : ((string) ($_SESSION
 
         messages.forEach(function(m) {
             const wrap = document.createElement('div');
-            wrap.className = 'd-flex flex-column ' + (m.isMe ? 'align-items-end' : 'align-items-start');
+            wrap.className = 'kq-chat-message-row d-flex flex-column ' + (m.isMe ? 'align-items-end' : 'align-items-start');
 
             const bubble = document.createElement('div');
             bubble.className = m.isMe ? 'kq-bubble-mine' : 'kq-bubble-theirs';
 
-            if (m.isMe) {
-                if (m.isAutomated) {
-                    const author = document.createElement('div');
-                    author.className = 'small fw-bold mb-1 d-flex align-items-center justify-content-end gap-1';
-                    author.style.fontSize = '0.72rem';
-
-                    const autoBadge = document.createElement('span');
-                    autoBadge.className = 'badge bg-white text-dark rounded-pill fw-semibold shadow-sm';
-                    autoBadge.style.fontSize = '0.62rem';
-                    autoBadge.textContent = '⚡ Automated Reply';
-                    author.appendChild(autoBadge);
-
-                    bubble.appendChild(author);
-                }
-            } else {
+            if (!m.isMe) {
                 const author = document.createElement('div');
                 author.className = 'small fw-bold opacity-75 mb-1 d-flex align-items-center gap-1 flex-wrap';
                 author.style.fontSize = '0.72rem';
 
-                if (m.isAutomated) {
-                    const autoBadge = document.createElement('span');
-                    autoBadge.className = 'badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill';
-                    autoBadge.style.fontSize = '0.62rem';
-                    autoBadge.textContent = '⚡ Automated';
-                    author.appendChild(autoBadge);
-                }
-
                 const nameSpan = document.createElement('span');
-                nameSpan.textContent = m.senderName + ' (' + m.senderRole + ')';
+                const senderName = String(m.senderName || '').trim();
+                const senderRole = String(m.senderRole || '').trim();
+                const normalizedName = senderName.toLocaleLowerCase();
+                const normalizedRole = senderRole.toLocaleLowerCase();
+                nameSpan.textContent = senderName && senderRole
+                    && normalizedName !== normalizedRole
+                    && !normalizedName.endsWith(' ' + normalizedRole)
+                    ? senderName + ' (' + senderRole + ')'
+                    : (senderName || senderRole || 'Sales Agent');
                 author.appendChild(nameSpan);
 
                 bubble.appendChild(author);
             }
 
             const text = document.createElement('div');
-            text.textContent = m.message;
+            text.textContent = String(m.message || '').replace(/\s*\[Automated Reply\]\s*/gi, ' ').trim();
             bubble.appendChild(text);
 
             const time = document.createElement('div');

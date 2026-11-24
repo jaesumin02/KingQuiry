@@ -35,6 +35,12 @@ if (!$property) {
     exit();
 }
 
+if (($property['status'] ?? '') === 'Sold' && !user_has_role($_SESSION['user'] ?? null, 'Admin')) {
+    http_response_code(404);
+    echo 'Property summary is not available.';
+    exit();
+}
+
 $client = $_SESSION['user'];
 $appointment = null;
 if ($appointmentId !== null && $appointmentId > 0) {

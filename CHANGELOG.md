@@ -3,6 +3,45 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-24 — Activity Audit Logs, Payment Trend Chart & Property Sale/View Confirmation
+
+- **Authentication Activity in Audit Logs**:
+  - Record successful sign-ins and sign-outs for Clients, Sales Agents, and Admins in `auditlogs`.
+  - Updated the reusable Audit Logs modal copy to include account activity.
+- **Money Charts**:
+  - Changed the six-month verified collections chart in [admin_payments.php](file:///c:/xampp/htdocs/kingquiry/admin_payments.php) from bars to a labeled line chart. The annual actual-sales-revenue chart in Reports remains a line chart.
+- **Sold Property Protection**:
+  - Completing a sale marks the property `Sold`, closes competing open transactions/viewings with client notifications, and prevents administrators from relisting a sold property. The property table shows completed sales as locked.
+  - Restricted Sold-status visibility to Administrators. Non-admin users receive an unavailable response on direct property pages and PDF summaries; catalog listings and map results continue to show only available properties.
+  - Transaction notices to competing clients now say the property is no longer available without disclosing its Sold status.
+  - Clarified catalog counts so the default “all listings” view reports the total available count instead of incorrectly saying it matches filters when no search, category, or location filter is active.
+  - Direct property chat/inquiry intake now locks and rechecks listing availability while creating a tracked inquiry, preventing a new lead from slipping in after a sale is finalized.
+  - Added an integration check that finalizing one transaction marks the listing Sold, cancels a competing transaction/viewing, and blocks its later completion.
+- **Viewing Request Confirmation & UI**:
+  - The viewing form now clearly explains that the selected time is a preference until a Sales Agent approves it and asks for confirmation before submission.
+  - After submission, the page scrolls to a prominent success message showing the requested schedule, reference number, pending confirmation status, and a Client dashboard tracking link.
+  - Enforced one active viewing request per property across all clients and schedules, including both Agent dashboard and transaction-pipeline approval paths. A duplicate attempt displays the existing schedule; completing or cancelling the current viewing releases the property for another request.
+  - Inquiry success feedback now appears beside the inquiry form as well.
+- **Direct Chat Labels & Layout**:
+  - Removed the “Automated” / “Automated Reply” badges and message prefixes. Existing stored messages are displayed without the legacy prefix as well.
+  - Avoided repeating a sender's role when it is already the sender name (for example, shows “agent” instead of “agent (Agent)”).
+  - Aligned message bubbles to a consistent width and typography, made quick-ask buttons equal-width and responsive, and clarified the offline status hint.
+- **Form Success Navigation**:
+  - Viewing and inquiry submissions now focus and scroll directly to their own success notice after redirect, with a second alignment after initial page layout settles.
+- **Sales Agent Navigation**:
+  - Removed the persistent blue highlight from the “Client Chats” navigation action so it no longer looks selected while viewing the Dashboard.
+- **Sales Agent Notifications**:
+  - Removed the duplicate notification feed from the Agent Dashboard. Agents can use the existing navbar Notifications button to view and manage notifications in one place.
+- **Dashboard Navigation Cleanup**:
+  - Removed the Agent-only Client Chats and Transaction Tracking shortcuts from the top navbar; the dashboard menu remains the single navigation entry to the tracking hub.
+  - Agent viewing requests, inquiries, and listing publication now open from their menu buttons instead of appearing as full sections on initial dashboard load. Notification links and form validation reopen the relevant section.
+  - Removed duplicate navigation links from Client summary cards while keeping the Client menu as the section navigation.
+  - Kept the complete Agent overview as the default landing view and made menu selection exclusive so an expanded section does not leave Overview highlighted.
+- **Inquiry Confirmation & Duplicate Submission**:
+  - Inquiry confirmation now identifies the property, and the submit control enters a one-submit state after confirmation to prevent accidental repeat clicks. Existing single-use tokens and server-side duplicate checks remain in place.
+- **Documentation**:
+  - Updated the audit-log and sold-property behavior in [KingQuiry_SAD_Documentation.md](file:///c:/xampp/htdocs/kingquiry/docs/KingQuiry_SAD_Documentation.md), and the property viewing request algorithm in [README.md](file:///c:/xampp/htdocs/kingquiry/README.md).
+
 ## 2026-11-23 — Client Menu Contrast Fix, Messenger Chat Send Icon & Reverted Market Analysis
 
 - **Client Menu / Portal Sidebar Text Contrast Fix**:

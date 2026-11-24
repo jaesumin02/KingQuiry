@@ -199,7 +199,7 @@ if (normalized_user_role($_SESSION['user'] ?? null) === 'Client') {
     $myAppointments = $appointmentStmt->get_result();
 }
 
-$isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0 || $sort !== 'newest' || $perPage !== 10);
+$isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0);
 ?>
 
 <style>

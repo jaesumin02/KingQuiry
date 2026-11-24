@@ -27,14 +27,14 @@ if (!isset($recentAuditLogs) || !is_array($recentAuditLogs)) {
                 <div class="d-flex align-items-center gap-3">
                     <div>
                         <h5 class="modal-title fw-bold text-white mb-0" id="auditLogsModalLabel">System Security &amp; Activity Audit Logs</h5>
-                        <div class="small text-white-50">Immutable trail of administrative updates, role changes, and system modifications</div>
+                        <div class="small text-white-50">Sign-in, sign-out, administrative updates, and system activity</div>
                     </div>
                 </div>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body p-3 p-md-4" style="background: #f8fafc;">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <div class="small text-muted">Showing latest 50 logged security events</div>
+                    <div class="small text-muted">Showing the latest 50 account and system activity events</div>
                 </div>
                 <div class="table-responsive">
                     <table class="table table-bordered table-hover align-middle bg-white small mb-0">
@@ -62,7 +62,7 @@ if (!isset($recentAuditLogs) || !is_array($recentAuditLogs)) {
                                     </tr>
                                 <?php endforeach; ?>
                             <?php else: ?>
-                                <tr><td colspan="5" class="text-center text-muted py-4">No audit log records found yet. All administrative actions are automatically recorded here.</td></tr>
+                                <tr><td colspan="5" class="text-center text-muted py-4">No audit log records found yet. Successful sign-ins, sign-outs, and administrative actions appear here.</td></tr>
                             <?php endif; ?>
                         </tbody>
                     </table>

@@ -28,6 +28,41 @@ function kq_is_future_appointment_datetime(
     return $appointmentAt > $currentTime;
 }
 
+function get_active_property_viewing_request(
+    mysqli $conn,
+    int $propertyId,
+    int $excludeAppointmentId = 0
+): ?array
+{
+    if ($propertyId <= 0) {
+        throw new InvalidArgumentException('Choose a valid property.');
+    }
+
+    $stmt = $conn->prepare(
+        "SELECT a.appointmentID, a.appointmentDate, a.appointmentTime
+         FROM appointments a
+         LEFT JOIN property_transactions t ON t.appointmentID = a.appointmentID
+         WHERE a.propertyID = ?
+           AND (? = 0 OR a.appointmentID <> ?)
+           AND a.status IN ('Pending', 'Approved')
+           AND (
+               t.transactionID IS NULL
+               OR t.currentStage NOT IN (
+                   'viewing_completed', 'payment_in_process', 'document_verification',
+                   'payment_confirmation', 'completed', 'cancelled'
+               )
+           )
+         ORDER BY a.appointmentDate ASC, a.appointmentTime ASC, a.appointmentID ASC
+         LIMIT 1"
+    );
+    $stmt->bind_param('iii', $propertyId, $excludeAppointmentId, $excludeAppointmentId);
+    $stmt->execute();
+    $request = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    return $request ?: null;
+}
+
 function ensure_appointment_management_schema(mysqli $conn): void
 {
     static $ensured = false;

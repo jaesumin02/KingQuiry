@@ -356,22 +356,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($propertyId === false || $propertyId <= 0 || !in_array($propertyStatus, $allowedPropertyStatuses, true)) {
             $formError = 'Choose a valid property and listing status.';
         } else {
-            $statusStmt = $conn->prepare('UPDATE properties SET status = ? WHERE propertyID = ?');
-            $statusStmt->bind_param('si', $propertyStatus, $propertyId);
-            $statusStmt->execute();
-            if ($statusStmt->affected_rows > 0) {
-                header('Location: admin_dashboard.php?property_status_updated=1#properties');
-                exit();
-            }
+            $statusTransactionStarted = false;
+            try {
+                $conn->begin_transaction();
+                $statusTransactionStarted = true;
+                $propertyLockStmt = $conn->prepare(
+                    'SELECT propertyID, status FROM properties WHERE propertyID = ? AND isDeleted = 0 FOR UPDATE'
+                );
+                $propertyLockStmt->bind_param('i', $propertyId);
+                $propertyLockStmt->execute();
+                $lockedProperty = $propertyLockStmt->get_result()->fetch_assoc();
+                if (!$lockedProperty) {
+                    throw new InvalidArgumentException('The selected property was not found or is no longer active.');
+                }
 
-            $checkStmt = $conn->prepare('SELECT propertyID FROM properties WHERE propertyID = ?');
-            $checkStmt->bind_param('i', $propertyId);
-            $checkStmt->execute();
-            if (!$checkStmt->get_result()->fetch_assoc()) {
-                $formError = 'The selected property was not found.';
-            } else {
+                $completedSaleStmt = $conn->prepare(
+                    "SELECT transactionID FROM property_transactions
+                     WHERE propertyID = ? AND currentStage = 'completed'
+                     LIMIT 1"
+                );
+                $completedSaleStmt->bind_param('i', $propertyId);
+                $completedSaleStmt->execute();
+                $hasCompletedSale = $completedSaleStmt->get_result()->fetch_assoc() !== null;
+                if (($hasCompletedSale || $lockedProperty['status'] === 'Sold') && $propertyStatus !== 'Sold') {
+                    throw new InvalidArgumentException('A completed sale is final. This property must remain Sold and cannot be relisted.');
+                }
+
+                $statusStmt = $conn->prepare('UPDATE properties SET status = ? WHERE propertyID = ?');
+                $statusStmt->bind_param('si', $propertyStatus, $propertyId);
+                $statusStmt->execute();
+                $conn->commit();
+                $statusTransactionStarted = false;
                 header('Location: admin_dashboard.php?property_status_updated=1#properties');
                 exit();
+            } catch (InvalidArgumentException $exception) {
+                if ($statusTransactionStarted) {
+                    $conn->rollback();
+                }
+                $formError = $exception->getMessage();
+            } catch (mysqli_sql_exception $exception) {
+                if ($statusTransactionStarted) {
+                    $conn->rollback();
+                }
+                error_log('KingQuiry property status update failed: ' . $exception->getMessage());
+                $formError = 'The property listing status could not be saved. Please try again.';
+            } catch (Throwable $exception) {
+                if ($statusTransactionStarted) {
+                    $conn->rollback();
+                }
+                error_log('KingQuiry property status update failed: ' . $exception->getMessage());
+                $formError = 'The property listing status could not be saved. Please try again.';
             }
         }
     }
@@ -438,7 +472,11 @@ $adminStageLabels = function_exists('property_transaction_stages') ? property_tr
 ];
 
 $properties = $conn->query(
-    "SELECT p.*, l.municipalityName, l.provinceName
+    "SELECT p.*, l.municipalityName, l.provinceName,
+            EXISTS(
+                SELECT 1 FROM property_transactions t
+                WHERE t.propertyID = p.propertyID AND t.currentStage = 'completed'
+            ) AS hasCompletedSale
      FROM properties p
      LEFT JOIN property_locations l ON l.locationID = p.locationID
      WHERE p.isDeleted = 0
@@ -741,6 +779,10 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
                         <td><?= htmlspecialchars($propLocLabel) ?><?php if (!empty($row['barangay'])): ?><br><small class="text-muted"><?= htmlspecialchars($row['barangay']) ?></small><?php endif; ?></td>
                         <td>₱<?= number_format((float) $row['price'], 2) ?><br><small class="text-muted"><?= $row['areaSqm'] !== null ? number_format((float) $row['areaSqm'], 2) . ' sq.m. · ₱' . number_format((float) $row['pricePerSqm'], 2) . '/sq.m.' : 'Legacy area not recorded' ?></small></td>
                         <td>
+                            <?php if ((int) $row['hasCompletedSale'] === 1 || $rowPropertyStatus === 'Sold'): ?>
+                                <span class="badge rounded-pill text-bg-danger"><i class="bi bi-lock-fill me-1" aria-hidden="true"></i>Sold · locked</span>
+                                <div class="small text-muted mt-1">Completed sale; cannot be relisted.</div>
+                            <?php else: ?>
                             <form method="POST" class="d-flex align-items-center gap-2" style="min-width: 12rem;" data-confirm="Save this listing status change?">
                                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                                 <input type="hidden" name="propertyID" value="<?= (int) $row['propertyID'] ?>">
@@ -755,6 +797,7 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
                                 </select>
                                 <button type="submit" name="set_property_status" class="btn btn-sm btn-outline-primary">Save</button>
                             </form>
+                            <?php endif; ?>
                         </td>
                         <td class="text-end">
                             <div class="d-flex justify-content-end align-items-center gap-1">

@@ -652,16 +652,6 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                                     <?php endif; ?>
                                 </li>
                             <?php endif; ?>
-                        <?php elseif($currentRole === 'Sales Agent' || $currentRole === 'Agent'): ?>
-                            <?php if (!$isAuthPage): ?>
-                                <li class="nav-item ms-lg-2 kq-nav-actions-start">
-                                    <a class="btn fw-bold px-3 d-inline-flex align-items-center gap-2 kq-chat-nav-btn text-white text-decoration-none" href="transaction_tracking.php#transactions" title="Open Client Messaging &amp; Transactions">
-                                        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                                        <span>Client Chats</span>
-                                    </a>
-                                </li>
-                            <?php endif; ?>
-                            <li class="nav-item"><a class="nav-link<?= $currentPageName === 'transaction_tracking.php' ? ' active' : '' ?>" href="transaction_tracking.php"<?= $currentPageName === 'transaction_tracking.php' ? ' aria-current="page"' : '' ?>>Transaction Tracking</a></li>
                         <?php endif; ?>
                         <!-- Notifications Bell Dropdown -->
                         <li class="nav-item dropdown ms-lg-2 <?= $currentRole === 'Client' ? '' : 'kq-nav-actions-start' ?>">

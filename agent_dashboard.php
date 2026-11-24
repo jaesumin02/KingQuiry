@@ -6,7 +6,6 @@ require_once 'includes/property_categories.php';
 require_once 'includes/property_images.php';
 require_once 'includes/transaction_tracking.php';
 require_once 'includes/appointment_management.php';
-require_once 'includes/notifications.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -29,6 +28,16 @@ $statusMessage = isset($_GET['property_added'])
             ? 'The taken viewing request was removed from your queue.'
             : (isset($_GET['claimed']) ? 'The inquiry was assigned to your account.' : '')));
 $statusError = '';
+$initialAgentPanel = null;
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (isset($_POST['add_property'])) {
+        $initialAgentPanel = 'add-property';
+    } elseif (isset($_POST['update_status']) || isset($_POST['dismiss_taken_viewing'])) {
+        $initialAgentPanel = 'appointments';
+    } elseif (isset($_POST['claim_inquiry'])) {
+        $initialAgentPanel = 'agent-inquiries';
+    }
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!has_valid_csrf_token()) {
@@ -341,9 +350,11 @@ include 'includes/header.php';
 
     /* Force high-contrast crisp white typography on Sales Agent Menu portal sidebar */
     .kq-portal-sidebar .kq-portal-nav a,
+    .kq-portal-sidebar .kq-portal-nav button,
     .kq-portal-sidebar .kq-portal-nav a:link,
     .kq-portal-sidebar .kq-portal-nav a:visited {
         display: flex;
+        width: 100%;
         min-height: 42px;
         align-items: center;
         padding: 0.55rem 0.85rem;
@@ -356,14 +367,17 @@ include 'includes/header.php';
         text-decoration: none !important;
     }
     .kq-portal-sidebar .kq-portal-nav a:hover,
+    .kq-portal-sidebar .kq-portal-nav button:hover,
     .kq-portal-sidebar .kq-portal-nav a:focus,
+    .kq-portal-sidebar .kq-portal-nav button:focus,
     .kq-portal-sidebar .kq-portal-nav a:focus-visible {
         border-color: rgba(255, 255, 255, 0.35) !important;
         background: #2b4652 !important;
         color: #ffffff !important;
     }
     .kq-portal-sidebar .kq-portal-nav a[aria-current="location"],
-    .kq-portal-sidebar .kq-portal-nav a.active {
+    .kq-portal-sidebar .kq-portal-nav a.active,
+    .kq-portal-sidebar .kq-portal-nav button[aria-expanded="true"] {
         border-color: #d9a74a !important;
         background: #1b4d6e !important;
         color: #ffffff !important;
@@ -387,14 +401,13 @@ include 'includes/header.php';
             <div class="kq-portal-sidebar-heading">Sales Agent menu</div>
             <nav class="kq-portal-nav" id="agent-navigation" aria-label="Sales Agent dashboard sections">
                 <a href="#agent-overview">Overview</a>
-                <a href="#agent-transactions">Transactions & Pipeline</a>
-                <a href="#appointments">Viewing requests</a>
-                <a href="#agent-inquiries">Inquiries</a>
-                <a href="#add-property">Publish a listing</a>
+                <button type="button" data-bs-toggle="collapse" data-bs-target="#appointments" aria-expanded="<?= $initialAgentPanel === 'appointments' ? 'true' : 'false' ?>" aria-controls="appointments">Viewing requests</button>
+                <button type="button" data-bs-toggle="collapse" data-bs-target="#agent-inquiries" aria-expanded="<?= $initialAgentPanel === 'agent-inquiries' ? 'true' : 'false' ?>" aria-controls="agent-inquiries">Inquiries</button>
+                <button type="button" data-bs-toggle="collapse" data-bs-target="#add-property" aria-expanded="<?= $initialAgentPanel === 'add-property' ? 'true' : 'false' ?>" aria-controls="add-property">Publish a listing</button>
                 <a href="transaction_tracking.php">Transaction tracking</a>
             </nav>
         </aside>
-        <div class="kq-portal-main">
+        <div class="kq-portal-main" id="agent-menu-panels">
     <header class="kq-dashboard-hero d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3" id="agent-overview">
         <div class="d-flex align-items-center gap-3">
             <img class="kq-official-logo kq-logo-dashboard kq-logo-on-dark" src="assets/images/kings-land-properties-logo-light.png" alt="4 Kings Realty Services">
@@ -467,7 +480,7 @@ include 'includes/header.php';
             <div class="card-body p-3">
                 <div class="page-eyebrow text-primary" style="font-size: 0.68rem;">Active Pipeline</div>
                 <h3 class="h3 mb-0 text-primary"><?= (int) ($txStatsRow['active_transactions'] ?? 0) ?></h3>
-                <small class="text-muted" style="font-size: 0.72rem;"><a href="transaction_tracking.php" class="text-decoration-none">Assigned transactions &rarr;</a></small>
+                <small class="text-muted" style="font-size: 0.72rem;">Assigned transactions</small>
             </div>
         </div>
     </div>
@@ -482,85 +495,6 @@ include 'includes/header.php';
     </div>
 </div>
 
-<?php
-$agentId = (int) $_SESSION['user']['userID'];
-$agentNotifs = get_user_notifications($conn, $agentId, 6);
-$agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
-?>
-<?php if (!empty($agentNotifs)): ?>
-    <section class="card p-3 p-lg-4 mb-4 border-0 shadow-sm" id="viewing-alerts">
-        <div class="kq-panel-header mb-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
-            <div>
-                <div class="page-eyebrow">Real-time alerts</div>
-                <h2 class="h4 fw-bold mb-0 text-dark">Viewing alerts &amp; notifications</h2>
-            </div>
-            <div class="d-flex align-items-center gap-2">
-                <?php if ($agentUnreadCount > 0): ?>
-                    <span class="badge bg-danger rounded-pill px-2 py-1 small"><?= $agentUnreadCount ?> unread</span>
-                    <form method="POST" action="notifications_action.php" class="m-0" data-confirm="Mark all notifications as read?">
-                        <input type="hidden" name="action" value="mark_all_read">
-                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
-                        <input type="hidden" name="redirect" value="agent_dashboard.php#viewing-alerts">
-                        <button type="submit" class="btn btn-sm btn-outline-primary fw-semibold">Mark all as read</button>
-                    </form>
-                <?php else: ?>
-                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-1 small">Up to date</span>
-                <?php endif; ?>
-            </div>
-        </div>
-        <div class="list-group list-group-flush border rounded-3 overflow-hidden">
-            <?php foreach ($agentNotifs as $aNotif):
-                $notifId = (int) $aNotif['notificationID'];
-                $isUnread = !(bool) $aNotif['isRead'];
-                $link = !empty($aNotif['link']) ? $aNotif['link'] : 'agent_dashboard.php#appointments';
-                $isTakenNotif = ($aNotif['type'] === 'viewing_taken' || stripos($aNotif['title'], 'taken') !== false);
-            ?>
-                <div class="list-group-item p-3 d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-2 position-relative <?= $isUnread ? 'bg-primary-subtle border-start border-4 border-primary' : 'bg-white' ?>" id="agent-notif-<?= $notifId ?>">
-                    <!-- Top-right X button to dismiss notification -->
-                    <button type="button" class="btn-close position-absolute top-0 end-0 m-2 kq-dismiss-notif-btn" data-confirm="Dismiss this notification?" data-notif-id="<?= $notifId ?>" data-csrf-token="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>" title="Dismiss alert" aria-label="Dismiss"></button>
-                    
-                    <form method="POST" action="notifications_action.php" class="m-0 flex-grow-1 pe-4">
-                        <input type="hidden" name="action" value="read_and_go">
-                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
-                        <input type="hidden" name="id" value="<?= $notifId ?>">
-                        <input type="hidden" name="to" value="<?= htmlspecialchars($link, ENT_QUOTES, 'UTF-8') ?>">
-                        <button type="submit" class="btn p-0 border-0 bg-transparent text-start text-dark d-flex align-items-start gap-3 w-100">
-                        <span class="rounded-circle p-2 d-flex align-items-center justify-content-center <?= $isTakenNotif ? 'bg-secondary text-white' : ($isUnread ? 'bg-primary text-white' : 'bg-light text-secondary border') ?>" style="width: 38px; height: 38px; flex-shrink: 0;">
-                            <?php if ($isTakenNotif): ?>
-                                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
-                            <?php else: ?>
-                                <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
-                            <?php endif; ?>
-                        </span>
-                        <span>
-                            <span class="d-flex align-items-center gap-2 mb-1 flex-wrap">
-                                <span class="fw-bold <?= $isUnread ? 'text-primary' : 'text-dark' ?>" style="font-size: 0.95rem;"><?= htmlspecialchars($aNotif['title'], ENT_QUOTES, 'UTF-8') ?></span>
-                                <?php if ($isTakenNotif): ?>
-                                    <span class="badge bg-secondary small" style="font-size: 0.65rem;">Taken by another Sales Agent</span>
-                                <?php elseif ($isUnread): ?>
-                                    <span class="badge bg-danger small" style="font-size: 0.65rem;">New viewing request</span>
-                                <?php endif; ?>
-                            </span>
-                            <span class="d-block small text-dark fw-medium mb-1"><?= htmlspecialchars($aNotif['message'], ENT_QUOTES, 'UTF-8') ?></span>
-                            <time class="small text-muted" datetime="<?= htmlspecialchars(date('c', strtotime($aNotif['createdAt'])), ENT_QUOTES, 'UTF-8') ?>" style="font-size: 0.75rem;">
-                                <?= htmlspecialchars(date('M j, Y g:i A', strtotime($aNotif['createdAt'])), ENT_QUOTES, 'UTF-8') ?>
-                            </time>
-                        </span>
-                        </button>
-                    </form>
-                    <form method="POST" action="notifications_action.php" class="m-0">
-                        <input type="hidden" name="action" value="read_and_go">
-                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
-                        <input type="hidden" name="id" value="<?= $notifId ?>">
-                        <input type="hidden" name="to" value="<?= htmlspecialchars($link, ENT_QUOTES, 'UTF-8') ?>">
-                        <button type="submit" class="btn btn-sm btn-outline-primary align-self-start align-self-sm-center text-nowrap mt-2 mt-sm-0">View queue &rarr;</button>
-                    </form>
-                </div>
-            <?php endforeach; ?>
-        </div>
-    </section>
-<?php endif; ?>
-
 <section class="card p-3 p-lg-4 mb-4 shadow-sm" id="agent-transactions">
     <div class="kq-panel-header mb-3">
         <div>
@@ -569,7 +503,6 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
         </div>
         <div class="d-flex align-items-center gap-2">
             <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1"><?= count($agentTransactions) ?> Tracked Case<?= count($agentTransactions) === 1 ? '' : 's' ?></span>
-            <a href="transaction_tracking.php" class="btn btn-sm btn-outline-primary">Open Tracker &rarr;</a>
         </div>
     </div>
     <div class="table-responsive">
@@ -655,7 +588,7 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
     </div>
 </section>
 
-<section class="card p-3 p-lg-4 mb-4" id="appointments">
+<section class="collapse card p-3 p-lg-4 mb-4 <?= $initialAgentPanel === 'appointments' ? 'show' : '' ?>" id="appointments" data-bs-parent="#agent-menu-panels">
     <div class="kq-panel-header mb-3">
         <div>
             <div class="page-eyebrow">Scheduling</div>
@@ -747,7 +680,7 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
     </div>
 </section>
 
-<section class="card p-3 p-lg-4" id="agent-inquiries">
+<section class="collapse card p-3 p-lg-4 <?= $initialAgentPanel === 'agent-inquiries' ? 'show' : '' ?>" id="agent-inquiries" data-bs-parent="#agent-menu-panels">
     <div class="kq-panel-header mb-3">
         <div>
             <div class="page-eyebrow">Client inquiries</div>
@@ -790,7 +723,7 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
 </section>
 
 <!-- ═══════════════════ ADD A PROPERTY LISTING (WITH INTERACTIVE PIN MAP) ═══════════════════ -->
-<section class="card p-4 p-lg-5 mb-4" id="add-property">
+<section class="collapse card p-4 p-lg-5 mb-4 <?= $initialAgentPanel === 'add-property' ? 'show' : '' ?>" id="add-property" data-bs-parent="#agent-menu-panels">
     <div class="kq-panel-header mb-3">
         <div>
             <div class="page-eyebrow">Listing management</div>
@@ -889,6 +822,49 @@ $agentUnreadCount = get_user_unread_notification_count($conn, $agentId);
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+    const agentNavigation = document.getElementById('agent-navigation');
+    const agentPanels = document.querySelectorAll('#agent-menu-panels > .collapse');
+    const clearAgentAnchorSelection = () => {
+        if (!agentNavigation) return;
+        agentNavigation.querySelectorAll('a[aria-current="location"], a.active').forEach((link) => {
+            link.removeAttribute('aria-current');
+            link.classList.remove('active');
+        });
+    };
+    if (agentNavigation) {
+        agentNavigation.querySelectorAll('button[data-bs-toggle="collapse"]').forEach((button) => {
+            button.addEventListener('click', clearAgentAnchorSelection);
+        });
+    }
+    agentPanels.forEach((panel) => {
+        panel.addEventListener('show.bs.collapse', clearAgentAnchorSelection);
+        panel.addEventListener('shown.bs.collapse', () => {
+            panel.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        });
+    });
+
+    const linkedPanelId = window.location.hash.slice(1);
+    const collapsiblePanelIds = ['appointments', 'agent-inquiries', 'add-property'];
+    if (collapsiblePanelIds.includes(linkedPanelId)) {
+        const linkedPanel = document.getElementById(linkedPanelId);
+        const linkedPanelToggle = document.querySelector('[data-bs-target="#' + linkedPanelId + '"]');
+        if (linkedPanel) {
+            if (typeof bootstrap !== 'undefined' && bootstrap.Collapse) {
+                bootstrap.Collapse.getOrCreateInstance(linkedPanel, { toggle: false }).show();
+            } else {
+                linkedPanel.classList.add('show');
+            }
+            if (linkedPanelToggle) {
+                linkedPanelToggle.setAttribute('aria-expanded', 'true');
+            }
+        }
+    }
+
+    const initiallyOpenPanel = document.querySelector('#agent-menu-panels > .collapse.show');
+    if (initiallyOpenPanel && window.location.hash === '') {
+        requestAnimationFrame(() => initiallyOpenPanel.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+    }
+
     const locSelect = document.getElementById('property-location');
     const latInput = document.getElementById('property-latitude');
     const lngInput = document.getElementById('property-longitude');
@@ -995,6 +971,12 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => {
         pickerMap.invalidateSize();
     }, 250);
+    const addPropertyPanel = document.getElementById('add-property');
+    if (addPropertyPanel) {
+        addPropertyPanel.addEventListener('shown.bs.collapse', () => {
+            setTimeout(() => pickerMap.invalidateSize(), 50);
+        });
+    }
 
     // Dismiss taken viewings with smooth zero-reload animation
     document.addEventListener('click', function(e) {
@@ -1021,39 +1003,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }).catch(err => console.error(err));
     });
 
-    // Dismiss viewing alert notifications
-    document.addEventListener('click', function(e) {
-        const notifCloseBtn = e.target.closest('.kq-dismiss-notif-btn');
-        if (!notifCloseBtn) return;
-        e.preventDefault();
-        const notifId = notifCloseBtn.getAttribute('data-notif-id');
-        const notifCard = document.getElementById('agent-notif-' + notifId) || notifCloseBtn.closest('.list-group-item');
-
-        const formData = new FormData();
-        formData.append('action', 'dismiss_notif');
-        formData.append('id', notifId);
-        formData.append('csrf_token', notifCloseBtn.getAttribute('data-csrf-token'));
-        notifCloseBtn.disabled = true;
-        fetch('notifications_action.php', {
-            method: 'POST',
-            body: formData,
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        }).then(response => {
-            if (!response.ok) throw new Error('Notification update failed.');
-            return response.json();
-        }).then(data => {
-            if (!data.success) throw new Error(data.error || 'Notification update failed.');
-            if (notifCard) {
-                notifCard.style.transition = 'all 0.35s ease';
-                notifCard.style.opacity = '0';
-                notifCard.style.transform = 'translateY(-15px)';
-                setTimeout(() => notifCard.remove(), 350);
-            }
-        }).catch(() => {
-            notifCloseBtn.disabled = false;
-            window.alert('The notification could not be dismissed. Please try again.');
-        });
-    });
 });
 
 async function toggleAgentLiveStatus() {

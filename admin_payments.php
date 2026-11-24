@@ -373,24 +373,30 @@ foreach ($monthlyCollectionStmt->get_result() as $row) {
     }
 }
 $collectionMaximum = max(1.0, ...array_column($monthlyCollections, 'total'));
-$collectionBars = [];
+$collectionPoints = [];
+$collectionPath = '';
 $plotLeft = 76;
 $plotWidth = 620;
 $plotBottom = 218;
 $plotHeight = 150;
 $slotWidth = $plotWidth / 6;
 foreach (array_values($monthlyCollections) as $index => $month) {
-    $barHeight = $collectionMaximum > 0 ? ($month['total'] / $collectionMaximum) * $plotHeight : 0;
-    $collectionBars[] = [
-        'x' => $plotLeft + ($index * $slotWidth) + 14,
-        'y' => $plotBottom - $barHeight,
-        'width' => $slotWidth - 28,
-        'height' => $barHeight,
+    $collectionPoints[] = [
+        'x' => $plotLeft + ($index * $slotWidth) + ($slotWidth / 2),
+        'y' => $plotBottom - (($month['total'] / $collectionMaximum) * $plotHeight),
         'label' => $month['label'],
         'total' => $month['total'],
         'count' => $month['count'],
-        'center' => $plotLeft + ($index * $slotWidth) + ($slotWidth / 2),
     ];
+}
+if ($collectionPoints !== []) {
+    $collectionPath = implode(' ', array_map(
+        static fn(array $point, int $index): string => ($index === 0 ? 'M ' : 'L ')
+            . number_format($point['x'], 2, '.', '') . ' '
+            . number_format($point['y'], 2, '.', ''),
+        $collectionPoints,
+        array_keys($collectionPoints)
+    ));
 }
 
 $transactionsForSelect = [];
@@ -566,7 +572,7 @@ include 'includes/header.php';
         </div>
         <div class="overflow-auto">
             <svg class="w-100" style="min-width: 620px;" viewBox="0 0 720 260" role="img" aria-labelledby="collections-chart-title collections-chart-description">
-                <desc id="collections-chart-description">Bar chart of verified collections from both payment sources for the last six months.</desc>
+                <desc id="collections-chart-description">Line chart of verified collections from both payment sources for the last six months.</desc>
                 <?php for ($gridLine = 0; $gridLine <= 4; $gridLine++):
                     $gridY = $plotBottom - ($gridLine * ($plotHeight / 4));
                     $gridValue = $collectionMaximum * $gridLine / 4;
@@ -576,12 +582,13 @@ include 'includes/header.php';
                 <?php endfor; ?>
                 <line x1="<?= $plotLeft ?>" y1="<?= $plotBottom - $plotHeight ?>" x2="<?= $plotLeft ?>" y2="<?= $plotBottom ?>" stroke="#aab6c2" stroke-width="1"/>
                 <line x1="<?= $plotLeft ?>" y1="<?= $plotBottom ?>" x2="<?= $plotLeft + $plotWidth ?>" y2="<?= $plotBottom ?>" stroke="#aab6c2" stroke-width="1"/>
-                <?php foreach ($collectionBars as $bar): ?>
-                    <rect x="<?= number_format($bar['x'], 2, '.', '') ?>" y="<?= number_format($bar['y'], 2, '.', '') ?>" width="<?= number_format($bar['width'], 2, '.', '') ?>" height="<?= number_format($bar['height'], 2, '.', '') ?>" rx="6" fill="#174a70">
-                        <title><?= kq_e($bar['label'] . ': ' . kq_format_peso($bar['total']) . ' (' . $bar['count'] . ' payment(s))') ?></title>
-                    </rect>
-                    <text x="<?= number_format($bar['center'], 2, '.', '') ?>" y="<?= number_format($bar['y'] - 8, 2, '.', '') ?>" text-anchor="middle" fill="#174a70" font-size="11" font-weight="700"><?= $bar['total'] > 0 ? kq_e(kq_format_compact_peso($bar['total'])) : '' ?></text>
-                    <text x="<?= number_format($bar['center'], 2, '.', '') ?>" y="245" text-anchor="middle" fill="#687789" font-size="11"><?= kq_e($bar['label']) ?></text>
+                <path d="<?= kq_e($collectionPath) ?>" fill="none" stroke="#174a70" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                <?php foreach ($collectionPoints as $point): ?>
+                    <circle cx="<?= number_format($point['x'], 2, '.', '') ?>" cy="<?= number_format($point['y'], 2, '.', '') ?>" r="5" fill="#fff" stroke="#174a70" stroke-width="3">
+                        <title><?= kq_e($point['label'] . ': ' . kq_format_peso($point['total']) . ' (' . $point['count'] . ' payment(s))') ?></title>
+                    </circle>
+                    <text x="<?= number_format($point['x'], 2, '.', '') ?>" y="<?= number_format($point['y'] - 8, 2, '.', '') ?>" text-anchor="middle" fill="#174a70" font-size="11" font-weight="700"><?= $point['total'] > 0 ? kq_e(kq_format_compact_peso($point['total'])) : '' ?></text>
+                    <text x="<?= number_format($point['x'], 2, '.', '') ?>" y="245" text-anchor="middle" fill="#687789" font-size="11"><?= kq_e($point['label']) ?></text>
                 <?php endforeach; ?>
             </svg>
         </div>

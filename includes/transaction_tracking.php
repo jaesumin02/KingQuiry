@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/notifications.php';
+require_once __DIR__ . '/appointment_management.php';
 
 function property_transaction_stages(): array
 {
@@ -645,6 +646,76 @@ function dispatch_transaction_notification_after_commit(
     }
 }
 
+function close_competing_transactions_for_sold_property(
+    mysqli $conn,
+    int $propertyId,
+    int $completedTransactionId,
+    int $actorId
+): array {
+    $stmt = $conn->prepare(
+        "SELECT t.transactionID, t.clientID, t.appointmentID, t.currentStage,
+                p.title AS propertyTitle, u.fullname AS clientName
+         FROM property_transactions t
+         JOIN properties p ON p.propertyID = t.propertyID
+         JOIN users u ON u.userID = t.clientID
+         WHERE t.propertyID = ? AND t.transactionID <> ?
+           AND t.currentStage NOT IN ('completed', 'cancelled')
+         FOR UPDATE"
+    );
+    $stmt->bind_param('ii', $propertyId, $completedTransactionId);
+    $stmt->execute();
+    $competingTransactions = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    $notifications = [];
+    $cancelStmt = $conn->prepare(
+        "UPDATE property_transactions
+         SET currentStage = 'cancelled', updatedAt = CURRENT_TIMESTAMP
+         WHERE transactionID = ? AND currentStage NOT IN ('completed', 'cancelled')"
+    );
+    $cancelAppointmentStmt = $conn->prepare(
+        "UPDATE appointments SET status = 'Cancelled' WHERE appointmentID = ?"
+    );
+
+    foreach ($competingTransactions as $competingTransaction) {
+        $competingTransactionId = (int) $competingTransaction['transactionID'];
+        $cancelStmt->bind_param('i', $competingTransactionId);
+        $cancelStmt->execute();
+        if ($cancelStmt->affected_rows !== 1) {
+            continue;
+        }
+
+        $cancellationNote = 'This property is no longer available. This transaction has been closed.';
+        add_property_transaction_event(
+            $conn,
+            $competingTransactionId,
+            'cancelled',
+            $cancellationNote,
+            $actorId
+        );
+        $appointmentId = (int) ($competingTransaction['appointmentID'] ?? 0);
+        if ($appointmentId > 0) {
+            $cancelAppointmentStmt->bind_param('i', $appointmentId);
+            $cancelAppointmentStmt->execute();
+        }
+
+        $notification = get_transaction_stage_notification(
+            (string) $competingTransaction['currentStage'],
+            'cancelled',
+            (string) $competingTransaction['clientName'],
+            (string) $competingTransaction['propertyTitle'],
+            $cancellationNote
+        );
+        $notification['clientId'] = (int) $competingTransaction['clientID'];
+        $notifications[] = $notification;
+    }
+
+    $cancelStmt->close();
+    $cancelAppointmentStmt->close();
+
+    return $notifications;
+}
+
 function advance_property_transaction(
     mysqli $conn,
     int $transactionId,
@@ -678,6 +749,7 @@ function advance_property_transaction(
     }
 
     $notification = null;
+    $competingSaleNotifications = [];
     $conn->begin_transaction();
     try {
         $currentStmt = $conn->prepare(
@@ -728,6 +800,31 @@ function advance_property_transaction(
                     $assignApptStmt->bind_param('ii', $actorId, $appointmentId);
                     $assignApptStmt->execute();
                     $assignApptStmt->close();
+                }
+            }
+
+            if ($newStage === 'viewing_confirmed') {
+                $propertyLockStmt = $conn->prepare(
+                    'SELECT propertyID FROM properties WHERE propertyID = ? FOR UPDATE'
+                );
+                $propertyId = (int) $transaction['propertyID'];
+                $propertyLockStmt->bind_param('i', $propertyId);
+                $propertyLockStmt->execute();
+                if (!$propertyLockStmt->get_result()->fetch_assoc()) {
+                    throw new InvalidArgumentException('The property for this viewing request could not be found.');
+                }
+                $propertyLockStmt->close();
+
+                $otherActiveViewing = get_active_property_viewing_request($conn, $propertyId, $appointmentId);
+                if ($otherActiveViewing !== null) {
+                    $existingDate = date('M j, Y', strtotime((string) $otherActiveViewing['appointmentDate']));
+                    $existingTime = date('g:i A', strtotime((string) $otherActiveViewing['appointmentTime']));
+                    throw new InvalidArgumentException(sprintf(
+                        'Another viewing request (#KQ-%d) is already active for this property on %s at %s. Complete or cancel it before approving this one.',
+                        1000 + (int) $otherActiveViewing['appointmentID'],
+                        $existingDate,
+                        $existingTime
+                    ));
                 }
             }
 
@@ -856,6 +953,12 @@ function advance_property_transaction(
             $soldStmt->bind_param('i', $propertyId);
             $soldStmt->execute();
             $soldStmt->close();
+            $competingSaleNotifications = close_competing_transactions_for_sold_property(
+                $conn,
+                $propertyId,
+                $transactionId,
+                $actorId
+            );
         } else {
             $updateStmt = $conn->prepare(
                 'UPDATE property_transactions
@@ -927,6 +1030,14 @@ function advance_property_transaction(
             (int) $notification['clientId'],
             $notification,
             'transaction update'
+        );
+    }
+    foreach ($competingSaleNotifications as $competingSaleNotification) {
+        dispatch_transaction_notification_after_commit(
+            $conn,
+            (int) $competingSaleNotification['clientId'],
+            $competingSaleNotification,
+            'competing transaction cancellation'
         );
     }
 }
@@ -1393,7 +1504,7 @@ function update_appointment_tracking_status(
         }
 
         $stmt = $conn->prepare(
-            'SELECT a.status, a.agentID, a.appointmentDate, a.appointmentTime,
+            'SELECT a.propertyID, a.status, a.agentID, a.appointmentDate, a.appointmentTime,
                     t.transactionID, t.currentStage, ag.fullname AS agentName
              FROM appointments a
              JOIN property_transactions t ON t.appointmentID = a.appointmentID
@@ -1411,12 +1522,41 @@ function update_appointment_tracking_status(
         $currentStatus = (string) $row['status'];
         $currentStage = (string) $row['currentStage'];
         $transactionId = (int) $row['transactionID'];
+        $propertyId = (int) $row['propertyID'];
         $assignedAgentId = !empty($row['agentID']) ? (int) $row['agentID'] : null;
         $assignedAgentName = (string) ($row['agentName'] ?? 'another Sales Agent');
 
         // Check if viewing was already taken by another Sales Agent
         if ($assignedAgentId !== null && $assignedAgentId !== $actorId) {
             throw new InvalidArgumentException("This viewing request was already taken by {$assignedAgentName}.");
+        }
+
+        if ($newStatus === 'Approved') {
+            $propertyLockStmt = $conn->prepare(
+                'SELECT propertyID FROM properties WHERE propertyID = ? FOR UPDATE'
+            );
+            $propertyLockStmt->bind_param('i', $propertyId);
+            $propertyLockStmt->execute();
+            if (!$propertyLockStmt->get_result()->fetch_assoc()) {
+                throw new InvalidArgumentException('The property for this viewing request could not be found.');
+            }
+            $propertyLockStmt->close();
+
+            $otherActiveViewing = get_active_property_viewing_request(
+                $conn,
+                $propertyId,
+                $appointmentId
+            );
+            if ($otherActiveViewing !== null) {
+                $existingDate = date('M j, Y', strtotime((string) $otherActiveViewing['appointmentDate']));
+                $existingTime = date('g:i A', strtotime((string) $otherActiveViewing['appointmentTime']));
+                throw new InvalidArgumentException(sprintf(
+                    'Another viewing request (#KQ-%d) is already active for this property on %s at %s. Complete or cancel it before approving this one.',
+                    1000 + (int) $otherActiveViewing['appointmentID'],
+                    $existingDate,
+                    $existingTime
+                ));
+            }
         }
 
         if ($currentStatus === $newStatus && $assignedAgentId === $actorId) {

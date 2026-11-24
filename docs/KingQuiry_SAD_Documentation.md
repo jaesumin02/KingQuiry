@@ -707,7 +707,7 @@ erDiagram
 | `agent_dismissed_appointments` | `agentID`, `appointmentID` | Per-Agent dismissal of appointment items. |
 | `feedbackinquiries` | `inquiryID` | Client's property question and `Unread`/`Read`/`Replied` status. The historical table name is retained. |
 | `agent_inquiry_assignments` | `inquiryID` | Agent ownership and assignment time for an inquiry. |
-| `auditlogs` | `logID` | User-attributed administrative action text and timestamp when the application records an audit event. |
+| `auditlogs` | `logID` | User-attributed audit action text and timestamp, including successful sign-ins/sign-outs and administrative actions recorded by the application. |
 | `chat_conversations` | `conversation_id` | Chat session key, optional signed-in user, status, and timestamps. |
 | `chat_messages` | `message_id` | Conversation, sender type (`client`, `admin`, `bot`), message body, and time. |
 | `chat_admin_presence` | `admin_id` | Administrator last-seen/heartbeat time used by chat availability behavior. |
@@ -726,6 +726,7 @@ erDiagram
 - Supported public property types are defined in `includes/property_categories.php` (including Residential, Commercial, Farmlot, Beachlot, Condo, House and Lot, Townhouse, Apartment, Warehouse, Office Space, and Resort). Display labels may differ from stored values.
 - A new listing's price per square meter is calculated from total asking price divided by area. Asking price is not recorded revenue.
 - Completed transactions store an actual agreed sale price. The sales report groups completed transactions with recorded sale price by completion month and selected year.
+- Finalizing a transaction locks and marks its property `Sold` in the same database transaction. Competing open transactions and linked viewings are cancelled and their clients are notified. Sold properties are excluded from public listings and new requests; only Administrators can see the `Sold` status, while other users receive a generic unavailable response. An administrator cannot relist a sold property.
 - A future report year is an empty actuals view, not a forecast.
 - The Client report ledger and the staff payment register are distinct. Pending/rejected submissions are not verified collections.
 

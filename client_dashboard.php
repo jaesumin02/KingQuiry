@@ -508,7 +508,7 @@ $progressStages = [
             <div class="card-body p-3">
                 <div class="page-eyebrow text-primary" style="font-size: 0.68rem;">Active Pipeline</div>
                 <h3 class="h3 mb-0 text-primary"><?= (int) $clientActivePipeline ?></h3>
-                <small class="text-muted" style="font-size: 0.72rem;"><a href="#transaction-tracking" class="text-decoration-none">Your in-progress transactions &rarr;</a></small>
+                <small class="text-muted" style="font-size: 0.72rem;">Your in-progress transactions</small>
             </div>
         </div>
     </div>
@@ -517,7 +517,7 @@ $progressStages = [
             <div class="card-body p-3">
                 <div class="page-eyebrow text-info" style="font-size: 0.68rem;">Viewing requests</div>
                 <h3 class="h3 mb-0 text-info"><?= (int) $totalClientAppointments ?></h3>
-                <small class="text-muted" style="font-size: 0.72rem;"><a href="#viewing-requests" class="text-decoration-none">Your viewing requests</a></small>
+                <small class="text-muted" style="font-size: 0.72rem;">Your viewing requests</small>
             </div>
         </div>
     </div>

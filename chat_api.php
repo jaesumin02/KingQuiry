@@ -165,18 +165,32 @@ if ($action === 'initiate_property_chat') {
         kq_json_send(['ok' => false, 'error' => 'Invalid property reference.'], 400);
     }
 
-    $propStmt = $conn->prepare("SELECT propertyID, title, location, status FROM properties WHERE propertyID = ? LIMIT 1");
-    $propStmt->bind_param('i', $propId);
-    $propStmt->execute();
-    $property = $propStmt->get_result()->fetch_assoc();
+    $propertyChatTransactionStarted = false;
+    try {
+        $conn->begin_transaction();
+        $propertyChatTransactionStarted = true;
+        $propStmt = $conn->prepare(
+            'SELECT propertyID, title, location, status, isDeleted
+             FROM properties
+             WHERE propertyID = ?
+             FOR UPDATE'
+        );
+        $propStmt->bind_param('i', $propId);
+        $propStmt->execute();
+        $property = $propStmt->get_result()->fetch_assoc();
+        $propStmt->close();
 
-    if (!$property) {
-        kq_json_send(['ok' => false, 'error' => 'Property not found.'], 404);
-    }
+        if (!$property) {
+            $conn->rollback();
+            $propertyChatTransactionStarted = false;
+            kq_json_send(['ok' => false, 'error' => 'Property not found.'], 404);
+        }
 
-    if ($property['status'] === 'Sold') {
-        kq_json_send(['ok' => false, 'error' => 'This property is sold and is no longer accepting inquiries.'], 400);
-    }
+        if ((int) $property['isDeleted'] !== 0 || $property['status'] !== 'Available') {
+            $conn->rollback();
+            $propertyChatTransactionStarted = false;
+            kq_json_send(['ok' => false, 'error' => 'This property is no longer available for inquiries.'], 409);
+        }
 
     // Check if an active transaction already exists for this client and property
     $findTxStmt = $conn->prepare(
@@ -201,6 +215,8 @@ if ($action === 'initiate_property_chat') {
     $findTxStmt->close();
 
     if ($existingTx) {
+        $conn->commit();
+        $propertyChatTransactionStarted = false;
         $hasSched = !empty($existingTx['appointmentDate']) && ($existingTx['appointmentStatus'] ?? '') !== 'Cancelled';
         if (!$hasSched && in_array((string)$existingTx['currentStage'], ['viewing_requested', 'viewing_confirmed', 'viewing_approved', 'viewing_completed', 'reservation_deposit', 'reservation_under_review', 'reservation_agreement', 'payment_in_process', 'payment_confirmation', 'completed'], true)) {
             $hasSched = true;
@@ -245,6 +261,8 @@ if ($action === 'initiate_property_chat') {
         add_property_transaction_event($conn, $newTxId, 'viewing_requested', 'Client wants to view the property.', $currentUserId);
     }
 
+    $conn->commit();
+    $propertyChatTransactionStarted = false;
     kq_json_send([
         'ok' => true,
         'transaction_id' => $newTxId,
@@ -252,6 +270,13 @@ if ($action === 'initiate_property_chat') {
         'partner_name' => $assignedAgentName,
         'has_scheduled_viewing' => false,
     ]);
+    } catch (Throwable $exception) {
+        if ($propertyChatTransactionStarted) {
+            $conn->rollback();
+        }
+        error_log('KingQuiry property chat intake failed: ' . $exception->getMessage());
+        kq_json_send(['ok' => false, 'error' => 'This property conversation could not be started. Please try again.'], 500);
+    }
 }
 
 $transactionId = filter_var($_GET['transaction_id'] ?? ($_POST['transaction_id'] ?? 0), FILTER_VALIDATE_INT);
@@ -522,38 +547,38 @@ if ($method === 'POST' || $action === 'send') {
         if ($isViewingQuery) {
             if ($hasScheduledViewing) {
                 if ($agentIsOnline) {
-                    $autoReplyText = "📅 [Automated Reply] Note: A property viewing schedule is already on record for '{$propTitle}'. Your assigned Sales Agent ({$agentName}) is online and can assist with any rescheduling or additional details.";
+                    $autoReplyText = "📅 Note: A property viewing schedule is already on record for '{$propTitle}'. Your assigned Sales Agent ({$agentName}) is online and can assist with any rescheduling or additional details.";
                 } else {
-                    $autoReplyText = "📅 [Automated Reply] Note: A property viewing schedule is already on record for '{$propTitle}'. Your assigned Sales Agent ({$agentName}) is currently away/offline, but will review your message upon return. If you need to reschedule or change details, your agent will coordinate with you.";
+                    $autoReplyText = "📅 Note: A property viewing schedule is already on record for '{$propTitle}'. Your assigned Sales Agent ({$agentName}) is currently away/offline, but will review your message upon return. If you need to reschedule or change details, your agent will coordinate with you.";
                 }
             } else {
                 if ($agentIsOnline) {
-                    $autoReplyText = "📅 [Automated Reply] Thank you for asking about scheduling a viewing for '{$propTitle}'! Site visits are available Monday to Saturday between 8:00 AM and 5:00 PM. Your assigned Sales Agent ({$agentName}) is online and will confirm your preferred schedule shortly.";
+                    $autoReplyText = "📅 Thank you for asking about scheduling a viewing for '{$propTitle}'! Site visits are available Monday to Saturday between 8:00 AM and 5:00 PM. Your assigned Sales Agent ({$agentName}) is online and will confirm your preferred schedule shortly.";
                 } else {
-                    $autoReplyText = "📅 [Automated Reply] Thank you for asking about scheduling a viewing for '{$propTitle}'! Site visits are available Monday to Saturday between 8:00 AM and 5:00 PM. Your assigned Sales Agent ({$agentName}) is currently away/offline and has been notified. They will coordinate the exact schedule with you as soon as they return.";
+                    $autoReplyText = "📅 Thank you for asking about scheduling a viewing for '{$propTitle}'! Site visits are available Monday to Saturday between 8:00 AM and 5:00 PM. Your assigned Sales Agent ({$agentName}) is currently away/offline and has been notified. They will coordinate the exact schedule with you as soon as they return.";
                 }
             }
         } elseif ($isPaymentQuery) {
             if ($agentIsOnline) {
-                $autoReplyText = "💰 [Automated Reply] Regarding payment terms for '{$propTitle}': Kings Land Properties supports Spot Cash (which transitions directly to DOAS preparation upon full payment) and structured installment plans via Contract to Sell (CTS). Your assigned Sales Agent ({$agentName}) is online and can provide your detailed computation.";
+                $autoReplyText = "💰 Regarding payment terms for '{$propTitle}': Kings Land Properties supports Spot Cash (which transitions directly to DOAS preparation upon full payment) and structured installment plans via Contract to Sell (CTS). Your assigned Sales Agent ({$agentName}) is online and can provide your detailed computation.";
             } else {
-                $autoReplyText = "💰 [Automated Reply] Regarding payment terms for '{$propTitle}': Kings Land Properties supports Spot Cash (which transitions directly to DOAS preparation upon full payment) and structured installment plans via Contract to Sell (CTS). Your agent ({$agentName}) is currently away/offline and will provide the full computation shortly.";
+                $autoReplyText = "💰 Regarding payment terms for '{$propTitle}': Kings Land Properties supports Spot Cash (which transitions directly to DOAS preparation upon full payment) and structured installment plans via Contract to Sell (CTS). Your agent ({$agentName}) is currently away/offline and will provide the full computation shortly.";
             }
         } elseif ($isDocsQuery) {
             if ($agentIsOnline) {
-                $autoReplyText = "📄 [Automated Reply] Standard transaction requirements include 2 valid government IDs, TIN, Proof of Billing, and signed reservation paperwork. Standard transfer taxes and registration fees are buyer-shouldered upon completion. Your assigned Sales Agent ({$agentName}) is online to assist with document preparation.";
+                $autoReplyText = "📄 Standard transaction requirements include 2 valid government IDs, TIN, Proof of Billing, and signed reservation paperwork. Standard transfer taxes and registration fees are buyer-shouldered upon completion. Your assigned Sales Agent ({$agentName}) is online to assist with document preparation.";
             } else {
-                $autoReplyText = "📄 [Automated Reply] Standard transaction requirements include 2 valid government IDs, TIN, Proof of Billing, and signed reservation paperwork. Standard transfer taxes and registration fees are buyer-shouldered upon completion. Your agent ({$agentName}) is currently away/offline and will provide the complete checklist.";
+                $autoReplyText = "📄 Standard transaction requirements include 2 valid government IDs, TIN, Proof of Billing, and signed reservation paperwork. Standard transfer taxes and registration fees are buyer-shouldered upon completion. Your agent ({$agentName}) is currently away/offline and will provide the complete checklist.";
             }
         } elseif ($isLocationQuery) {
             if ($agentIsOnline) {
-                $autoReplyText = "📍 [Automated Reply] '{$propTitle}' is located in {$propLocation}. You can view the interactive map location on the listing page. Your assigned Sales Agent ({$agentName}) is online and can share exact meeting points and directions.";
+                $autoReplyText = "📍 '{$propTitle}' is located in {$propLocation}. You can view the interactive map location on the listing page. Your assigned Sales Agent ({$agentName}) is online and can share exact meeting points and directions.";
             } else {
-                $autoReplyText = "📍 [Automated Reply] '{$propTitle}' is located in {$propLocation}. You can view the interactive map location on the listing page. Your agent ({$agentName}) is currently away/offline and will share exact meeting points and landmark directions before your site visit.";
+                $autoReplyText = "📍 '{$propTitle}' is located in {$propLocation}. You can view the interactive map location on the listing page. Your agent ({$agentName}) is currently away/offline and will share exact meeting points and landmark directions before your site visit.";
             }
         } else {
             // General conversation message (e.g. 'hehe', 'hello') while agent is away/offline
-            $autoReplyText = "👋 [Automated Reply] Thank you for reaching out! Your message regarding '{$propTitle}' has been received. Your assigned Sales Agent ({$agentName}) is currently away/offline, but has been notified and will assist you as soon as they are back online. You may also contact our sales office directly at 0965 803 0933.";
+            $autoReplyText = "👋 Thank you for reaching out! Your message regarding '{$propTitle}' has been received. Your assigned Sales Agent ({$agentName}) is currently away/offline, but has been notified and will assist you as soon as they are back online. You may also contact our sales office directly at 0965 803 0933.";
         }
 
         if ($autoReplyText !== null) {

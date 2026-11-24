@@ -84,11 +84,11 @@ form validation and database CRUD operations are not listed as algorithms.
 4. A viewing request must use a real `YYYY-MM-DD` date and `HH:MM` time in
    `Asia/Manila`, and the combined appointment must be in the future. The app
    starts a database transaction, locks the property row, and rechecks that the
-   listing is still available. It rejects an existing pending/approved request
-   from the same client at the exact same time and any pending/approved viewing
-   for that property less than 60 minutes from the requested time. It then
-   inserts the appointment and its transaction-tracking event in the same
-   transaction.
+   listing is still available. Only one active viewing request is allowed per
+   property, regardless of client or schedule. A pending/approved request blocks
+   another until its viewing is completed or the request is cancelled. Duplicate
+   attempts show the existing schedule and do not create another appointment.
+   The appointment and its transaction-tracking event are inserted atomically.
 5. An inquiry must contain 5–3,000 valid UTF-8 code points. The app also locks
    and rechecks the property row, then inserts the inquiry and its tracking event
    in the same transaction. Both request paths roll back if either business

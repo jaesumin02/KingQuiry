@@ -72,7 +72,7 @@
                             <li><strong>Installment Basis:</strong> Execution of a notarized <strong>Contract to Sell (CTS)</strong> accompanied by monthly amortizations or post-dated checks.</li>
                             <li><strong>Spot Cash / Full Payment:</strong> Execution of a <strong>Deed of Absolute Sale (DOAS)</strong> upon receipt of full payment.</li>
                             <li><strong>Transfer of Title:</strong> As standard Philippine real estate practice, title transfer fees, Documentary Stamp Tax (DST), and registration fees are <strong>shouldered by the buyer</strong> unless otherwise agreed in writing.</li>
-                            <li><strong>Automatic Off-Market:</strong> Once finalized as completed, the property status automatically shifts to <em>Sold</em> and is removed from public catalog searches.</li>
+                            <li><strong>Automatic Off-Market:</strong> Once finalized as completed, the property is removed from public listings. Only Administrators see its <em>Sold</em> status; other users see it as unavailable.</li>
                         </ul>
                     </div>
 

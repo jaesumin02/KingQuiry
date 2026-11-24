@@ -272,6 +272,22 @@ function has_valid_csrf_token(): bool
         && hash_equals($_SESSION['csrf_token'], $_POST['csrf_token']);
 }
 
+function kq_log_auth_event(mysqli $conn, int $userId, string $event): void
+{
+    if ($userId <= 0 || !in_array($event, ['login', 'logout'], true)) {
+        return;
+    }
+
+    try {
+        $stmt = $conn->prepare('INSERT INTO auditlogs (userID, action) VALUES (?, ?)');
+        $action = $event === 'login' ? 'User logged in.' : 'User logged out.';
+        $stmt->bind_param('is', $userId, $action);
+        $stmt->execute();
+    } catch (mysqli_sql_exception $exception) {
+        error_log('KingQuiry authentication audit log failed: ' . $exception->getMessage());
+    }
+}
+
 function kq_process_user_login(mysqli $conn): string
 {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -316,6 +332,7 @@ function kq_process_user_login(mysqli $conn): string
                     kq_clear_login_rate_limits($conn, $identifier, $loginIpAddress);
                 }
                 kq_regenerate_session_after_login($user);
+                kq_log_auth_event($conn, (int) $user['userID'], 'login');
                 if (function_exists('update_user_presence')) {
                     update_user_presence($conn, (int) $user['userID'], true, 'online');
                 }

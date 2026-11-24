@@ -19,8 +19,11 @@ if (!has_valid_csrf_token()) {
 $logoutUserId = (int) ($_SESSION['user']['userID'] ?? 0);
 if ($logoutUserId > 0) {
     require_once 'config/db.php';
-    if (isset($conn) && function_exists('update_user_presence')) {
-        update_user_presence($conn, $logoutUserId, false, 'offline');
+    if (isset($conn) && $conn instanceof mysqli) {
+        kq_log_auth_event($conn, $logoutUserId, 'logout');
+        if (function_exists('update_user_presence')) {
+            update_user_presence($conn, $logoutUserId, false, 'offline');
+        }
     }
 }
 

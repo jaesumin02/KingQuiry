@@ -10,8 +10,45 @@ document.addEventListener('submit', (event) => {
     if (message && !window.confirm(message)) {
         event.preventDefault();
         event.stopImmediatePropagation();
+        return;
+    }
+
+    if (form.hasAttribute('data-single-submit')) {
+        if (form.dataset.submitting === 'true') {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            return;
+        }
+
+        form.dataset.submitting = 'true';
+        const submitButton = submitter instanceof HTMLButtonElement
+            ? submitter
+            : form.querySelector('button[type="submit"]');
+        if (submitButton instanceof HTMLButtonElement) {
+            if (!submitButton.dataset.originalText) {
+                submitButton.dataset.originalText = submitButton.textContent || '';
+            }
+            submitButton.classList.add('disabled');
+            submitButton.setAttribute('aria-disabled', 'true');
+            submitButton.textContent = 'Sending inquiry...';
+        }
     }
 }, true);
+
+window.addEventListener('pageshow', () => {
+    document.querySelectorAll('form[data-single-submit]').forEach((form) => {
+        delete form.dataset.submitting;
+        const submitButton = form.querySelector('button[type="submit"]');
+        if (submitButton instanceof HTMLButtonElement) {
+            submitButton.classList.remove('disabled');
+            submitButton.removeAttribute('aria-disabled');
+            if (submitButton.dataset.originalText) {
+                submitButton.textContent = submitButton.dataset.originalText;
+                delete submitButton.dataset.originalText;
+            }
+        }
+    });
+});
 
 document.addEventListener('click', (event) => {
     const button = event.target instanceof Element
@@ -129,6 +166,16 @@ document.addEventListener('DOMContentLoaded', () => {
                             link.classList.add('btn-outline-primary');
                         }
                     });
+                    navigation.querySelectorAll('button[data-bs-toggle="collapse"][aria-expanded="true"]').forEach((button) => {
+                        const panelSelector = button.getAttribute('data-bs-target');
+                        const panel = panelSelector ? document.querySelector(panelSelector) : null;
+                        if (panel && typeof bootstrap !== 'undefined' && bootstrap.Collapse) {
+                            bootstrap.Collapse.getOrCreateInstance(panel, { toggle: false }).hide();
+                        } else if (panel) {
+                            panel.classList.remove('show');
+                        }
+                        button.setAttribute('aria-expanded', 'false');
+                    });
                     target.setAttribute('aria-current', 'location');
                     target.classList.add('active');
                     if (navigation.classList.contains('admin-nav')) {
@@ -138,7 +185,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            if (target instanceof HTMLAnchorElement || target.matches('[data-bs-toggle="modal"]')) {
+            if (target instanceof HTMLButtonElement && target.matches('[data-bs-toggle="collapse"]')) {
+                navigation.querySelectorAll('a[aria-current="location"], a.active').forEach((link) => {
+                    link.removeAttribute('aria-current');
+                    link.classList.remove('active');
+                });
+            }
+
+            if (target instanceof HTMLAnchorElement || target.matches('[data-bs-toggle="modal"], [data-bs-toggle="collapse"]')) {
                 setMenuOpen(false);
             }
         });

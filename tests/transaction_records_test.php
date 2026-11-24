@@ -173,6 +173,24 @@ $appointmentTransactionResult = $conn->query(
     'SELECT transactionID FROM property_transactions WHERE appointmentID = 501 LIMIT 1'
 );
 $appointmentTransactionId = (int) $appointmentTransactionResult->fetch_assoc()['transactionID'];
+$activeViewingRequest = get_active_property_viewing_request($conn, 402);
+expect_record_test(
+    (int) ($activeViewingRequest['appointmentID'] ?? 0) === 501,
+    'A pending viewing request must block another active viewing for the same property.'
+);
+expect_record_test(
+    get_active_property_viewing_request($conn, 402, 501) === null,
+    'Checking an appointment for its own approval must exclude that same request.'
+);
+$completedViewingStage = $conn->prepare(
+    "UPDATE property_transactions SET currentStage = 'viewing_completed' WHERE transactionID = ?"
+);
+$completedViewingStage->bind_param('i', $appointmentTransactionId);
+$completedViewingStage->execute();
+expect_record_test(
+    get_active_property_viewing_request($conn, 402) === null,
+    'A completed viewing must release the property for a later viewing request.'
+);
 create_property_transaction($conn, 403, 101, 'inquiry', 602, 301);
 $unassignedTransactionResult = $conn->query(
     'SELECT transactionID FROM property_transactions WHERE inquiryID = 602 LIMIT 1'
@@ -297,6 +315,42 @@ try {
 }
 expect_record_test($otherAgentCannotClaim, 'An Agent must not take an inquiry already assigned to another Agent.');
 
+$conn->query("INSERT INTO properties (propertyID, title) VALUES (405, 'Duplicate approval fixture property')");
+$conn->query(
+    "INSERT INTO appointments
+        (appointmentID, clientID, propertyID, status, appointmentDate, appointmentTime)
+     VALUES
+        (505, 101, 405, 'Pending', '2026-11-27', '10:00:00'),
+        (506, 101, 405, 'Pending', '2026-11-28', '10:00:00')"
+);
+create_property_transaction($conn, 405, 101, 'appointment', 505, 101);
+create_property_transaction($conn, 405, 101, 'appointment', 506, 101);
+$duplicateViewingApprovalRejected = false;
+try {
+    update_appointment_tracking_status($conn, 505, 'Approved', 201);
+} catch (InvalidArgumentException $exception) {
+    $duplicateViewingApprovalRejected = true;
+}
+$duplicateViewingTransactionRejected = false;
+$secondViewingTransaction = $conn->query(
+    'SELECT transactionID FROM property_transactions WHERE appointmentID = 506'
+)->fetch_assoc();
+try {
+    advance_property_transaction(
+        $conn,
+        (int) $secondViewingTransaction['transactionID'],
+        'viewing_confirmed',
+        'Integration-test duplicate approval',
+        301
+    );
+} catch (InvalidArgumentException $exception) {
+    $duplicateViewingTransactionRejected = true;
+}
+expect_record_test(
+    $duplicateViewingApprovalRejected && $duplicateViewingTransactionRejected,
+    'Both Agent dashboard approval and transaction-pipeline approval must reject a second active viewing for the same property.'
+);
+
 $paymentRecords = get_transaction_payment_records(
     $conn,
     [$inquiryTransactionId, $appointmentTransactionId, $unassignedTransactionId]
@@ -349,6 +403,44 @@ expect_record_test($eventCount === 5, 'Inquiry creation and both payment submiss
 expect_record_test(
     (int) $conn->query('SELECT COUNT(*) AS total FROM user_notifications')->fetch_assoc()['total'] === 2,
     'Confirmed and rejected payments must each create a Client notification in the test fixture.'
+);
+
+$conn->query("INSERT INTO properties (propertyID, title) VALUES (404, 'Sale lock fixture property')");
+$conn->query(
+    "INSERT INTO appointments
+        (appointmentID, clientID, propertyID, status, appointmentDate, appointmentTime)
+     VALUES (502, 101, 404, 'Pending', '2026-11-26', '11:00:00')"
+);
+$conn->query(
+    "INSERT INTO property_transactions
+        (transactionID, propertyID, clientID, appointmentID, currentStage, paymentMethod)
+     VALUES
+        (9001, 404, 101, NULL, 'payment_confirmation', 'Spot Cash'),
+        (9002, 404, 101, 502, 'payment_confirmation', 'Spot Cash')"
+);
+$conn->query(
+    "INSERT INTO property_transaction_payments
+        (transactionID, clientID, amount, paymentMethod, referenceNumber, status, reviewedAt, reviewedBy)
+     VALUES
+        (9001, 101, 5000.00, 'Spot Cash', 'TEST-CLOSE-001', 'confirmed', CURRENT_TIMESTAMP, 301),
+        (9002, 101, 5000.00, 'Spot Cash', 'TEST-CLOSE-002', 'confirmed', CURRENT_TIMESTAMP, 301)"
+);
+advance_property_transaction($conn, 9001, 'completed', 'Integration-test turnover', 301, 5000.00);
+$soldProperty = $conn->query('SELECT status FROM properties WHERE propertyID = 404')->fetch_assoc();
+$competingSaleRejected = false;
+try {
+    advance_property_transaction($conn, 9002, 'completed', 'Competing integration-test turnover', 301, 5000.00);
+} catch (InvalidArgumentException $exception) {
+    $competingSaleRejected = true;
+}
+$lockedSaleStage = $conn->query('SELECT currentStage FROM property_transactions WHERE transactionID = 9002')->fetch_assoc();
+$competingAppointment = $conn->query('SELECT status FROM appointments WHERE appointmentID = 502')->fetch_assoc();
+expect_record_test(
+    $soldProperty['status'] === 'Sold'
+        && $competingSaleRejected
+        && $lockedSaleStage['currentStage'] === 'cancelled'
+        && $competingAppointment['status'] === 'Cancelled',
+    'Completing one sale must mark the property Sold, close competing transactions and viewings, and reject later completion.'
 );
 
 $conn->close();

@@ -552,12 +552,15 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
 .kq-portal-nav { max-height: calc(100vh - 11rem); overflow-y: auto; }
 
 .kq-portal-nav a,
+.kq-portal-nav button,
 .kq-portal-nav a:link,
 .kq-portal-nav a:visited,
 .kq-portal-sidebar .kq-portal-nav a,
+.kq-portal-sidebar .kq-portal-nav button,
 .kq-portal-sidebar .kq-portal-nav a:link,
 .kq-portal-sidebar .kq-portal-nav a:visited {
     display: flex;
+    width: 100%;
     min-height: 42px;
     align-items: center;
     padding: 0.55rem 0.85rem;
@@ -569,14 +572,22 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
     font-weight: 600;
     line-height: 1.4;
     text-decoration: none !important;
+    text-align: left;
+    font-family: inherit;
+    cursor: pointer;
     transition: background-color .15s ease, color .15s ease, border-color .15s ease, box-shadow .15s ease;
 }
 
 .kq-portal-nav a:hover,
+.kq-portal-nav button:hover,
 .kq-portal-nav a:focus,
+.kq-portal-nav button:focus,
 .kq-portal-nav a:focus-visible,
+.kq-portal-nav button:focus-visible,
 .kq-portal-sidebar .kq-portal-nav a:hover,
+.kq-portal-sidebar .kq-portal-nav button:hover,
 .kq-portal-sidebar .kq-portal-nav a:focus,
+.kq-portal-sidebar .kq-portal-nav button:focus,
 .kq-portal-sidebar .kq-portal-nav a:focus-visible {
     border-color: rgba(255, 255, 255, 0.35) !important;
     background: #2b4652 !important;
@@ -584,8 +595,10 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
 }
 
 .kq-portal-nav a[aria-current="location"],
+.kq-portal-nav button[aria-expanded="true"],
 .kq-portal-nav a.active,
 .kq-portal-sidebar .kq-portal-nav a[aria-current="location"],
+.kq-portal-sidebar .kq-portal-nav button[aria-expanded="true"],
 .kq-portal-sidebar .kq-portal-nav a.active {
     border-color: #d9a74a !important;
     background: #1b4d6e !important;
@@ -593,7 +606,8 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
     box-shadow: inset 0 -2px 0 #d9a74a, 0 0 0 1px rgba(217, 167, 74, 0.35) !important;
 }
 
-.kq-portal-nav a:focus-visible {
+.kq-portal-nav a:focus-visible,
+.kq-portal-nav button:focus-visible {
     outline: 2px solid #38bdf8;
     outline-offset: 2px;
 }
@@ -738,10 +752,10 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
 }
 
 .kq-chat-nav-btn {
-    background: rgba(33, 150, 243, 0.18) !important;
-    border-color: rgba(255, 255, 255, 0.65) !important;
+    background: transparent !important;
+    border-color: rgba(255, 255, 255, 0.38) !important;
     color: #fff !important;
-    font-weight: 700 !important;
+    font-weight: 600 !important;
     border-radius: 0.65rem !important;
     box-shadow: none !important;
     transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease, border-color 0.18s ease;
@@ -757,11 +771,10 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
 }
 
 .kq-chat-nav-btn:hover {
-    background: #0d6efd !important;
-    border-color: #0d6efd !important;
+    background: rgba(255, 255, 255, 0.1) !important;
+    border-color: rgba(255, 255, 255, 0.58) !important;
     color: #fff !important;
     transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(13, 110, 253, 0.45) !important;
 }
 
 .kq-chat-nav-btn:focus-visible,
