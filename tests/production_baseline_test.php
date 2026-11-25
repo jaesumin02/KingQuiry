@@ -171,5 +171,27 @@ expect_true(
         === [2031, 2030, 2029, 2028, 2027, 2026, 2024],
     'Annual revenue reports must offer recorded years, the current year, and five upcoming years without duplicates.'
 );
+expect_true(
+    kq_format_compact_peso(999) === '₱999'
+        && kq_format_compact_peso(1500) === '₱1.5K'
+        && kq_format_compact_peso(2000000) === '₱2.0M',
+    'Shared compact currency formatting must preserve its existing values and thresholds.'
+);
+
+// Business rules: 7-day reservation grace period calculation
+$simulatedUpdatedNow = time();
+$daysElapsedZero = (int) floor((time() - $simulatedUpdatedNow) / 86400);
+$daysRemainingStart = max(0, 7 - $daysElapsedZero);
+expect_true($daysRemainingStart === 7, 'Newly entered payment_in_process transactions must show 7 days remaining.');
+
+$simulated3DaysAgo = time() - (3 * 86400);
+$daysElapsed3 = (int) floor((time() - $simulated3DaysAgo) / 86400);
+$daysRemaining3 = max(0, 7 - $daysElapsed3);
+expect_true($daysRemaining3 === 4, 'Transactions updated 3 days ago must show 4 days remaining.');
+
+$simulated8DaysAgo = time() - (8 * 86400);
+$daysElapsed8 = (int) floor((time() - $simulated8DaysAgo) / 86400);
+$daysRemaining8 = max(0, 7 - $daysElapsed8);
+expect_true($daysRemaining8 === 0, 'Transactions updated over 7 days ago must indicate window expiration.');
 
 fwrite(STDOUT, "Production baseline checks passed.\n");

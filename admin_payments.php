@@ -781,7 +781,7 @@ include 'includes/header.php';
                                         </form>
                                     <?php endif; ?>
                                     <?php if ($payment['paymentSource'] === 'admin_register'): ?>
-                                        <form method="POST" class="d-inline" onsubmit="return confirm('Remove this payment record permanently?');">
+                                        <form method="POST" class="d-inline" data-confirm="Remove this payment record permanently?">
                                             <input type="hidden" name="csrf_token" value="<?= kq_e(csrf_token()) ?>">
                                             <input type="hidden" name="payment_action" value="delete_payment">
                                             <input type="hidden" name="paymentID" value="<?= (int) $payment['paymentID'] ?>">

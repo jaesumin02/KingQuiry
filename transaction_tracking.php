@@ -466,7 +466,7 @@ include 'includes/header.php';
                                     <span>💬 Chat</span>
                                 </button>
                                 <?php if (empty($transaction['assignedAgentID']) && ($role === 'Agent' || $role === 'Sales Agent')): ?>
-                                    <form method="post" action="transaction_tracking.php" class="d-inline">
+                                    <form method="post" action="transaction_tracking.php" class="d-inline" data-confirm="Claim this transaction request? It will be assigned to your account.">
                                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                                         <input type="hidden" name="transactionID" value="<?= $tId ?>">
                                         <button type="submit" name="claim_transaction" class="btn btn-sm btn-success fw-semibold shadow-sm text-nowrap">
@@ -606,7 +606,7 @@ include 'includes/header.php';
                                 <span>💬 Direct Message Client</span>
                             </button>
                             <?php if (empty($transaction['assignedAgentID']) && ($role === 'Agent' || $role === 'Sales Agent')): ?>
-                                <form method="post" action="transaction_tracking.php" class="d-inline">
+                                <form method="post" action="transaction_tracking.php" class="d-inline" data-confirm="Claim this transaction request? It will be assigned to your account.">
                                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                                     <input type="hidden" name="transactionID" value="<?= $tId ?>">
                                     <button type="submit" name="claim_transaction" class="btn btn-sm btn-success fw-semibold shadow-sm">
@@ -667,6 +667,31 @@ include 'includes/header.php';
                                 </div>
                             </div>
                         <?php endif; endif; ?>
+
+                        <?php if ($currentStage === 'payment_in_process'):
+                            $stageUpdateTs = !empty($transaction['updatedAt']) ? strtotime($transaction['updatedAt']) : time();
+                            $daysElapsed = (int) floor((time() - $stageUpdateTs) / 86400);
+                            $daysLeft = max(0, 7 - $daysElapsed);
+                        ?>
+                            <div class="p-2 px-3 rounded-3 mb-3 bg-warning-subtle border border-warning small d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="fs-5">⏳</span>
+                                    <div>
+                                        <strong class="text-dark">7-Day Reservation Policy Status:</strong>
+                                        <div class="text-muted" style="font-size: 0.78rem;">
+                                            <?php if ($daysLeft > 0): ?>
+                                                Active reservation window: <strong><?= $daysLeft ?> day<?= $daysLeft === 1 ? '' : 's' ?> remaining</strong> for client down payment and compliance IDs before release.
+                                            <?php else: ?>
+                                                7-day reservation window elapsed. Check if client requested an extension or if property should be released.
+                                            <?php endif; ?>
+                                        </div>
+                                    </div>
+                                </div>
+                                <span class="badge <?= $daysLeft > 0 ? 'text-bg-warning text-dark' : 'text-bg-danger text-white' ?> fw-bold">
+                                    <?= $daysLeft > 0 ? ($daysLeft . ' Day' . ($daysLeft === 1 ? '' : 's') . ' Left') : 'Window Elapsed' ?>
+                                </span>
+                            </div>
+                        <?php endif; ?>
 
                         <!-- Agreed Payment Scheme Information -->
                         <?php

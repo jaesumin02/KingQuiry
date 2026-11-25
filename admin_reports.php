@@ -70,7 +70,7 @@ include 'includes/header.php';
         <div class="col-6 col-lg-4 col-xl-2"><div class="card h-100"><div class="card-body p-3"><div class="page-eyebrow text-info">Inquiries (30 days)</div><h2 class="h3 mb-0 text-info"><?= number_format($metrics['recent_inquiries']) ?></h2><small class="text-muted">All client inquiries</small></div></div></div>
         <div class="col-6 col-lg-4 col-xl-2"><div class="card h-100"><div class="card-body p-3"><div class="page-eyebrow text-primary">Active pipeline</div><h2 class="h3 mb-0 text-primary"><?= number_format($metrics['active_pipeline']) ?></h2><small class="text-muted">Excludes completed/cancelled</small></div></div></div>
         <div class="col-6 col-lg-4 col-xl-2"><div class="card h-100"><div class="card-body p-3"><div class="page-eyebrow text-success">Completed sales</div><h2 class="h3 mb-0 text-success"><?= number_format($metrics['completed_sales']) ?></h2><small class="text-muted">All completed transactions</small></div></div></div>
-        <div class="col-6 col-lg-4 col-xl-2"><div class="card h-100"><div class="card-body p-3"><div class="page-eyebrow text-success">Actual revenue</div><h2 class="h3 mb-0 text-success"><?= htmlspecialchars(format_admin_compact_peso($metrics['actual_revenue']), ENT_QUOTES, 'UTF-8') ?></h2><small class="text-muted">Recorded sale prices</small></div></div></div>
+        <div class="col-6 col-lg-4 col-xl-2"><div class="card h-100"><div class="card-body p-3"><div class="page-eyebrow text-success">Actual revenue</div><h2 class="h3 mb-0 text-success"><?= htmlspecialchars(kq_format_compact_peso($metrics['actual_revenue']), ENT_QUOTES, 'UTF-8') ?></h2><small class="text-muted">Recorded sale prices</small></div></div></div>
     </div>
 
     <div class="row g-3 mb-4">
@@ -114,7 +114,7 @@ include 'includes/header.php';
                             $gridValue = $reports['monthly_revenue_maximum'] * $gridLine / 4;
                         ?>
                             <line class="kq-chart-grid" x1="<?= $chartLeft ?>" y1="<?= number_format($gridY, 2, '.', '') ?>" x2="<?= $chartRight ?>" y2="<?= number_format($gridY, 2, '.', '') ?>" stroke-width="1"/>
-                            <text class="kq-chart-text" x="<?= $chartLeft - 10 ?>" y="<?= number_format($gridY + 4, 2, '.', '') ?>" text-anchor="end" font-size="12"><?= htmlspecialchars(format_admin_compact_peso($gridValue), ENT_QUOTES, 'UTF-8') ?></text>
+                            <text class="kq-chart-text" x="<?= $chartLeft - 10 ?>" y="<?= number_format($gridY + 4, 2, '.', '') ?>" text-anchor="end" font-size="12"><?= htmlspecialchars(kq_format_compact_peso($gridValue), ENT_QUOTES, 'UTF-8') ?></text>
                         <?php endfor; ?>
                         <line class="kq-chart-axis" x1="<?= $chartLeft ?>" y1="<?= $chartTop ?>" x2="<?= $chartLeft ?>" y2="<?= $chartBottom ?>" stroke-width="1"/>
                         <line class="kq-chart-axis" x1="<?= $chartLeft ?>" y1="<?= $chartBottom ?>" x2="<?= $chartRight ?>" y2="<?= $chartBottom ?>" stroke-width="1"/>
@@ -130,17 +130,17 @@ include 'includes/header.php';
                         <?php if ($reports['has_monthly_sales']): ?>
                             <?php foreach ($monthlyRevenuePoints as $point): ?>
                                 <circle cx="<?= number_format($point['x'], 2, '.', '') ?>" cy="<?= number_format($point['y'], 2, '.', '') ?>" r="5" fill="#fff" stroke="#167a9c" stroke-width="3">
-                                    <title><?= htmlspecialchars($point['label'] . ': ' . format_admin_compact_peso($point['revenue']) . ' (' . number_format($point['sales']) . ' sale(s) with price recorded)', ENT_QUOTES, 'UTF-8') ?></title>
+                                    <title><?= htmlspecialchars($point['label'] . ': ' . kq_format_compact_peso($point['revenue']) . ' (' . number_format($point['sales']) . ' sale(s) with price recorded)', ENT_QUOTES, 'UTF-8') ?></title>
                                 </circle>
                                 <?php if ($point['revenue'] > 0): ?>
-                                    <text x="<?= number_format($point['x'], 2, '.', '') ?>" y="<?= number_format($point['y'] - 12, 2, '.', '') ?>" text-anchor="middle" fill="#126481" font-size="11" font-weight="700"><?= htmlspecialchars(format_admin_compact_peso($point['revenue']), ENT_QUOTES, 'UTF-8') ?></text>
+                                    <text x="<?= number_format($point['x'], 2, '.', '') ?>" y="<?= number_format($point['y'] - 12, 2, '.', '') ?>" text-anchor="middle" fill="#126481" font-size="11" font-weight="700"><?= htmlspecialchars(kq_format_compact_peso($point['revenue']), ENT_QUOTES, 'UTF-8') ?></text>
                                 <?php endif; ?>
                             <?php endforeach; ?>
                         <?php endif; ?>
                     </svg>
                 </div>
                 <div class="d-flex flex-wrap justify-content-between gap-2 mt-2 small text-muted">
-                    <span><?= $reports['is_future_year'] ? 'Future year' : ($reports['is_current_year'] ? 'Year-to-date' : 'Full year') ?>: <strong class="text-body"><?= htmlspecialchars(format_admin_compact_peso($reports['year_to_date_revenue']), ENT_QUOTES, 'UTF-8') ?></strong> across <?= number_format($reports['year_to_date_sales']) ?> sale(s) with a recorded price.</span>
+                    <span><?= $reports['is_future_year'] ? 'Future year' : ($reports['is_current_year'] ? 'Year-to-date' : 'Full year') ?>: <strong class="text-body"><?= htmlspecialchars(kq_format_compact_peso($reports['year_to_date_revenue']), ENT_QUOTES, 'UTF-8') ?></strong> across <?= number_format($reports['year_to_date_sales']) ?> sale(s) with a recorded price.</span>
                     <?php if ($reports['is_current_year']): ?><span>Months after the current month are intentionally left blank.</span><?php endif; ?>
                 </div>
                 <?php if (!$reports['has_monthly_sales']): ?>
@@ -224,7 +224,7 @@ include 'includes/header.php';
                             <li>
                                 <div class="d-flex justify-content-between align-items-start gap-3 small mb-1">
                                     <span class="fw-semibold text-break"><?= ($rank + 1) ?>. <?= htmlspecialchars($propertySale['title'], ENT_QUOTES, 'UTF-8') ?></span>
-                                    <span class="text-end text-nowrap"><?= htmlspecialchars(format_admin_compact_peso($revenue), ENT_QUOTES, 'UTF-8') ?><span class="d-block text-muted"><?= number_format((int) $propertySale['sales']) ?> sale(s) with price recorded</span></span>
+                                    <span class="text-end text-nowrap"><?= htmlspecialchars(kq_format_compact_peso($revenue), ENT_QUOTES, 'UTF-8') ?><span class="d-block text-muted"><?= number_format((int) $propertySale['sales']) ?> sale(s) with price recorded</span></span>
                                 </div>
                                 <div class="progress" role="progressbar" aria-label="<?= htmlspecialchars($propertySale['title'], ENT_QUOTES, 'UTF-8') ?> actual sale revenue" aria-valuenow="<?= $barPercent ?>" aria-valuemin="0" aria-valuemax="100" style="height: .55rem;"><div class="progress-bar bg-success" style="width: <?= $barPercent ?>%"></div></div>
                             </li>

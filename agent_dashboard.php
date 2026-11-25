@@ -417,22 +417,6 @@ include 'includes/header.php';
                 <p class="text-muted mb-0">Welcome, <?= htmlspecialchars($_SESSION['user']['fullname'], ENT_QUOTES, 'UTF-8') ?>. Manage viewing requests and share transaction updates.</p>
             </div>
         </div>
-        <?php
-        $agentPresenceInfo = function_exists('get_agent_presence') ? get_agent_presence($conn, (int) $_SESSION['user']['userID']) : ['is_online' => true];
-        $isAgentOnlineNow = !empty($agentPresenceInfo['is_online']);
-        ?>
-        <div class="card border-0 shadow-sm p-2 px-3 rounded-4 bg-body align-self-start align-self-md-center flex-shrink-0" style="min-width: 210px;">
-            <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
-                <span class="small fw-bold text-uppercase text-muted" style="font-size: 0.68rem; letter-spacing: 0.04em;">Live Chat Status</span>
-                <button type="button" class="btn btn-sm rounded-pill fw-bold d-inline-flex align-items-center gap-1 <?= $isAgentOnlineNow ? 'btn-success' : 'btn-outline-secondary' ?>" id="agentLiveStatusBtn" onclick="toggleAgentLiveStatus()" title="Toggle your live chat availability">
-                    <span id="agentLiveStatusDot"><?= $isAgentOnlineNow ? '🟢' : '⚪' ?></span>
-                    <span id="agentLiveStatusLabel"><?= $isAgentOnlineNow ? 'Online (Live)' : 'Offline (Away)' ?></span>
-                </button>
-            </div>
-            <div class="small text-muted" style="font-size: 0.72rem; line-height: 1.25;" id="agentLiveStatusHint">
-                <?= $isAgentOnlineNow ? 'Clients can message you live.' : 'Automated chat replies are active.' ?>
-            </div>
-        </div>
     </header>
 
 <?php if ($statusMessage !== ''): ?><div class="alert alert-success" role="status"><?= htmlspecialchars($statusMessage, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
@@ -1004,56 +988,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
 });
-
-async function toggleAgentLiveStatus() {
-    const btn = document.getElementById('agentLiveStatusBtn');
-    const label = document.getElementById('agentLiveStatusLabel');
-    const dot = document.getElementById('agentLiveStatusDot');
-    const hint = document.getElementById('agentLiveStatusHint');
-    if (!btn) return;
-
-    btn.disabled = true;
-    try {
-        const resp = await fetch('chat_api.php?action=toggle_presence', {
-            method: 'POST',
-            credentials: 'same-origin'
-        });
-        const text = await resp.text();
-        let data = null;
-        try { data = JSON.parse(text); } catch (e) {
-            const m = text.match(/\{[\s\S]*\}/);
-            if (m) data = JSON.parse(m[0]);
-        }
-        if (data && data.ok) {
-            const isOnline = Boolean(data.is_online);
-            if (isOnline) {
-                btn.className = 'btn btn-sm rounded-pill fw-bold d-inline-flex align-items-center gap-1 btn-success';
-                if (dot) dot.textContent = '🟢';
-                if (label) label.textContent = 'Online (Live)';
-                if (hint) hint.textContent = 'Clients can message you live in real time.';
-            } else {
-                btn.className = 'btn btn-sm rounded-pill fw-bold d-inline-flex align-items-center gap-1 btn-outline-secondary';
-                if (dot) dot.textContent = '⚪';
-                if (label) label.textContent = 'Offline (Away)';
-                if (hint) hint.textContent = 'Automated chat replies are active.';
-            }
-            const headerBtn = document.getElementById('kqHeaderAgentStatusBtn');
-            if (headerBtn) {
-                const hDot = document.getElementById('kqHeaderStatusDot');
-                const hText = document.getElementById('kqHeaderStatusText');
-                if (hDot) hDot.textContent = isOnline ? '🟢' : '⚪';
-                if (hText) hText.textContent = isOnline ? 'Online' : 'Offline';
-                headerBtn.className = isOnline
-                    ? 'btn btn-sm rounded-pill fw-semibold shadow-sm d-inline-flex align-items-center gap-1 btn-outline-success text-success bg-success-subtle'
-                    : 'btn btn-sm rounded-pill fw-semibold shadow-sm d-inline-flex align-items-center gap-1 btn-outline-secondary text-secondary bg-body';
-            }
-        }
-    } catch (err) {
-        console.error('Failed to toggle agent presence:', err);
-    } finally {
-        btn.disabled = false;
-    }
-}
 
 // Session keepalive to keep agent presence and session active while viewing dashboard
 setInterval(function() {

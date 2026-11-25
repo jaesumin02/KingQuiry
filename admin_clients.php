@@ -550,7 +550,7 @@ include 'includes/header.php';
                                         <input type="hidden" name="accountStatus" value="<?= $client['accountStatus'] === 'Active' ? 'Inactive' : 'Active' ?>">
                                         <button type="submit" class="btn btn-sm btn-outline-secondary"><?= $client['accountStatus'] === 'Active' ? 'Deactivate' : 'Reactivate' ?></button>
                                     </form>
-                                    <form method="POST" class="d-inline" onsubmit="return confirm('Remove this client account? Accounts with viewing requests, inquiries, transactions, or payments cannot be deleted; deactivate them instead.');">
+                                    <form method="POST" class="d-inline" data-confirm="Remove this client account? Accounts with viewing requests, inquiries, transactions, or payments cannot be deleted; deactivate them instead.">
                                         <input type="hidden" name="csrf_token" value="<?= kq_e(csrf_token()) ?>">
                                         <input type="hidden" name="client_action" value="delete_client">
                                         <input type="hidden" name="userID" value="<?= (int) $client['userID'] ?>">

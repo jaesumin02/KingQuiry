@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/property_categories.php';
+require_once __DIR__ . '/admin_management.php';
 
 function get_admin_summary_metrics(mysqli $conn): array
 {
@@ -198,15 +199,4 @@ function get_admin_report_data(mysqli $conn, ?int $requestedYear = null): array
             : max(1.0, ...array_map(static fn(array $row): float => (float) $row['revenue'], $topSalesProperties)),
         'demand_prescription' => $demandResult->fetch_all(MYSQLI_ASSOC),
     ];
-}
-
-function format_admin_compact_peso(float $amount): string
-{
-    if ($amount >= 1000000) {
-        return '₱' . number_format($amount / 1000000, 1) . 'M';
-    }
-    if ($amount >= 1000) {
-        return '₱' . number_format($amount / 1000, 1) . 'K';
-    }
-    return '₱' . number_format($amount, 0);
 }

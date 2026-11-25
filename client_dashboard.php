@@ -575,17 +575,6 @@ $progressStages = [
                             </div>
 
                             <div class="modal-body p-3 p-md-4 text-start">
-                                <?php if ((int)($_GET['open_modal'] ?? 0) === $transactionId && $paymentSubmissionSuccess !== ''): ?>
-                                    <div class="alert alert-success alert-dismissible fade show py-2 mb-3 shadow-sm small" role="alert">
-                                        <i class="bi bi-check-circle-fill me-1"></i> <?= htmlspecialchars($paymentSubmissionSuccess, ENT_QUOTES, 'UTF-8') ?>
-                                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                                    </div>
-                                <?php elseif ((int)($_POST['transactionID'] ?? 0) === $transactionId && $paymentSubmissionError !== ''): ?>
-                                    <div class="alert alert-danger alert-dismissible fade show py-2 mb-3 shadow-sm small" role="alert">
-                                        <i class="bi bi-exclamation-triangle-fill me-1"></i> <?= htmlspecialchars($paymentSubmissionError, ENT_QUOTES, 'UTF-8') ?>
-                                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                                    </div>
-                                <?php endif; ?>
 
                                 <!-- Property Overview Banner -->
                                 <div class="d-flex align-items-center gap-3 p-2 p-sm-3 mb-3 bg-body-tertiary border rounded-3">
@@ -676,16 +665,32 @@ $progressStages = [
                                     </div>
 
                                     <!-- 7-Day Reservation & Legal Pathway Guidance -->
-                                    <?php if (in_array($stage, ['viewing_completed', 'payment_in_process'], true)): ?>
+                                    <?php if (in_array($stage, ['viewing_completed', 'payment_in_process'], true)):
+                                        $stageUpdateTs = !empty($tracking['updatedAt']) ? strtotime($tracking['updatedAt']) : time();
+                                        $daysElapsed = (int) floor((time() - $stageUpdateTs) / 86400);
+                                        $daysLeft = max(0, 7 - $daysElapsed);
+                                    ?>
                                         <div class="p-2 px-3 rounded-3 mb-3 bg-warning-subtle border border-warning small d-flex align-items-center justify-content-between flex-wrap gap-2">
                                             <div class="d-flex align-items-center gap-2">
                                                 <span class="fs-5">⏳</span>
                                                 <div>
                                                     <strong class="text-dark">7-Day Reservation Grace Period:</strong>
-                                                    <div class="text-muted" style="font-size: 0.78rem;">Please settle the down payment and required compliance documents within 7 days to secure this parcel and initiate contract preparation.</div>
+                                                    <div class="text-muted" style="font-size: 0.78rem;">
+                                                        <?php if ($stage === 'payment_in_process'): ?>
+                                                            <?php if ($daysLeft > 0): ?>
+                                                                Down payment settlement window is active. <strong><?= $daysLeft ?> day<?= $daysLeft === 1 ? '' : 's' ?> remaining</strong> to submit compliance IDs and finalize reservation.
+                                                            <?php else: ?>
+                                                                The 7-day reservation window has elapsed. Please contact your assigned agent immediately to verify your reservation status.
+                                                            <?php endif; ?>
+                                                        <?php else: ?>
+                                                            Please settle the down payment and required compliance documents within 7 days once payment processing begins.
+                                                        <?php endif; ?>
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <span class="badge text-bg-warning text-dark fw-bold">7-Day Rule</span>
+                                            <span class="badge <?= ($stage === 'payment_in_process' && $daysLeft === 0) ? 'text-bg-danger text-white' : 'text-bg-warning text-dark' ?> fw-bold">
+                                                <?= $stage === 'payment_in_process' ? ($daysLeft > 0 ? ($daysLeft . ' Day' . ($daysLeft === 1 ? '' : 's') . ' Left') : 'Grace Period Expired') : '7-Day Rule' ?>
+                                            </span>
                                         </div>
                                     <?php endif; ?>
 

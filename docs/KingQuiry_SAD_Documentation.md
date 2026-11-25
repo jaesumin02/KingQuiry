@@ -144,7 +144,7 @@ To develop and document a role-based web system that centralizes property discov
 | Public information | Property catalog, property details, active Sales Agent directory, buyer resources and FAQs, contact links, and shared navigation/theme. |
 | Search and discovery | Keyword, property category, and location filters; price/title/date sorting; page-size selection and pagination. |
 | Recommendations | Weighted similarity ranking based on listing features. A cold-start result does not claim a match percentage. |
-| Estimates | Indicative comparable-listing estimate on property details and in the customer chat estimate flow; simple asking-price/down-payment calculator on property details. These are different from one another. |
+| Property calculator | Calculates an asking price from entered lot area and the listing's price per square meter, then displays a 20% down-payment figure. It is not an independent market valuation. |
 | Accounts | Client registration, Client/Agent/Admin role-specific sign-in, session handling, account management, and role-based pages. Registration creates a Client; privileged setup assigns staff roles. |
 | Client services | Property inquiries, viewing requests, client notifications, transaction tracking, text chat, and offline payment reports using the supported methods. |
 | Agent services | Appointment and inquiry work, inquiry ownership/assignment, and authorized transaction stage updates. |
@@ -955,7 +955,6 @@ The supplied template reserves this appendix for team-member CVs. Keep each memb
 - KingQuiry application source and role-specific PHP pages in this repository.
 - `database/schema.sql` - fresh-install relational schema and reference/property data.
 - `includes/transaction_tracking.php` - transaction stage and payment business rules.
-- `includes/property_estimator.php` - indicative comparable-listing estimate.
 - `includes/ml_recommender.php` - property recommendation ranking.
 - `includes/admin_analytics.php` and `admin_reports.php` - annual actual-sales reporting.
 - `tests/production_baseline_test.php` - baseline assertions.

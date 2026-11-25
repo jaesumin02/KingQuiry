@@ -86,11 +86,6 @@ function find_municipality_coordinates(string $municipalityName): ?array
     return null;
 }
 
-function find_municipality_center_coordinates(string $municipalityName): array
-{
-    return find_municipality_coordinates($municipalityName) ?? [13.7565, 121.0583];
-}
-
 function property_location_options(array $locations, ?int $selectedLocationId = null): string
 {
     $html = '<option value="">Choose a municipality or city</option>';

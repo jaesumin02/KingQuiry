@@ -1,6 +1,34 @@
 <?php
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
+// Lightweight environment loader: loads .env if present in project root
+$envPath = dirname(__DIR__) . DIRECTORY_SEPARATOR . '.env';
+if (is_file($envPath) && is_readable($envPath)) {
+    $envLines = file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if (is_array($envLines)) {
+        foreach ($envLines as $envLine) {
+            $envLine = trim($envLine);
+            if ($envLine === '' || str_starts_with($envLine, '#')) {
+                continue;
+            }
+            if (str_contains($envLine, '=')) {
+                [$envKey, $envVal] = explode('=', $envLine, 2);
+                $envKey = trim($envKey);
+                $envVal = trim($envVal);
+                if ((str_starts_with($envVal, '"') && str_ends_with($envVal, '"')) ||
+                    (str_starts_with($envVal, "'") && str_ends_with($envVal, "'"))) {
+                    $envVal = substr($envVal, 1, -1);
+                }
+                if (getenv($envKey) === false) {
+                    putenv("{$envKey}={$envVal}");
+                    $_ENV[$envKey] = $envVal;
+                    $_SERVER[$envKey] = $envVal;
+                }
+            }
+        }
+    }
+}
+
 $host = getenv('KINGQUIRY_DB_HOST') ?: 'localhost';
 $username = getenv('KINGQUIRY_DB_USER') ?: 'root';
 $password = getenv('KINGQUIRY_DB_PASSWORD') ?: '';

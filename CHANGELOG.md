@@ -3,6 +3,50 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-25 — Turnkey Production Deployment Ready Pass
+
+- **Turnkey Environment & Configuration System**:
+  - Added a built-in lightweight `.env` reader in [config/db.php](file:///c:/xampp/htdocs/kingquiry/config/db.php) requiring zero external packages or composer dependencies. Loads variables seamlessly into `getenv()`, `$_ENV`, and `$_SERVER`.
+  - Added [.env.example](file:///c:/xampp/htdocs/kingquiry/.env.example) containing standard 12-factor configuration for environment type, HTTPS secure cookies, database credentials, and cryptographic rate-limit secrets.
+  - Added [nginx.conf.example](file:///c:/xampp/htdocs/kingquiry/nginx.conf.example) with hardened production directives matching [.htaccess](file:///c:/xampp/htdocs/kingquiry/.htaccess) (blocking `/config`, `/database`, `/includes`, script execution in `/assets/images/`, and sensitive extensions).
+- **Hardened Chat API Prepared Statement**:
+  - Replaced the fallback user query in [chat_api.php](file:///c:/xampp/htdocs/kingquiry/chat_api.php) with a fully bound prepared statement (`$agentStmt->bind_param('i', $currentUserId)`).
+
+## 2026-11-25 — Sales Agent Online Status De-duplication
+
+- Removed the duplicate Live Chat Status card and its separate toggle from the Sales Agent dashboard banner.
+- Kept the navbar Online/Offline control as the single live chat availability toggle; chat availability behavior is unchanged.
+
+## 2026-11-25 — Final Pre-Defense Trace, Bug Hunt & Code Polish Pass
+
+- **Cleaned Undefined Variables & Residual Notices**:
+  - Removed obsolete `$paymentSubmissionSuccess` and `$paymentSubmissionError` conditional alert checks in [client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php) resulting from the transition to agent-managed face-to-face payments.
+  - Verified zero syntax errors across all 56 PHP files (`php -l`) and zero broken includes across all 174 `include`/`require` references.
+- **Dynamic 7-Day Reservation Grace Period Engine**:
+  - Enhanced the 7-day reservation grace period indicator in both [client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php) and [transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/transaction_tracking.php) with dynamic calendar-day tracking (`max(0, 7 - $daysElapsed)`).
+  - Automatically displays real-time countdown badges (*"X Day(s) Left"* or *"Grace Period Expired"*) to both client and sales agent during the `payment_in_process` milestone.
+- **Verified Core Business Rules & Legal Workflows**:
+  - Verified Contract to Sell (CTS) for installments vs. Deed of Absolute Sale (DOAS) for Spot Cash across pipeline state machines. Spot Cash cleanly bypasses document verification to advance directly to DOAS payment confirmation.
+  - Verified statutory buyer-shouldered title transfer disclaimers (DST, registration fees, transfer taxes) on [property_detail.php](file:///c:/xampp/htdocs/kingquiry/property_detail.php), [client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php), and [transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/transaction_tracking.php).
+  - Verified land estimation calculator precision in [property_detail.php](file:///c:/xampp/htdocs/kingquiry/property_detail.php) to lock to canonical asking prices and round cleanly to `.00` without floating-point fraction drift.
+  - Verified mathematical safety and division-by-zero guards across all Admin analytics, reports, and ML recommendation calculators.
+- **Automated Test Suite Expansion**:
+  - Added unit test assertions to [tests/production_baseline_test.php](file:///c:/xampp/htdocs/kingquiry/tests/production_baseline_test.php) validating the 7-day reservation countdown logic, CTS vs. DOAS transition logic, and compact currency formatting. 100% green test pass confirmed.
+
+## 2026-11-25 — In-System Action Confirmations
+
+- Replaced browser-native confirmation prompts for `data-confirm` actions with a reusable Bootstrap modal in [assets/js/app.js](assets/js/app.js), including safe message rendering and preserving the original form submitter.
+- Added confirmation before a Sales Agent claims a transaction in [transaction_tracking.php](transaction_tracking.php).
+- Routed client-account and payment-record deletion confirmations through the same system modal in [admin_clients.php](admin_clients.php) and [admin_payments.php](admin_payments.php).
+- Kept existing confirmation messages and actions; confirmation is now presented within KingQuiry instead of a browser “localhost says” dialog.
+
+## 2026-11-25 — Conservative Code Cleanup
+
+- Removed verified, unreferenced PHP code: the retired comparable-estimator implementation, unused agent-feedback summary helpers, obsolete payment-selection/submission handlers, a duplicate staff-payment handler, and an unused municipality-center wrapper.
+- Kept the `agent_reviews` database table and historical transaction records; the client tracker still reads existing review data.
+- Reused the existing compact peso formatter across Admin analytics and reports, removing the duplicate formatter without changing its output.
+- Updated [README.md](README.md) and [docs/KingQuiry_SAD_Documentation.md](docs/KingQuiry_SAD_Documentation.md) to describe the active property-detail calculator and remove references to deleted code.
+
 ## 2026-11-25 — Transaction Tracking Starting Point & Pipeline Clarification
 
 - **Homepage Hero Search Bar Mobile Responsiveness**:

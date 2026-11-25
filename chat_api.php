@@ -604,7 +604,10 @@ if ($method === 'POST' || $action === 'send') {
 
             // CRITICAL: NEVER fallback $replySenderId to the client's own userID ($currentUserId)!
             if (!$replySenderId || $replySenderId === $currentUserId) {
-                $agentLookup = $conn->query("SELECT userID, fullname, role FROM users WHERE userID != {$currentUserId} AND role IN ('Agent', 'Sales Agent', 'Admin') LIMIT 1");
+                $agentStmt = $conn->prepare("SELECT userID, fullname, role FROM users WHERE userID != ? AND role IN ('Agent', 'Sales Agent', 'Admin') LIMIT 1");
+                $agentStmt->bind_param('i', $currentUserId);
+                $agentStmt->execute();
+                $agentLookup = $agentStmt->get_result();
                 if ($agentLookup && ($agentRow = $agentLookup->fetch_assoc())) {
                     $replySenderId = (int) $agentRow['userID'];
                     $agentSenderName = (string) $agentRow['fullname'];
@@ -612,6 +615,7 @@ if ($method === 'POST' || $action === 'send') {
                 } else {
                     $replySenderId = ($currentUserId === 1) ? 2 : 1;
                 }
+                $agentStmt->close();
             }
 
             $insAuto = $conn->prepare(

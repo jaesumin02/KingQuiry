@@ -59,7 +59,7 @@ calculation flows:
 | Algorithm | Location | What it does |
 | --- | --- | --- |
 | Property recommendations | [`includes/ml_recommender.php`](includes/ml_recommender.php) | Ranks available listings by weighted price (40%), category (25%), municipality (20%), and area (15%) similarity; cold-start results do not claim a match percentage. |
-| Property price estimation | [`includes/property_estimator.php`](includes/property_estimator.php) | Fits a normalized linear regression with batch gradient descent; falls back to a weighted median of comparable price-per-square-meter rates. |
+| Property-detail calculator | [`property_detail.php`](property_detail.php) | Multiplies the entered lot area by the listing's price per square meter and shows the full-price and 20% down-payment figures. |
 | Property request intake | [`property_detail.php`](property_detail.php) | Validates client submissions, prevents replay, checks listing availability, and atomically records inquiries/viewings with their tracking event. |
 | Viewing schedule conflict check | [`property_detail.php`](property_detail.php) | Rejects duplicate active requests and same-property pending/approved viewings less than one hour apart. |
 | Transaction stage flow | [`includes/transaction_tracking.php`](includes/transaction_tracking.php) | Defines allowed next transaction stages; non-cash payments require document verification, while Spot Cash may skip it. |
@@ -168,7 +168,8 @@ form validation and database CRUD operations are not listed as algorithms.
   navigation link to jump directly to it. Existing records receive an honest
   starting point; historical events from before the migration are not invented.
 - Coordinate directly with assigned Sales Agents via phone and email links across active transaction records.
-- Calculate indicative land valuations and terms breakdowns using the interactive calculator on property detail pages.
+- Calculate a total asking price from lot area and the listing's price per
+  square meter, then review the payment terms breakdown on property details.
 
 ### Sales agent
 
@@ -190,7 +191,7 @@ form validation and database CRUD operations are not listed as algorithms.
   third-party chart service or JavaScript dependency.
 - Add, deactivate, or reactivate locations using region code, region, province,
   and city/municipality fields. Active locations are shared by catalog filters,
-  listing forms, and chat/property-detail estimate flows.
+  listing forms, and maps.
 - Update client transaction progress through the dedicated transaction tracker.
   Only the next valid stage can be selected, every update is timestamped and
   attributed to the staff account. Successful completion requires a
@@ -222,9 +223,9 @@ form validation and database CRUD operations are not listed as algorithms.
   property image. New price-per-square-meter values are calculated from total
   asking price and land area. Existing free-text location data stays visible as
   legacy data until an administrator replaces that listing.
-- Comparable estimates are displayed on property details and available in the
-  customer chat estimate flow. The manual asking-price/down-payment calculator
-  is on property details; it is not a second comparable-market estimator.
+- Property details include a lot-area calculator based on the listing's current
+  price per square meter. It displays the calculated asking price and a 20%
+  down-payment figure; it is not an independent market valuation.
 - Read client conversations and send replies on the Customer Chat page. The
   admin's conversations and reply form are presented inside a floating bubble
   on that page, which is opened from the single **Customer inbox** button on
@@ -253,7 +254,6 @@ form validation and database CRUD operations are not listed as algorithms.
 | `config/db.php` | MySQL connection settings |
 | `includes/header.php` | Shared navigation, session startup, and page cache headers |
 | `includes/footer.php` | Shared footer, brand identity, and Bootstrap JavaScript |
-| `includes/property_estimator.php` | Shared weighted comparable-listing estimator |
 | `includes/property_images.php` | Validated property image upload and storage |
 | `includes/admin_management.php` | Shared client, payment, and sales helpers, including idempotent schema setup |
 | `database/schema.sql` | Complete fresh-install schema, Batangas location directory, and property listings across all supported categories; no user or transaction records |
@@ -325,7 +325,7 @@ form validation and database CRUD operations are not listed as algorithms.
 8. Sign in with the administrator account, open **Manage locations**, and add
    any verified locations not in the initial Batangas directory. The region
    code, region name, province, and city/municipality become available
-   immediately in property forms, filters, and estimates. Deactivated locations
+   immediately in property forms, filters, and maps. Deactivated locations
    remain attached to existing listings. To reproduce custom directory entries
    on another installation, transfer only the approved location rows through a
    reviewed SQL export; do not export personal records into the source repo.
@@ -471,23 +471,12 @@ token, and limits of 10 submissions per client and 30 per IP address in a
 10-minute window. The page records an offline payment only; it does not initiate
 or verify a transfer.
 
-### Price estimator limitations
+### Property-detail calculator
 
-The estimator fits its linear-regression weights from current available
-listings each time an estimate is requested; the project does not use a
-separate historical training dataset or a pre-trained model. It uses area,
-property category, and municipality as input features. If there are too few
-usable listings for regression, it falls back to the weighted median of
-comparable prices per square meter, prioritizing exact category-and-
-municipality matches. The resulting range is indicative only and is not a
-formal valuation or appraisal.
-
-Only available listings with a standardized municipality and a positive
-price-per-square-meter value contribute as estimate comparables. Newly entered
-listing rates are calculated from the validated total asking price divided by
-land area. Legacy free-text locations remain searchable by keyword but do not
-count as an exact municipality comparison; listings without verified area
-remain marked as legacy and are not assigned a guessed size.
+The calculator multiplies the lot area entered on a property detail page by
+that listing's recorded price per square meter. It also displays the full
+asking-price amount and a 20% down-payment figure. This is a listing-based
+calculation, not an independent market valuation or appraisal.
 
 ### Chat behavior
 
@@ -496,13 +485,9 @@ detail, and client dashboard pages for guests and clients. The current
 standardized location catalog covers
 Batangas municipalities and cities; barangay names are optional free text
 because a complete barangay reference dataset has not been supplied. It stores
-messages in the chat tables, greets new
-conversations, answers common greetings, estimate, appointment, purchase, and
-thanks messages with fixed rule-based responses, and includes a form to request
-an estimate. A single estimate action expands the fields and changes to the
-calculate action; the result or a clear error appears beside those fields and
-the assistant's result remains in the conversation. There is no external AI
-service or API key. The admin inbox updates
+messages in the chat tables, greets new conversations, and uses fixed
+rule-based responses and a live admin handoff. There is no external AI service
+or API key. The admin inbox updates
 the admin's online heartbeat while open; messages sent while an admin is away
 receive an automatic assistant response, while messages sent with an admin
 online are available for a live admin reply. Browser polling means replies are

@@ -1,3 +1,72 @@
+let confirmationModal;
+let confirmationMessage;
+let confirmationResolve;
+const confirmedButtonClicks = new WeakSet();
+
+function requestConfirmation(message, onConfirm) {
+    if (!confirmationModal) {
+        const modalElement = document.createElement('div');
+        modalElement.className = 'modal fade confirm-delete-modal';
+        modalElement.tabIndex = -1;
+        modalElement.setAttribute('aria-labelledby', 'actionConfirmationTitle');
+        modalElement.setAttribute('aria-hidden', 'true');
+        modalElement.innerHTML = `
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content border-0 shadow-lg rounded-4">
+                    <div class="modal-header border-0 pb-0">
+                        <h5 class="modal-title fw-bold" id="actionConfirmationTitle">Please confirm</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body pt-2" data-confirmation-message></div>
+                    <div class="modal-footer border-0 pt-0">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" data-confirmation-continue>Continue</button>
+                    </div>
+                </div>
+            </div>`;
+        document.body.appendChild(modalElement);
+        confirmationMessage = modalElement.querySelector('[data-confirmation-message]');
+        confirmationModal = bootstrap.Modal.getOrCreateInstance(modalElement);
+
+        modalElement.addEventListener('shown.bs.modal', () => {
+            modalElement.style.setProperty('z-index', '1070', 'important');
+            const backdrops = document.querySelectorAll('.modal-backdrop');
+            if (backdrops.length > 1) {
+                const topBackdrop = backdrops[backdrops.length - 1];
+                topBackdrop.classList.add('confirm-delete-backdrop');
+                topBackdrop.style.setProperty('z-index', '1065', 'important');
+            }
+        });
+        modalElement.querySelector('[data-confirmation-continue]').addEventListener('click', () => {
+            const resolve = confirmationResolve;
+            confirmationResolve = null;
+            confirmationModal.hide();
+            if (resolve) {
+                resolve(true);
+            }
+        });
+        modalElement.addEventListener('hidden.bs.modal', () => {
+            const resolve = confirmationResolve;
+            confirmationResolve = null;
+            if (resolve) {
+                resolve(false);
+            }
+        });
+    }
+
+    if (confirmationResolve) {
+        return;
+    }
+
+    confirmationMessage.textContent = message;
+    confirmationResolve = (confirmed) => {
+        if (confirmed) {
+            onConfirm();
+        }
+    };
+    confirmationModal.show();
+}
+
 document.addEventListener('submit', (event) => {
     const form = event.target;
     if (!(form instanceof HTMLFormElement)) {
@@ -7,10 +76,24 @@ document.addEventListener('submit', (event) => {
     const submitter = event.submitter;
     const message = (submitter instanceof HTMLElement && submitter.dataset.confirm)
         || form.dataset.confirm;
-    if (message && !window.confirm(message)) {
+    if (message && form.dataset.confirmed !== 'true') {
         event.preventDefault();
         event.stopImmediatePropagation();
+        requestConfirmation(message, () => {
+            if (!form.isConnected || !form.reportValidity()) {
+                return;
+            }
+            form.dataset.confirmed = 'true';
+            if (submitter instanceof HTMLButtonElement || submitter instanceof HTMLInputElement) {
+                form.requestSubmit(submitter);
+            } else {
+                form.requestSubmit();
+            }
+        });
         return;
+    }
+    if (form.dataset.confirmed === 'true') {
+        delete form.dataset.confirmed;
     }
 
     if (form.hasAttribute('data-single-submit')) {
@@ -54,12 +137,23 @@ document.addEventListener('click', (event) => {
     const button = event.target instanceof Element
         ? event.target.closest('button[type="button"][data-confirm]')
         : null;
-    if (!(button instanceof HTMLButtonElement) || window.confirm(button.dataset.confirm || 'Continue with this action?')) {
+    if (!(button instanceof HTMLButtonElement)) {
+        return;
+    }
+
+    if (confirmedButtonClicks.has(button)) {
+        confirmedButtonClicks.delete(button);
         return;
     }
 
     event.preventDefault();
     event.stopImmediatePropagation();
+    requestConfirmation(button.dataset.confirm || 'Continue with this action?', () => {
+        if (button.isConnected && !button.disabled) {
+            confirmedButtonClicks.add(button);
+            button.click();
+        }
+    });
 }, true);
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -725,16 +819,6 @@ window.kqToggleHeaderAgentStatus = async function() {
                 btn.className = 'btn btn-sm rounded-pill fw-semibold shadow-sm d-inline-flex align-items-center gap-1 btn-outline-secondary text-secondary bg-body';
                 if (dot) dot.textContent = '⚪';
                 if (text) text.textContent = 'Offline';
-            }
-            const dashBtn = document.getElementById('agentLiveStatusBtn');
-            if (dashBtn) {
-                dashBtn.className = isOnline ? 'btn btn-sm rounded-pill fw-bold d-inline-flex align-items-center gap-1 btn-success' : 'btn btn-sm rounded-pill fw-bold d-inline-flex align-items-center gap-1 btn-outline-secondary';
-                const dashLabel = document.getElementById('agentLiveStatusLabel');
-                const dashDot = document.getElementById('agentLiveStatusDot');
-                const dashHint = document.getElementById('agentLiveStatusHint');
-                if (dashLabel) dashLabel.textContent = isOnline ? 'Online (Live)' : 'Offline (Away)';
-                if (dashDot) dashDot.textContent = isOnline ? '🟢' : '⚪';
-                if (dashHint) dashHint.textContent = isOnline ? 'Clients can message you live in real time.' : 'Automated chat replies are active.';
             }
         }
     } catch (err) {
