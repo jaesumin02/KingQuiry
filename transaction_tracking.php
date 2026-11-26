@@ -305,7 +305,7 @@ if ($role === 'Admin') {
 $transactionsSql =
     "SELECT t.transactionID, t.propertyID, t.clientID, t.appointmentID, t.inquiryID,
             t.currentStage, t.salePrice, t.paymentMethod, t.createdAt, t.updatedAt,
-            p.title, p.location, p.image, p.propertyType, l.municipalityName, l.provinceName,
+            p.title, p.location, p.image, p.propertyType, p.price AS listingPrice, l.municipalityName, l.provinceName,
             u.fullname AS clientName, u.email AS clientEmail,
             a.appointmentDate, a.appointmentTime,
             COALESCE(a.agentID, ia.agentID) AS assignedAgentID,
@@ -340,11 +340,13 @@ if ($role === 'Admin') {
 }
 $transactionRows = $transactions->fetch_all(MYSQLI_ASSOC);
 $paymentRowsByTransaction = [];
+$paymentSummariesByTransaction = [];
 $eventsByTransaction = [];
 if ($transactionRows !== []) {
     $transactionIds = array_map(static fn(array $row): int => (int) $row['transactionID'], $transactionRows);
     $transactionIdList = implode(',', $transactionIds);
     $paymentRowsByTransaction = get_transaction_payment_records($conn, $transactionIds);
+    $paymentSummariesByTransaction = get_transaction_payment_summaries($conn, $transactionIds);
 
     $eventsQuery = $conn->query(
         "SELECT e.eventID, e.transactionID, e.stage, e.note, e.createdAt,
@@ -408,6 +410,10 @@ include 'includes/header.php';
                     }
                     $hasPropImage = $propImage !== '' && is_file(__DIR__ . '/assets/images/' . $propImage);
                     $propImgSrc = $hasPropImage ? ('assets/images/' . rawurlencode($propImage)) : 'assets/images/representative-residential-01.jpg';
+                    $txSummary = $paymentSummariesByTransaction[$tId] ?? ['verifiedTotal' => 0.0, 'verifiedCount' => 0, 'pendingTotal' => 0.0, 'pendingCount' => 0];
+                    $txVerifiedPaid = (float) $txSummary['verifiedTotal'];
+                    $txTargetPrice = $transaction['salePrice'] !== null ? (float) $transaction['salePrice'] : (float) ($transaction['listingPrice'] ?? 0);
+                    $txRemaining = $txTargetPrice > 0 ? max($txTargetPrice - $txVerifiedPaid, 0.0) : 0.0;
                 ?>
                     <tr>
                         <td class="fw-semibold">#KQT-<?= $tId ?></td>
@@ -436,7 +442,14 @@ include 'includes/header.php';
                                         <?php endif; ?>
                                     </div>
                                     <?php if ($currentStage === 'completed' && $transaction['salePrice'] !== null): ?>
-                                        <div class="small fw-semibold text-success mt-1">Verified sale: ₱<?= number_format((float) $transaction['salePrice'], 2) ?></div>
+                                        <div class="small fw-semibold text-success mt-1">Verified sale: ₱<?= number_format((float) $transaction['salePrice'], 2) ?> · Paid: ₱<?= number_format($txVerifiedPaid, 2) ?></div>
+                                    <?php elseif ($txVerifiedPaid > 0 || in_array($currentStage, ['payment_in_process', 'document_verification', 'payment_confirmation'], true)): ?>
+                                        <div class="small text-muted mt-1">
+                                            Paid: <strong class="text-success">₱<?= number_format($txVerifiedPaid, 2) ?></strong>
+                                            <?php if ($txTargetPrice > 0): ?>
+                                                · Balance: <strong>₱<?= number_format($txRemaining, 2) ?></strong>
+                                            <?php endif; ?>
+                                        </div>
                                     <?php endif; ?>
                                 </div>
                             </div>
@@ -446,6 +459,8 @@ include 'includes/header.php';
                             $stageBadgeClass = match ($currentStage) {
                                 'completed' => 'text-bg-success',
                                 'cancelled' => 'text-bg-secondary',
+                                'reservation_requested' => 'text-bg-warning text-dark',
+                                'reservation_confirmed' => 'text-bg-success',
                                 'reviewing_schedule' => 'text-bg-info text-dark',
                                 'payment_in_process' => 'text-bg-warning text-dark',
                                 'payment_confirmation' => 'text-bg-info text-dark',
@@ -517,11 +532,20 @@ include 'includes/header.php';
         $stageBadgeClass = match ($currentStage) {
             'completed' => 'text-bg-success',
             'cancelled' => 'text-bg-secondary',
+            'reservation_requested' => 'text-bg-warning text-dark',
+            'reservation_confirmed' => 'text-bg-success',
             'payment_in_process' => 'text-bg-warning text-dark',
             'payment_confirmation' => 'text-bg-info text-dark',
             default => 'text-bg-primary',
         };
         $transactionPayments = $paymentRowsByTransaction[$tId] ?? [];
+        $txSummary = $paymentSummariesByTransaction[$tId] ?? ['verifiedTotal' => 0.0, 'verifiedCount' => 0, 'pendingTotal' => 0.0, 'pendingCount' => 0];
+        $txVerifiedPaid = (float) $txSummary['verifiedTotal'];
+        $txPendingPaid = (float) $txSummary['pendingTotal'];
+        $txListingPrice = (float) ($transaction['listingPrice'] ?? 0);
+        $txTargetPrice = $transaction['salePrice'] !== null ? (float) $transaction['salePrice'] : $txListingPrice;
+        $txRemaining = $txTargetPrice > 0 ? max($txTargetPrice - $txVerifiedPaid, 0.0) : 0.0;
+        $txPaidPercent = $txTargetPrice > 0 ? min(100, (int) round(($txVerifiedPaid / $txTargetPrice) * 100)) : 0;
         $propImage = basename((string) ($transaction['image'] ?? ''));
         if ($propImage === '' || $propImage === 'default.jpg' || !is_file(__DIR__ . '/assets/images/' . $propImage)) {
             $propImage = function_exists('property_representative_image') ? (property_representative_image((string) ($transaction['propertyType'] ?? '')) ?? '') : '';
@@ -601,6 +625,47 @@ include 'includes/header.php';
                             </div>
                         </div>
 
+                        <?php if ($txVerifiedPaid > 0 || $txPendingPaid > 0 || in_array($currentStage, ['viewing_completed', 'payment_in_process', 'document_verification', 'payment_confirmation', 'completed'], true)): ?>
+                            <div class="card p-3 mb-3 border rounded-3 bg-white shadow-none">
+                                <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                                    <span class="small fw-bold text-dark">💰 Payment Summary</span>
+                                    <span class="small text-muted">
+                                        <?= $txTargetPrice > 0 ? ($txPaidPercent . '% paid') : ($txSummary['verifiedCount'] . ' verified payment(s)') ?>
+                                    </span>
+                                </div>
+                                <div class="row g-2 small text-center mb-2">
+                                    <div class="col-4">
+                                        <div class="p-2 rounded-2 bg-light border">
+                                            <div class="text-muted" style="font-size: 0.72rem;"><?= $transaction['salePrice'] !== null ? 'Agreed Price' : 'Listing Price' ?></div>
+                                            <div class="fw-bold text-dark">₱<?= number_format($txTargetPrice, 2) ?></div>
+                                        </div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="p-2 rounded-2 bg-light border">
+                                            <div class="text-muted" style="font-size: 0.72rem;">Verified Paid</div>
+                                            <div class="fw-bold text-success">₱<?= number_format($txVerifiedPaid, 2) ?></div>
+                                        </div>
+                                    </div>
+                                    <div class="col-4">
+                                        <div class="p-2 rounded-2 bg-light border">
+                                            <div class="text-muted" style="font-size: 0.72rem;">Remaining</div>
+                                            <div class="fw-bold <?= $txRemaining <= 0.01 && $txTargetPrice > 0 ? 'text-success' : 'text-warning-emphasis' ?>">
+                                                <?= ($txRemaining <= 0.01 && $txTargetPrice > 0) ? 'Fully paid' : ('₱' . number_format($txRemaining, 2)) ?>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <?php if ($txTargetPrice > 0): ?>
+                                    <div class="progress" style="height: 0.5rem;" role="progressbar" aria-valuenow="<?= $txPaidPercent ?>" aria-valuemin="0" aria-valuemax="100">
+                                        <div class="progress-bar bg-success" style="width: <?= $txPaidPercent ?>%"></div>
+                                    </div>
+                                <?php endif; ?>
+                                <?php if ($txPendingPaid > 0): ?>
+                                    <div class="small text-warning-emphasis mt-2">⏳ Pending verification: <strong>₱<?= number_format($txPendingPaid, 2) ?></strong></div>
+                                <?php endif; ?>
+                            </div>
+                        <?php endif; ?>
+
                         <div class="d-flex gap-2 mb-3 flex-wrap">
                             <button type="button" class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 shadow-sm" onclick="openDirectChat(<?= $tId ?>, '<?= addslashes(htmlspecialchars($transaction['title'], ENT_QUOTES, 'UTF-8')) ?>', '<?= addslashes(htmlspecialchars($transaction['clientName'], ENT_QUOTES, 'UTF-8')) ?>')">
                                 <span>💬 Direct Message Client</span>
@@ -644,14 +709,15 @@ include 'includes/header.php';
                         <?php endif; ?>
 
                         <!-- Stage Guidance Alert (for subsequent milestone stages) -->
-                        <?php if ($currentStage !== 'viewing_requested'):
+                        <?php if (!in_array($currentStage, ['reservation_requested', 'viewing_requested'], true)):
                             $stageGuidance = [
+                                'reservation_confirmed' => 'Reservation confirmed (7-day hold active). The client can now schedule a property viewing, or you can coordinate/confirm the viewing schedule directly below.',
                                 'reviewing_schedule' => 'Viewing request accepted. Review and confirm the viewing schedule with the client, then confirm the schedule.',
                                 'viewing_confirmed' => 'The viewing schedule is confirmed. Conduct the property viewing as scheduled, then mark it as completed.',
-                                'viewing_completed' => 'The property viewing is complete. Proceed to "Payment in process" once the client settles the reservation deposit.',
+                                'viewing_completed' => 'The property viewing is complete. Proceed to "Payment in process" once the client settles their down payment / balance terms.',
                                 'payment_in_process' => $isTxSpotCash
                                     ? '⚡ Spot Cash selected: Document verification is bypassed. Prepare Deed of Absolute Sale (DOAS). Note: Title transfer and registration taxes are shouldered by the buyer.'
-                                    : '⏳ 7-Day Reservation Policy Active: Buyer has 7 days to complete down payment and IDs. Prepare Contract to Sell (CTS) for installment terms (or DOAS if Spot Cash). Note: Title transfer is shouldered by the buyer.',
+                                    : 'Prepare Contract to Sell (CTS) for installment terms (or DOAS if Spot Cash) and verify down payment settlement. Note: Title transfer is shouldered by the buyer.',
                                 'document_verification' => 'Review property title deeds, tax declarations, and government clearance documents. Once verified, advance to "Payment confirmation". The client will be notified that document verification is done.',
                                 'payment_confirmation' => 'Payment and official paperwork are verified. Once final turnover documents are ready, mark as "Successful / completed".',
                                 'completed' => 'Transaction successfully closed and property turned over to client.',
@@ -668,7 +734,7 @@ include 'includes/header.php';
                             </div>
                         <?php endif; endif; ?>
 
-                        <?php if ($currentStage === 'payment_in_process'):
+                        <?php if ($currentStage === 'reservation_confirmed'):
                             $stageUpdateTs = !empty($transaction['updatedAt']) ? strtotime($transaction['updatedAt']) : time();
                             $daysElapsed = (int) floor((time() - $stageUpdateTs) / 86400);
                             $daysLeft = max(0, 7 - $daysElapsed);
@@ -677,10 +743,10 @@ include 'includes/header.php';
                                 <div class="d-flex align-items-center gap-2">
                                     <span class="fs-5">⏳</span>
                                     <div>
-                                        <strong class="text-dark">7-Day Reservation Policy Status:</strong>
+                                        <strong class="text-dark">7-Day Reservation Hold Status:</strong>
                                         <div class="text-muted" style="font-size: 0.78rem;">
                                             <?php if ($daysLeft > 0): ?>
-                                                Active reservation window: <strong><?= $daysLeft ?> day<?= $daysLeft === 1 ? '' : 's' ?> remaining</strong> for client down payment and compliance IDs before release.
+                                                Active reservation window: <strong><?= $daysLeft ?> day<?= $daysLeft === 1 ? '' : 's' ?> remaining</strong> for viewing, down payment, and compliance IDs before release.
                                             <?php else: ?>
                                                 7-day reservation window elapsed. Check if client requested an extension or if property should be released.
                                             <?php endif; ?>
@@ -710,7 +776,108 @@ include 'includes/header.php';
                         <?php endif; ?>
 
                         <!-- Milestone-Specific Functional Forms -->
-                        <?php if ($currentStage === 'viewing_requested'): ?>
+                        <?php if ($currentStage === 'reservation_requested'): ?>
+                            <div class="card p-3 mb-3 border shadow-none bg-white">
+                                <div class="d-flex align-items-center gap-2 mb-3">
+                                    <span class="fs-5">🔖</span>
+                                    <div>
+                                        <h6 class="fw-bold mb-0 text-dark">Step 1: Pre-Viewing Reservation Decision</h6>
+                                        <div class="small text-muted">Confirm the client's reservation (and record reservation fee if settled) so they can schedule a property viewing.</div>
+                                    </div>
+                                </div>
+
+                                <form method="POST" action="transaction_tracking.php" class="d-grid gap-3" id="advanceForm<?= $tId ?>" data-confirm="Confirm this reservation decision and notify the client?">
+                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                                    <input type="hidden" name="transactionID" value="<?= $tId ?>">
+
+                                    <div>
+                                        <label class="form-label fw-semibold small mb-1" for="modal-stage-<?= $tId ?>">
+                                            Action <span class="text-danger">*</span>
+                                        </label>
+                                        <select id="modal-stage-<?= $tId ?>" name="stage" class="form-select form-select-sm fw-semibold" required>
+                                            <option value="reservation_confirmed" selected>✅ Confirm Reservation (Start 7-Day Hold &amp; Unlock Viewing)</option>
+                                            <option value="cancelled">❌ Cancel Reservation</option>
+                                        </select>
+                                    </div>
+
+                                    <div class="card p-3 bg-light border-0 rounded-3">
+                                        <div class="fw-bold text-dark small mb-2 d-flex align-items-center gap-1">
+                                            <span>💳</span> Record Reservation Fee Receipt <span class="text-muted fw-normal">(optional)</span>
+                                        </div>
+                                        <div class="row g-2">
+                                            <div class="col-sm-6">
+                                                <label class="form-label small mb-1 fw-semibold" for="modal-res-amount-<?= $tId ?>">Reservation Amount (₱)</label>
+                                                <input id="modal-res-amount-<?= $tId ?>" type="number" name="paymentAmount" class="form-control form-control-sm" min="0" max="9999999999.99" step="0.01" placeholder="e.g. 20000.00">
+                                            </div>
+                                            <div class="col-sm-6">
+                                                <label class="form-label small mb-1 fw-semibold" for="modal-res-method-<?= $tId ?>">Payment Scheme</label>
+                                                <select id="modal-res-method-<?= $tId ?>" name="paymentMethod" class="form-select form-select-sm">
+                                                    <?php foreach ($allSchemes as $sKey => $sVal): ?>
+                                                        <option value="<?= htmlspecialchars($sKey, ENT_QUOTES, 'UTF-8') ?>" <?= strcasecmp($agreedMethod, $sKey) === 0 ? 'selected' : '' ?>>
+                                                            <?= htmlspecialchars($sVal['badge'] . ' — ' . $sVal['short'], ENT_QUOTES, 'UTF-8') ?>
+                                                        </option>
+                                                    <?php endforeach; ?>
+                                                </select>
+                                            </div>
+                                            <div class="col-12">
+                                                <label class="form-label small mb-1 fw-semibold" for="modal-res-ref-<?= $tId ?>">Official Receipt (OR) / Bank Ref #</label>
+                                                <input id="modal-res-ref-<?= $tId ?>" type="text" name="paymentRef" class="form-control form-control-sm" maxlength="100" placeholder="e.g. OR-RES-2026-001">
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label class="form-label fw-semibold small mb-1" for="modal-note-<?= $tId ?>">
+                                            Reservation Note <span class="text-muted fw-normal">(optional)</span>
+                                        </label>
+                                        <input id="modal-note-<?= $tId ?>" type="text" name="note" class="form-control form-control-sm" maxlength="1000" placeholder="e.g. Reservation verified. 7-day hold active; buyer may schedule viewing.">
+                                    </div>
+
+                                    <button type="submit" name="update_transaction" class="btn btn-success fw-bold py-2 w-100 shadow-sm mt-1">
+                                        ✅ Confirm Reservation &amp; Unlock Viewing
+                                    </button>
+                                </form>
+                            </div>
+
+                        <?php elseif ($currentStage === 'reservation_confirmed'): ?>
+                            <div class="card p-3 mb-3 border shadow-none bg-white">
+                                <div class="d-flex align-items-center gap-2 mb-3">
+                                    <span class="fs-5">📅</span>
+                                    <div>
+                                        <h6 class="fw-bold mb-0 text-dark">Step 2: Schedule Property Viewing</h6>
+                                        <div class="small text-muted">Reservation confirmed. The client can request a viewing date on the listing, or you can advance the viewing step directly.</div>
+                                    </div>
+                                </div>
+
+                                <form method="POST" action="transaction_tracking.php" class="d-grid gap-3" id="advanceForm<?= $tId ?>" data-confirm="Update viewing step and notify the client?">
+                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                                    <input type="hidden" name="transactionID" value="<?= $tId ?>">
+
+                                    <div>
+                                        <label class="form-label fw-semibold small mb-1" for="modal-stage-<?= $tId ?>">
+                                            Next Action <span class="text-danger">*</span>
+                                        </label>
+                                        <select id="modal-stage-<?= $tId ?>" name="stage" class="form-select form-select-sm fw-semibold" required>
+                                            <option value="reviewing_schedule" selected>🗓️ Coordinate Viewing Schedule (Reviewing schedule)</option>
+                                            <option value="viewing_confirmed">📅 Confirm &amp; Approve Viewing Schedule</option>
+                                            <option value="cancelled">❌ Cancel Reservation / Release Property</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label class="form-label fw-semibold small mb-1" for="modal-note-<?= $tId ?>">
+                                            Schedule Note <span class="text-muted fw-normal">(optional)</span>
+                                        </label>
+                                        <input id="modal-note-<?= $tId ?>" type="text" name="note" class="form-control form-control-sm" maxlength="1000" placeholder="e.g. Coordinating site visit date with reserved buyer.">
+                                    </div>
+
+                                    <button type="submit" name="update_transaction" class="btn btn-primary fw-bold py-2 w-100 shadow-sm mt-1">
+                                        📅 Update Viewing Step &amp; Notify Client
+                                    </button>
+                                </form>
+                            </div>
+
+                        <?php elseif ($currentStage === 'viewing_requested'): ?>
                             <div class="card p-3 mb-3 border shadow-none bg-white">
                                 <div class="d-flex align-items-center gap-2 mb-3">
                                     <span class="fs-5">📅</span>
@@ -829,8 +996,8 @@ include 'includes/header.php';
                                 <div class="d-flex align-items-center gap-2 mb-3">
                                     <span class="fs-5">📝</span>
                                     <div>
-                                        <h6 class="fw-bold mb-0 text-dark">Step 4: Reservation &amp; Payment Terms Agreement</h6>
-                                        <div class="small text-muted">Viewing completed. Settle initial reservation fee and transition to payment processing.</div>
+                                        <h6 class="fw-bold mb-0 text-dark">Step 4: Down Payment &amp; Payment Terms Agreement</h6>
+                                        <div class="small text-muted">Viewing completed. Settle down payment / payment terms and transition to payment processing.</div>
                                     </div>
                                 </div>
 
@@ -843,19 +1010,19 @@ include 'includes/header.php';
                                             Action <span class="text-danger">*</span>
                                         </label>
                                         <select id="modal-stage-<?= $tId ?>" name="stage" class="form-select form-select-sm fw-semibold" required>
-                                            <option value="payment_in_process" selected>💳 Advance to Payment in Process (Reservation Settled)</option>
+                                            <option value="payment_in_process" selected>💳 Advance to Payment in Process (Down Payment / Terms Agreed)</option>
                                             <option value="cancelled">❌ Client Did Not Proceed / Cancel</option>
                                         </select>
                                     </div>
 
                                     <div class="card p-3 bg-light border-0 rounded-3">
                                         <div class="fw-bold text-dark small mb-2 d-flex align-items-center gap-1">
-                                            <span>💳</span> Record Initial Reservation Deposit <span class="text-muted fw-normal">(optional)</span>
+                                            <span>💳</span> Record Down Payment / Deposit <span class="text-muted fw-normal">(optional)</span>
                                         </div>
                                         <div class="row g-2">
                                             <div class="col-sm-6">
-                                                <label class="form-label small mb-1 fw-semibold" for="modal-payment-amount-<?= $tId ?>">Reservation Amount (₱)</label>
-                                                <input id="modal-payment-amount-<?= $tId ?>" type="number" name="paymentAmount" class="form-control form-control-sm" min="0" max="9999999999.99" step="0.01" placeholder="e.g. 20000.00">
+                                                <label class="form-label small mb-1 fw-semibold" for="modal-payment-amount-<?= $tId ?>">Payment Amount (₱)</label>
+                                                <input id="modal-payment-amount-<?= $tId ?>" type="number" name="paymentAmount" class="form-control form-control-sm" min="0" max="9999999999.99" step="0.01" placeholder="e.g. 150000.00">
                                             </div>
                                             <div class="col-sm-6">
                                                 <label class="form-label small mb-1 fw-semibold" for="modal-payment-method-<?= $tId ?>">Payment Scheme</label>
@@ -869,14 +1036,14 @@ include 'includes/header.php';
                                             </div>
                                             <div class="col-12">
                                                 <label class="form-label small mb-1 fw-semibold" for="modal-payment-ref-<?= $tId ?>">Receipt / Reference #</label>
-                                                <input id="modal-payment-ref-<?= $tId ?>" type="text" name="paymentRef" class="form-control form-control-sm" maxlength="100" placeholder="e.g. OR-RES-2026-001">
+                                                <input id="modal-payment-ref-<?= $tId ?>" type="text" name="paymentRef" class="form-control form-control-sm" maxlength="100" placeholder="e.g. OR-DP-2026-001">
                                             </div>
                                         </div>
                                     </div>
 
                                     <div>
-                                        <label class="form-label fw-semibold small mb-1" for="modal-note-<?= $tId ?>">Reservation Update Note</label>
-                                        <input id="modal-note-<?= $tId ?>" type="text" name="note" class="form-control form-control-sm" maxlength="1000" placeholder="e.g. Reservation deposit settled. 7-day down payment grace period active.">
+                                        <label class="form-label fw-semibold small mb-1" for="modal-note-<?= $tId ?>">Payment Update Note</label>
+                                        <input id="modal-note-<?= $tId ?>" type="text" name="note" class="form-control form-control-sm" maxlength="1000" placeholder="e.g. Down payment terms agreed; proceeding to payment processing.">
                                     </div>
 
                                     <button type="submit" name="update_transaction" class="btn btn-primary fw-bold py-2 w-100 shadow-sm mt-1">
@@ -906,20 +1073,24 @@ include 'includes/header.php';
                                         <label class="form-label fw-semibold small mb-1" for="modal-stage-<?= $tId ?>">
                                             Next Milestone <span class="text-danger">*</span>
                                         </label>
-                                        <select id="modal-stage-<?= $tId ?>" name="stage" class="form-select form-select-sm fw-semibold" required>
-                                            <?php if ($isTxSpotCash): ?>
-                                                <option value="payment_confirmation" selected>✅ Advance to Payment Confirmation (Spot Cash: Doc verification skipped)</option>
-                                            <?php else: ?>
-                                                <option value="document_verification" selected>📑 Advance to Document Verification</option>
-                                                <option value="payment_confirmation">✅ Advance to Payment Confirmation (If docs pre-cleared)</option>
-                                            <?php endif; ?>
+                                        <select id="modal-stage-<?= $tId ?>" name="stage" class="form-select form-select-sm fw-semibold" data-next-stage-select="<?= $tId ?>" required>
+                                            <option value="document_verification" data-doc-option="1" <?= !$isTxSpotCash ? 'selected' : 'disabled hidden' ?>>📑 Advance to Document Verification</option>
+                                            <option value="payment_confirmation" data-confirm-option="1" <?= $isTxSpotCash ? 'selected' : '' ?>>✅ Advance to Payment Confirmation <?= $isTxSpotCash ? '(Spot Cash: Doc verification skipped)' : '(If docs pre-cleared)' ?></option>
                                             <option value="cancelled">❌ Cancel Transaction</option>
                                         </select>
+                                        <div id="spot-cash-notice-<?= $tId ?>" class="small text-success fw-semibold mt-1 <?= $isTxSpotCash ? '' : 'd-none' ?>">
+                                            ⚡ Spot Cash skips Document Verification and moves straight to Payment Confirmation.
+                                        </div>
                                     </div>
 
                                     <div class="card p-3 bg-light border-0 rounded-3">
-                                        <div class="fw-bold text-dark small mb-2 d-flex align-items-center gap-1">
-                                            <span>💵</span> Record Payment / Down Payment Receipt <span class="text-muted fw-normal">(optional)</span>
+                                        <div class="fw-bold text-dark small mb-2 d-flex align-items-center justify-content-between gap-1 flex-wrap">
+                                            <span><span>💵</span> Record Payment / Down Payment Receipt <span class="text-muted fw-normal">(optional)</span></span>
+                                            <?php if ($txRemaining > 0): ?>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" data-fill-amount="<?= number_format($txRemaining, 2, '.', '') ?>" data-fill-target="modal-payment-amount-<?= $tId ?>">
+                                                    Fill remaining (₱<?= number_format($txRemaining, 2) ?>)
+                                                </button>
+                                            <?php endif; ?>
                                         </div>
                                         <div class="row g-2">
                                             <div class="col-sm-6">
@@ -928,7 +1099,7 @@ include 'includes/header.php';
                                             </div>
                                             <div class="col-sm-6">
                                                 <label class="form-label small mb-1 fw-semibold" for="modal-payment-method-<?= $tId ?>">Payment Scheme</label>
-                                                <select id="modal-payment-method-<?= $tId ?>" name="paymentMethod" class="form-select form-select-sm">
+                                                <select id="modal-payment-method-<?= $tId ?>" name="paymentMethod" class="form-select form-select-sm" data-payment-scheme-select="<?= $tId ?>">
                                                     <?php foreach ($allSchemes as $sKey => $sVal): ?>
                                                         <option value="<?= htmlspecialchars($sKey, ENT_QUOTES, 'UTF-8') ?>" <?= strcasecmp($agreedMethod, $sKey) === 0 ? 'selected' : '' ?>>
                                                             <?= htmlspecialchars($sVal['badge'] . ' — ' . $sVal['short'], ENT_QUOTES, 'UTF-8') ?>
@@ -948,7 +1119,7 @@ include 'includes/header.php';
                                         <input id="modal-note-<?= $tId ?>" type="text" name="note" class="form-control form-control-sm" maxlength="1000" placeholder="e.g. Payment processed. Contract paperwork ready for review.">
                                     </div>
 
-                                    <button type="submit" name="update_transaction" class="btn btn-primary fw-bold py-2 w-100 shadow-sm mt-1">
+                                    <button type="submit" name="update_transaction" id="step5-submit-<?= $tId ?>" class="btn btn-primary fw-bold py-2 w-100 shadow-sm mt-1">
                                         <?= $isTxSpotCash ? '✅ Advance to Payment Confirmation' : '📑 Advance to Document Verification' ?>
                                     </button>
                                 </form>
@@ -1043,9 +1214,40 @@ include 'includes/header.php';
                                         </label>
                                         <div class="input-group input-group-sm">
                                             <span class="input-group-text">₱</span>
-                                            <input id="modal-price-<?= $tId ?>" type="number" name="salePrice" class="form-control" min="0.01" max="9999999999.99" step="0.01" placeholder="Actual agreed sale price" value="<?= $transaction['salePrice'] !== null ? htmlspecialchars((string) $transaction['salePrice'], ENT_QUOTES, 'UTF-8') : '' ?>" required>
+                                            <input id="modal-price-<?= $tId ?>" type="number" name="salePrice" class="form-control" min="0.01" max="9999999999.99" step="0.01" placeholder="Actual agreed sale price" value="<?= $transaction['salePrice'] !== null ? htmlspecialchars((string) $transaction['salePrice'], ENT_QUOTES, 'UTF-8') : ($txListingPrice > 0 ? number_format($txListingPrice, 2, '.', '') : '') ?>" required>
                                         </div>
-                                        <small class="text-muted">Must be covered by verified payments.</small>
+                                        <small class="text-muted">Verified payments must cover this price before closing (currently ₱<?= number_format($txVerifiedPaid, 2) ?>).</small>
+                                    </div>
+
+                                    <div class="card p-3 bg-light border-0 rounded-3">
+                                        <div class="fw-bold text-dark small mb-2 d-flex align-items-center justify-content-between gap-1 flex-wrap">
+                                            <span><span>💵</span> Record Final / Remaining Payment <span class="text-muted fw-normal">(optional)</span></span>
+                                            <?php if ($txRemaining > 0.01): ?>
+                                                <button type="button" class="btn btn-sm btn-outline-success py-0 px-2" data-fill-amount="<?= number_format($txRemaining, 2, '.', '') ?>" data-fill-target="modal-final-payment-amount-<?= $tId ?>">
+                                                    Fill remaining (₱<?= number_format($txRemaining, 2) ?>)
+                                                </button>
+                                            <?php endif; ?>
+                                        </div>
+                                        <div class="row g-2">
+                                            <div class="col-sm-6">
+                                                <label class="form-label small mb-1 fw-semibold" for="modal-final-payment-amount-<?= $tId ?>">Amount Paid (₱)</label>
+                                                <input id="modal-final-payment-amount-<?= $tId ?>" type="number" name="paymentAmount" class="form-control form-control-sm" min="0" max="9999999999.99" step="0.01" placeholder="Leave blank if already paid in full">
+                                            </div>
+                                            <div class="col-sm-6">
+                                                <label class="form-label small mb-1 fw-semibold" for="modal-final-payment-method-<?= $tId ?>">Payment Scheme</label>
+                                                <select id="modal-final-payment-method-<?= $tId ?>" name="paymentMethod" class="form-select form-select-sm">
+                                                    <?php foreach ($allSchemes as $sKey => $sVal): ?>
+                                                        <option value="<?= htmlspecialchars($sKey, ENT_QUOTES, 'UTF-8') ?>" <?= strcasecmp($agreedMethod, $sKey) === 0 ? 'selected' : '' ?>>
+                                                            <?= htmlspecialchars($sVal['badge'] . ' — ' . $sVal['short'], ENT_QUOTES, 'UTF-8') ?>
+                                                        </option>
+                                                    <?php endforeach; ?>
+                                                </select>
+                                            </div>
+                                            <div class="col-12">
+                                                <label class="form-label small mb-1 fw-semibold" for="modal-final-payment-ref-<?= $tId ?>">Official Receipt (OR) / Bank Ref #</label>
+                                                <input id="modal-final-payment-ref-<?= $tId ?>" type="text" name="paymentRef" class="form-control form-control-sm" maxlength="100" placeholder="e.g. OR-FINAL-2026-102">
+                                            </div>
+                                        </div>
                                     </div>
 
                                     <div>
@@ -1083,12 +1285,18 @@ include 'includes/header.php';
                         <?php if ($transactionPayments !== []): ?>
                             <div class="card p-3 border shadow-none bg-white mb-3">
                                 <h6 class="fw-bold mb-2 text-dark">💳 Payment Records</h6>
-                                <?php foreach ($transactionPayments as $payment): ?>
+                                <?php foreach ($transactionPayments as $payment):
+                                    $displayPaymentStatus = match ($payment['status']) {
+                                        'confirmed' => 'Verified',
+                                        'rejected' => 'Rejected',
+                                        default => 'Pending review',
+                                    };
+                                ?>
                                     <div class="border rounded-2 p-2 mb-2 small bg-light">
                                         <div class="d-flex justify-content-between gap-2">
-                                            <strong>₱<?= number_format((float) $payment['amount'], 2) ?> · <?= htmlspecialchars($payment['paymentMethod'], ENT_QUOTES, 'UTF-8') ?></strong>
+                                            <strong>₱<?= number_format((float) $payment['amount'], 2) ?> · <?= htmlspecialchars($payment['paymentType'] ?? $payment['paymentMethod'], ENT_QUOTES, 'UTF-8') ?> (<?= htmlspecialchars($payment['paymentMethod'], ENT_QUOTES, 'UTF-8') ?>)</strong>
                                             <span class="badge <?= $payment['status'] === 'confirmed' ? 'text-bg-success' : ($payment['status'] === 'rejected' ? 'text-bg-danger' : 'text-bg-warning') ?>">
-                                                <?= htmlspecialchars(ucfirst($payment['status']), ENT_QUOTES, 'UTF-8') ?>
+                                                <?= htmlspecialchars($displayPaymentStatus, ENT_QUOTES, 'UTF-8') ?>
                                             </span>
                                         </div>
                                         <div class="text-muted small"><?= htmlspecialchars($payment['sourceLabel'], ENT_QUOTES, 'UTF-8') ?> · Recorded <?= htmlspecialchars($payment['submittedAt'], ENT_QUOTES, 'UTF-8') ?></div>
@@ -1098,7 +1306,7 @@ include 'includes/header.php';
                                         <?php if (!empty($payment['reviewNote'])): ?>
                                             <div class="text-muted"><?= htmlspecialchars($payment['reviewNote'], ENT_QUOTES, 'UTF-8') ?></div>
                                         <?php endif; ?>
-                                        <?php if ($payment['status'] === 'pending' && $payment['sourceLabel'] === 'Client report'): ?>
+                                        <?php if ($payment['status'] === 'pending' && !empty($payment['isClientReport'])): ?>
                                             <form method="POST" class="d-grid gap-2 mt-2">
                                                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                                                 <input type="hidden" name="transactionID" value="<?= $tId ?>">
@@ -1151,111 +1359,62 @@ include 'includes/header.php';
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    const stageNotePlaceholders = {
-        'viewing_completed': 'e.g. Completed the property viewing with the client. The client confirmed interest in proceeding.',
-        'payment_in_process': 'e.g. Reservation deposit agreed; preparing down payment paperwork.',
-        'document_verification': 'e.g. Payment is done processing; title deed and documents verified.',
-        'payment_confirmation': 'e.g. All legal clearances verified; finalizing official receipts.',
-        'completed': 'e.g. Payment confirmed in full; deed of sale notarized and property turned over.',
-        'cancelled': 'e.g. Client decided not to proceed.',
-    };
+    document.querySelectorAll('[data-payment-scheme-select]').forEach(schemeSelect => {
+        const tid = schemeSelect.getAttribute('data-payment-scheme-select');
+        const stageSelect = document.querySelector(`[data-next-stage-select="${tid}"]`);
+        const spotCashNotice = document.getElementById('spot-cash-notice-' + tid);
+        const submitBtn = document.getElementById('step5-submit-' + tid);
 
-    document.querySelectorAll('.stage-dropdown-trigger').forEach(select => {
-        const tid = select.getAttribute('data-tid');
-        const paymentBox = document.getElementById('payment-fields-' + tid);
-        const salePriceBox = document.getElementById('sale-price-fields-' + tid);
-        const salePriceInput = document.getElementById('modal-price-' + tid);
-        const noteInput = document.getElementById('modal-note-' + tid);
-
-        function updateModalFields(stage) {
-            if (stageNotePlaceholders[stage] && noteInput && !noteInput.value) {
-                noteInput.placeholder = stageNotePlaceholders[stage];
+        function syncSpotCashUI() {
+            const isSpotCash = schemeSelect.value.trim().toLowerCase() === 'spot cash';
+            if (spotCashNotice) {
+                spotCashNotice.classList.toggle('d-none', !isSpotCash);
             }
-            if (salePriceBox) {
-                if (stage === 'completed') {
-                    salePriceBox.style.display = '';
-                    if (salePriceInput) salePriceInput.setAttribute('required', 'required');
-                } else {
-                    salePriceBox.style.display = 'none';
-                    if (salePriceInput) salePriceInput.removeAttribute('required');
+            if (stageSelect) {
+                const docOpt = stageSelect.querySelector('option[data-doc-option="1"]');
+                const confirmOpt = stageSelect.querySelector('option[data-confirm-option="1"]');
+                if (docOpt) {
+                    docOpt.disabled = isSpotCash;
+                    docOpt.hidden = isSpotCash;
+                }
+                if (confirmOpt) {
+                    confirmOpt.textContent = isSpotCash
+                        ? '✅ Advance to Payment Confirmation (Spot Cash: Doc verification skipped)'
+                        : '✅ Advance to Payment Confirmation (If docs pre-cleared)';
+                }
+                if (isSpotCash && stageSelect.value === 'document_verification') {
+                    stageSelect.value = 'payment_confirmation';
+                } else if (!isSpotCash && stageSelect.value === 'payment_confirmation') {
+                    stageSelect.value = 'document_verification';
                 }
             }
-            if (paymentBox) {
-                if (stage === 'payment_in_process' || stage === 'document_verification' || stage === 'payment_confirmation') {
-                    paymentBox.style.display = '';
-                } else {
-                    paymentBox.style.display = 'none';
-                }
+            if (submitBtn && stageSelect) {
+                submitBtn.textContent = stageSelect.value === 'payment_confirmation'
+                    ? '✅ Advance to Payment Confirmation'
+                    : (stageSelect.value === 'cancelled' ? '❌ Cancel Transaction' : '📑 Advance to Document Verification');
             }
         }
 
-        select.addEventListener('change', function() {
-            const paymentMethodSelect = document.getElementById('modal-payment-method-' + tid);
-            if (
-                this.dataset.paymentInProcess === '1'
-                && this.value === 'payment_confirmation'
-                && paymentMethodSelect
-                && paymentMethodSelect.value.trim().toLowerCase() !== 'spot cash'
-            ) {
-                this.value = 'document_verification';
-            }
-            updateModalFields(this.value);
-        });
-
-        if (select.value) {
-            updateModalFields(select.value);
+        schemeSelect.addEventListener('change', syncSpotCashUI);
+        if (stageSelect && submitBtn) {
+            stageSelect.addEventListener('change', () => {
+                submitBtn.textContent = stageSelect.value === 'payment_confirmation'
+                    ? '✅ Advance to Payment Confirmation'
+                    : (stageSelect.value === 'cancelled' ? '❌ Cancel Transaction' : '📑 Advance to Document Verification');
+            });
         }
+        syncSpotCashUI();
     });
 
-    document.querySelectorAll('.payment-method-trigger').forEach(paySelect => {
-        const tid = paySelect.getAttribute('data-tid');
-        const stageSelect = document.getElementById('modal-stage-' + tid);
-        const spotCashNotice = document.getElementById('spot-cash-notice-' + tid);
-        const noteInput = document.getElementById('modal-note-' + tid);
-
-        function handlePaymentMethodChange(method) {
-            const isSpotCash = (method || '').trim().toLowerCase() === 'spot cash';
-            if (spotCashNotice) {
-                if (isSpotCash) {
-                    spotCashNotice.classList.remove('d-none');
-                } else {
-                    spotCashNotice.classList.add('d-none');
-                }
+    document.querySelectorAll('[data-fill-amount]').forEach(button => {
+        button.addEventListener('click', () => {
+            const targetId = button.getAttribute('data-fill-target');
+            const targetInput = targetId ? document.getElementById(targetId) : null;
+            if (targetInput) {
+                targetInput.value = button.getAttribute('data-fill-amount') || '';
+                targetInput.focus();
             }
-
-            if (stageSelect) {
-                const docOpt = stageSelect.querySelector('option[data-skip-spot-cash="1"]');
-                if (docOpt) {
-                    if (isSpotCash) {
-                        docOpt.style.display = 'none';
-                        docOpt.disabled = true;
-                        if (stageSelect.value === 'document_verification') {
-                            stageSelect.value = 'payment_confirmation';
-                            stageSelect.dispatchEvent(new Event('change'));
-                        }
-                    } else {
-                        docOpt.style.display = '';
-                        docOpt.disabled = false;
-                        if (stageSelect.value === 'payment_confirmation') {
-                            stageSelect.value = 'document_verification';
-                            stageSelect.dispatchEvent(new Event('change'));
-                        }
-                    }
-                }
-            }
-
-            if (isSpotCash && noteInput && !noteInput.value) {
-                noteInput.placeholder = 'e.g. Spot Cash payment received. Document verification skipped; preparing deed turnover.';
-            }
-        }
-
-        paySelect.addEventListener('change', function() {
-            handlePaymentMethodChange(this.value);
         });
-
-        if (paySelect.value) {
-            handlePaymentMethodChange(paySelect.value);
-        }
     });
 
     // Auto-reopen record next step modal when confirming actions or encountering validation feedback

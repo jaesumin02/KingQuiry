@@ -55,6 +55,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $formError = 'Enter a valid total price and a land area between 0 and 1,000,000 sq.m.';
         } elseif (!in_array($propertyType, property_type_values(), true)) {
             $formError = 'Choose a valid property category.';
+        } elseif ((float) $areaSqm < property_type_min_area_sqm($propertyType)) {
+            $formError = sprintf(
+                '%s listings require a realistic area of at least %s sq.m.',
+                property_type_label($propertyType),
+                number_format(property_type_min_area_sqm($propertyType), 0)
+            );
         } elseif (!$location || strlen($barangay) > 120 || strlen($landCharacteristics) > 2000) {
             $formError = 'Choose an active directory location and check the optional land details.';
         } else {
@@ -130,6 +136,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $formError = 'The calculated price per square meter is outside the supported price range.';
         } elseif (!in_array($propertyType, property_type_values(), true)) {
             $formError = 'Choose a valid property category.';
+        } elseif ((float) $areaSqm < property_type_min_area_sqm($propertyType)) {
+            $formError = sprintf(
+                '%s listings require a realistic area of at least %s sq.m.',
+                property_type_label($propertyType),
+                number_format(property_type_min_area_sqm($propertyType), 0)
+            );
         } elseif (!$location || strlen($barangay) > 120 || strlen($landCharacteristics) > 2000) {
             $formError = 'Choose an active directory location and check the optional land details.';
         } elseif (!$coordinatesValid) {
@@ -459,6 +471,8 @@ $adminRecentTx = $conn->query(
 )->fetch_all(MYSQLI_ASSOC);
 
 $adminStageLabels = function_exists('property_transaction_stages') ? property_transaction_stages() : [
+    'reservation_requested' => 'Reservation Requested',
+    'reservation_confirmed' => 'Reservation Confirmed',
     'viewing_requested' => 'Viewing Requested',
     'reviewing_schedule' => 'Reviewing Schedule',
     'viewing_confirmed' => 'Viewing Approved',
@@ -681,6 +695,8 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
                     $txBadge = match ($txStage) {
                         'completed' => 'text-bg-success',
                         'cancelled' => 'text-bg-secondary',
+                        'reservation_requested' => 'text-bg-warning text-dark',
+                        'reservation_confirmed' => 'text-bg-success',
                         'payment_in_process' => 'text-bg-warning text-dark',
                         'payment_confirmation' => 'text-bg-info text-dark',
                         default => 'text-bg-primary',

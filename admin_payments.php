@@ -116,14 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['payment_action'])) {
                 }
 
                 if ($paymentStatus === 'Verified' && $transaction['salePrice'] !== null) {
-                    $paidStmt = $conn->prepare(
-                        "SELECT COALESCE(SUM(amount), 0) AS paidTotal
-                         FROM payments
-                         WHERE transactionID = ? AND status = 'Verified'"
-                    );
-                    $paidStmt->bind_param('i', $transactionId);
-                    $paidStmt->execute();
-                    $paidTotal = (float) ($paidStmt->get_result()->fetch_assoc()['paidTotal'] ?? 0);
+                    $paidTotal = get_verified_transaction_payment_total($conn, $transactionId);
                     if ($paidTotal + (float) $amount > (float) $transaction['salePrice'] + 0.0001) {
                         throw new InvalidArgumentException(
                             'This verified payment would exceed the recorded sale price for the transaction.'
@@ -217,14 +210,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['payment_action'])) {
                     $transactionStmt->execute();
                     $transactionRow = $transactionStmt->get_result()->fetch_assoc();
                     if ($transactionRow && $transactionRow['salePrice'] !== null) {
-                        $paidStmt = $conn->prepare(
-                            "SELECT COALESCE(SUM(amount), 0) AS paidTotal
-                             FROM payments
-                             WHERE transactionID = ? AND status = 'Verified' AND paymentID <> ?"
-                        );
-                        $paidStmt->bind_param('ii', $payment['transactionID'], $paymentId);
-                        $paidStmt->execute();
-                        $paidTotal = (float) ($paidStmt->get_result()->fetch_assoc()['paidTotal'] ?? 0);
+                        $paidTotal = get_verified_transaction_payment_total($conn, (int) $payment['transactionID']);
                         if ($paidTotal + (float) $payment['amount'] > (float) $transactionRow['salePrice'] + 0.0001) {
                             throw new InvalidArgumentException(
                                 'Verifying this payment would exceed the recorded sale price for the transaction.'
@@ -314,8 +300,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['payment_action'])) {
 $paymentStats = $conn->query(
     "SELECT COUNT(*) AS totalPayments,
             COALESCE(SUM(CASE WHEN status = 'Verified' THEN amount ELSE 0 END), 0) AS verifiedTotal,
+            COALESCE(SUM(CASE WHEN status = 'Verified' THEN 1 ELSE 0 END), 0) AS verifiedCount,
             COALESCE(SUM(CASE WHEN status = 'Pending' THEN amount ELSE 0 END), 0) AS pendingTotal,
+            COALESCE(SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END), 0) AS pendingCount,
             COALESCE(SUM(CASE WHEN status = 'Rejected' THEN amount ELSE 0 END), 0) AS rejectedTotal,
+            COALESCE(SUM(CASE WHEN status = 'Rejected' THEN 1 ELSE 0 END), 0) AS rejectedCount,
             COALESCE(SUM(CASE WHEN status = 'Verified' AND paidAt >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') THEN amount ELSE 0 END), 0) AS monthVerifiedTotal,
             COALESCE(SUM(CASE WHEN status = 'Verified' AND paidAt >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') THEN 1 ELSE 0 END), 0) AS monthVerifiedCount
      FROM payments"
@@ -323,11 +312,41 @@ $paymentStats = $conn->query(
 $clientReportStats = $conn->query(
     "SELECT COUNT(*) AS totalReports,
             COALESCE(SUM(CASE WHEN status = 'confirmed' THEN amount ELSE 0 END), 0) AS confirmedTotal,
+            COALESCE(SUM(CASE WHEN status = 'confirmed' THEN 1 ELSE 0 END), 0) AS confirmedCount,
             COALESCE(SUM(CASE WHEN status IN ('pending', 'in_process') THEN amount ELSE 0 END), 0) AS pendingTotal,
+            COALESCE(SUM(CASE WHEN status IN ('pending', 'in_process') THEN 1 ELSE 0 END), 0) AS pendingCount,
             COALESCE(SUM(CASE WHEN status = 'rejected' THEN amount ELSE 0 END), 0) AS rejectedTotal,
-            COALESCE(SUM(CASE WHEN status = 'confirmed' AND submittedAt >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') THEN 1 ELSE 0 END), 0) AS monthConfirmedCount
+            COALESCE(SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END), 0) AS rejectedCount,
+            COALESCE(SUM(CASE WHEN status = 'confirmed' AND COALESCE(reviewedAt, submittedAt) >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') THEN amount ELSE 0 END), 0) AS monthConfirmedTotal,
+            COALESCE(SUM(CASE WHEN status = 'confirmed' AND COALESCE(reviewedAt, submittedAt) >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01') THEN 1 ELSE 0 END), 0) AS monthConfirmedCount
      FROM property_transaction_payments"
 )->fetch_assoc();
+
+$unlinkedVerifiedRow = $conn->query(
+    "SELECT COALESCE(SUM(amount), 0) AS total, COUNT(*) AS cnt
+     FROM payments
+     WHERE status = 'Verified' AND transactionID IS NULL"
+)->fetch_assoc();
+$verifiedTxIdsRes = $conn->query(
+    "SELECT transactionID FROM payments WHERE status = 'Verified' AND transactionID IS NOT NULL
+     UNION
+     SELECT transactionID FROM property_transaction_payments WHERE status = 'confirmed'"
+);
+$verifiedTxIds = [];
+while ($txIdRow = $verifiedTxIdsRes->fetch_assoc()) {
+    $verifiedTxIds[] = (int) $txIdRow['transactionID'];
+}
+$verifiedTxSummaries = $verifiedTxIds !== [] ? get_transaction_payment_summaries($conn, $verifiedTxIds) : [];
+$totalVerifiedCollected = (float) ($unlinkedVerifiedRow['total'] ?? 0)
+    + array_sum(array_column($verifiedTxSummaries, 'verifiedTotal'));
+$totalVerifiedCount = (int) ($unlinkedVerifiedRow['cnt'] ?? 0)
+    + array_sum(array_column($verifiedTxSummaries, 'verifiedCount'));
+$totalPendingAmount = (float) $paymentStats['pendingTotal'] + (float) $clientReportStats['pendingTotal'];
+$totalPendingCount = (int) $paymentStats['pendingCount'] + (int) $clientReportStats['pendingCount'];
+$totalMonthVerifiedAmount = (float) $paymentStats['monthVerifiedTotal'] + (float) $clientReportStats['monthConfirmedTotal'];
+$totalMonthVerifiedCount = (int) $paymentStats['monthVerifiedCount'] + (int) $clientReportStats['monthConfirmedCount'];
+$totalRejectedAmount = (float) $paymentStats['rejectedTotal'] + (float) $clientReportStats['rejectedTotal'];
+$totalRejectedCount = (int) $paymentStats['rejectedCount'] + (int) $clientReportStats['rejectedCount'];
 
 $collectionMonthStart = (new DateTimeImmutable('first day of this month'))->modify('-5 months');
 $collectionRangeStart = $collectionMonthStart->format('Y-m-d');
@@ -401,7 +420,7 @@ if ($collectionPoints !== []) {
 
 $transactionsForSelect = [];
 $transactionSelectResult = $conn->query(
-    "SELECT t.transactionID, t.clientID, t.currentStage, t.salePrice, p.title, u.fullname
+    "SELECT t.transactionID, t.clientID, t.currentStage, t.salePrice, p.title, p.price AS listingPrice, u.fullname
      FROM property_transactions t
      JOIN properties p ON p.propertyID = t.propertyID
      JOIN users u ON u.userID = t.clientID
@@ -412,6 +431,9 @@ $transactionSelectResult = $conn->query(
 while ($row = $transactionSelectResult->fetch_assoc()) {
     $transactionsForSelect[] = $row;
 }
+$selectPaymentSummaries = $transactionsForSelect !== []
+    ? get_transaction_payment_summaries($conn, array_column($transactionsForSelect, 'transactionID'))
+    : [];
 
 $search = is_string($_GET['q'] ?? null) ? trim($_GET['q']) : '';
 $statusFilter = is_string($_GET['status'] ?? null) ? $_GET['status'] : '';
@@ -529,37 +551,39 @@ include 'includes/header.php';
 <?php if ($formSuccess !== ''): ?><div class="alert alert-success" role="status"><?= kq_e($formSuccess) ?></div><?php endif; ?>
     <?php if ($formError !== ''): ?><div class="alert alert-danger" role="alert"><?= kq_e($formError) ?></div><?php endif; ?>
 
+    <div class="alert alert-info small mb-4" role="note">
+        <strong>How payments work here:</strong> KingQuiry tracks offline payments (cash, bank transfer, or checks) rather than transferring money online.
+        <strong>1)</strong> Choose a transaction and record the payment below (or verify a pending entry).
+        <strong>2)</strong> Verified payments automatically update the client's balance and allow the Sales Agent to complete the sale once the full price is covered.
+    </div>
+
     <div class="row g-3 mb-4">
         <div class="col-6 col-xl-3">
             <div class="kq-stat-card">
-                <div class="kq-stat-label">Admin-register collections</div>
-                <div class="kq-stat-value"><?= kq_format_compact_peso((float) $paymentStats['verifiedTotal']) ?></div>
-                <div class="kq-stat-sub"><?= number_format((int) $paymentStats['totalPayments']) ?> Admin-register record(s).</div>
-                <div class="kq-stat-sub">Confirmed client reports: <?= kq_format_compact_peso((float) $clientReportStats['confirmedTotal']) ?></div>
+                <div class="kq-stat-label">Total verified collected</div>
+                <div class="kq-stat-value text-success"><?= kq_format_compact_peso($totalVerifiedCollected) ?></div>
+                <div class="kq-stat-sub"><?= number_format($totalVerifiedCount) ?> verified payment(s) across all transactions.</div>
             </div>
         </div>
         <div class="col-6 col-xl-3">
             <div class="kq-stat-card">
-                <div class="kq-stat-label">Pending — Admin register</div>
-                <div class="kq-stat-value"><?= kq_format_compact_peso((float) $paymentStats['pendingTotal']) ?></div>
-                <div class="kq-stat-sub">Admin register: <?= kq_format_compact_peso((float) $paymentStats['pendingTotal']) ?></div>
-                <div class="kq-stat-sub">Client reports awaiting review: <?= kq_format_compact_peso((float) $clientReportStats['pendingTotal']) ?></div>
+                <div class="kq-stat-label">Pending verification</div>
+                <div class="kq-stat-value text-warning-emphasis"><?= kq_format_compact_peso($totalPendingAmount) ?></div>
+                <div class="kq-stat-sub"><?= number_format($totalPendingCount) ?> payment(s) waiting for review.</div>
             </div>
         </div>
         <div class="col-6 col-xl-3">
             <div class="kq-stat-card">
-                <div class="kq-stat-label">Verified this month — Admin register</div>
-                <div class="kq-stat-value"><?= kq_format_compact_peso((float) $paymentStats['monthVerifiedTotal']) ?></div>
-                <div class="kq-stat-sub"><?= number_format((int) $paymentStats['monthVerifiedCount']) ?> Admin-register payment(s) verified this month.</div>
-                <div class="kq-stat-sub"><?= number_format((int) $clientReportStats['monthConfirmedCount']) ?> confirmed client report(s) submitted this month.</div>
+                <div class="kq-stat-label">Verified this month</div>
+                <div class="kq-stat-value"><?= kq_format_compact_peso($totalMonthVerifiedAmount) ?></div>
+                <div class="kq-stat-sub"><?= number_format($totalMonthVerifiedCount) ?> payment(s) verified this month.</div>
             </div>
         </div>
         <div class="col-6 col-xl-3">
             <div class="kq-stat-card">
-                <div class="kq-stat-label">Rejected — Admin register</div>
-                <div class="kq-stat-value"><?= kq_format_compact_peso((float) $paymentStats['rejectedTotal']) ?></div>
-                <div class="kq-stat-sub">Admin register: <?= kq_format_compact_peso((float) $paymentStats['rejectedTotal']) ?></div>
-                <div class="kq-stat-sub">Client reports: <?= kq_format_compact_peso((float) $clientReportStats['rejectedTotal']) ?></div>
+                <div class="kq-stat-label">Rejected</div>
+                <div class="kq-stat-value"><?= kq_format_compact_peso($totalRejectedAmount) ?></div>
+                <div class="kq-stat-sub"><?= number_format($totalRejectedCount) ?> rejected payment(s).</div>
             </div>
         </div>
     </div>
@@ -613,15 +637,30 @@ include 'includes/header.php';
                 <select id="payment-transaction" name="transactionID" class="form-select" required>
                     <option value="">Choose a transaction</option>
                     <?php foreach ($transactionsForSelect as $transactionOption):
+                        $optTxId = (int) $transactionOption['transactionID'];
+                        $optPaid = (float) ($selectPaymentSummaries[$optTxId]['verifiedTotal'] ?? 0.0);
+                        $optTarget = $transactionOption['salePrice'] !== null
+                            ? (float) $transactionOption['salePrice']
+                            : (float) ($transactionOption['listingPrice'] ?? 0.0);
+                        $optRemaining = $optTarget > 0 ? max($optTarget - $optPaid, 0.0) : 0.0;
                         $optionStage = $stageLabels[$transactionOption['currentStage']] ?? $transactionOption['currentStage'];
-                        $optionLabel = '#KQT-' . (int) $transactionOption['transactionID']
+                        $optionLabel = '#KQT-' . $optTxId
                             . ' · ' . $transactionOption['fullname']
                             . ' — ' . $transactionOption['title']
                             . ' (' . $optionStage . ')';
                     ?>
-                        <option value="<?= (int) $transactionOption['transactionID'] ?>" <?= (int) $paymentForm['transactionID'] === (int) $transactionOption['transactionID'] ? 'selected' : '' ?>><?= kq_e($optionLabel) ?></option>
+                        <option value="<?= $optTxId ?>"
+                                data-target-price="<?= number_format($optTarget, 2, '.', '') ?>"
+                                data-paid="<?= number_format($optPaid, 2, '.', '') ?>"
+                                data-remaining="<?= number_format($optRemaining, 2, '.', '') ?>"
+                                data-price-label="<?= $transactionOption['salePrice'] !== null ? 'Agreed price' : 'Listing price' ?>"
+                                <?= (int) $paymentForm['transactionID'] === $optTxId ? 'selected' : '' ?>><?= kq_e($optionLabel) ?></option>
                     <?php endforeach; ?>
                 </select>
+                <div id="selected-tx-balance-box" class="alert alert-light border small mt-2 mb-0 d-none align-items-center justify-content-between flex-wrap gap-2">
+                    <div id="selected-tx-balance-text"></div>
+                    <button type="button" id="fill-remaining-btn" class="btn btn-sm btn-outline-primary py-0 px-2 d-none">Fill remaining balance</button>
+                </div>
                 <?php if ($transactionsForSelect === []): ?><div class="form-text text-danger">No tracked transactions are available yet. Create one from a client inquiry or viewing request first.</div><?php endif; ?>
             </div>
             <div class="col-md-4">
@@ -715,7 +754,7 @@ include 'includes/header.php';
                         <tr>
                             <td class="small">
                                 <div class="fw-semibold"><?= $payment['paymentSource'] === 'client_report' ? '#KQCR-' : '#KQP-' ?><?= (int) $payment['paymentID'] ?></div>
-                                <div class="text-muted"><?= $payment['paymentSource'] === 'client_report' ? 'Client report' : 'Admin register' ?></div>
+                                <div class="text-muted"><?= $payment['paymentSource'] === 'client_report' ? 'Transaction entry' : 'Staff record' ?></div>
                                 <div class="text-muted"><?= kq_e(date('M j, Y', strtotime((string) $payment['paidAt']))) ?></div>
                                 <div class="text-muted"><?= kq_e($payment['paymentType']) ?> · <?= kq_e($payment['paymentMethod']) ?></div>
                                 <?php if (!empty($payment['referenceNo'])): ?><div class="text-muted">Ref: <?= kq_e($payment['referenceNo']) ?></div><?php endif; ?>
@@ -802,4 +841,55 @@ include 'includes/header.php';
             </table>
         </div>
     </section>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const txSelect = document.getElementById('payment-transaction');
+    const balanceBox = document.getElementById('selected-tx-balance-box');
+    const balanceText = document.getElementById('selected-tx-balance-text');
+    const fillBtn = document.getElementById('fill-remaining-btn');
+    const amountInput = document.getElementById('payment-amount');
+
+    if (!txSelect || !balanceBox || !balanceText || !fillBtn || !amountInput) {
+        return;
+    }
+
+    const formatPeso = (val) => '₱' + Number(val || 0).toLocaleString('en-PH', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+
+    function updateBalancePreview() {
+        const option = txSelect.options[txSelect.selectedIndex];
+        if (!option || !option.value) {
+            balanceBox.classList.add('d-none');
+            balanceBox.classList.remove('d-flex');
+            return;
+        }
+        const target = parseFloat(option.dataset.targetPrice || '0');
+        const paid = parseFloat(option.dataset.paid || '0');
+        const remaining = parseFloat(option.dataset.remaining || '0');
+        const priceLabel = option.dataset.priceLabel || 'Price';
+
+        balanceText.innerHTML = `${priceLabel}: <strong>${formatPeso(target)}</strong> · Verified paid: <strong class="text-success">${formatPeso(paid)}</strong> · Remaining: <strong>${remaining <= 0.01 && target > 0 ? 'Fully paid' : formatPeso(remaining)}</strong>`;
+        balanceBox.classList.remove('d-none');
+        balanceBox.classList.add('d-flex');
+
+        if (remaining > 0.01) {
+            fillBtn.classList.remove('d-none');
+            fillBtn.dataset.remainingValue = remaining.toFixed(2);
+        } else {
+            fillBtn.classList.add('d-none');
+        }
+    }
+
+    txSelect.addEventListener('change', updateBalancePreview);
+    fillBtn.addEventListener('click', () => {
+        if (fillBtn.dataset.remainingValue) {
+            amountInput.value = fillBtn.dataset.remainingValue;
+            amountInput.focus();
+        }
+    });
+    updateBalancePreview();
+});
+</script>
 <?php include 'includes/footer.php'; ?>

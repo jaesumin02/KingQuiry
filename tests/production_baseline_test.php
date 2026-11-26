@@ -74,8 +74,17 @@ expect_true(
     'Transaction tracking stages must exclude casual chat inquiries.'
 );
 expect_true(
-    array_key_first(property_transaction_stages()) === 'viewing_requested',
-    'Transaction tracking stages must start at viewing_requested.'
+    array_key_first(property_transaction_stages()) === 'reservation_requested',
+    'Transaction tracking stages must start at reservation_requested before property viewing.'
+);
+expect_true(
+    in_array('reservation_confirmed', property_transaction_next_stages('reservation_requested'), true)
+        && !in_array('viewing_requested', property_transaction_next_stages('reservation_requested'), true),
+    'Reservation requests must be confirmed before advancing to property viewing.'
+);
+expect_true(
+    in_array('viewing_requested', property_transaction_next_stages('reservation_confirmed'), true),
+    'Confirmed reservations must allow proceeding to viewing_requested.'
 );
 expect_true(
     in_array('reviewing_schedule', property_transaction_next_stages('viewing_requested'), true),
@@ -193,5 +202,49 @@ $simulated8DaysAgo = time() - (8 * 86400);
 $daysElapsed8 = (int) floor((time() - $simulated8DaysAgo) / 86400);
 $daysRemaining8 = max(0, 7 - $daysElapsed8);
 expect_true($daysRemaining8 === 0, 'Transactions updated over 7 days ago must indicate window expiration.');
+
+// Unified payment reconciliation & register mapping checks
+$reconciledSameRef = reconcile_verified_payment_entries(
+    [['paymentID' => 1, 'amount' => 50000.00, 'referenceNumber' => 'OR-100']],
+    [['paymentID' => 2, 'amount' => 50000.00, 'referenceNo' => 'or-100']]
+);
+expect_true(
+    abs($reconciledSameRef['total'] - 50000.00) < 0.01 && $reconciledSameRef['count'] === 1,
+    'Counterpart payments with matching reference numbers must not be double-counted.'
+);
+
+$reconciledInstallments = reconcile_verified_payment_entries(
+    [['paymentID' => 1, 'amount' => 20000.00, 'referenceNumber' => 'OR-101']],
+    [['paymentID' => 2, 'amount' => 80000.00, 'referenceNo' => 'OR-102']]
+);
+expect_true(
+    abs($reconciledInstallments['total'] - 100000.00) < 0.01 && $reconciledInstallments['count'] === 2,
+    'Distinct verified installments across both tables must accumulate accurately.'
+);
+
+$spotCashMapping = kq_map_staff_payment_to_register('Spot Cash', 'payment_confirmation');
+expect_true(
+    $spotCashMapping['paymentMethod'] === 'Cash' && $spotCashMapping['paymentType'] === 'Full Payment',
+    'Spot Cash staff entries must map to Cash / Full Payment in the official register.'
+);
+
+$reservationMapping = kq_map_staff_payment_to_register('Bank Transfer', 'reservation_confirmed');
+expect_true(
+    $reservationMapping['paymentMethod'] === 'Bank Transfer' && $reservationMapping['paymentType'] === 'Reservation',
+    'Reservation stage bank transfers must map to Bank Transfer / Reservation.'
+);
+
+$downPaymentMapping = kq_map_staff_payment_to_register('Bank Transfer', 'payment_in_process');
+expect_true(
+    $downPaymentMapping['paymentMethod'] === 'Bank Transfer' && $downPaymentMapping['paymentType'] === 'Down Payment',
+    'Payment-in-process stage bank transfers must map to Bank Transfer / Down Payment.'
+);
+
+expect_true(
+    property_type_min_area_sqm('Residential') >= 120.0
+        && property_type_min_area_sqm('Townhouse') >= 100.0
+        && property_type_min_area_sqm('Farmlot') >= 500.0,
+    'Lot categories must enforce realistic minimum areas.'
+);
 
 fwrite(STDOUT, "Production baseline checks passed.\n");

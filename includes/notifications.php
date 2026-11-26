@@ -200,6 +200,65 @@ function notify_agents_new_viewing(
     return $agentCount > 0 && $allNotificationsSaved;
 }
 
+function notify_agents_new_reservation(
+    mysqli $conn,
+    int $transactionId,
+    int $propertyId,
+    int $clientId,
+    ?string $paymentScheme = null
+): bool {
+    ensure_notifications_table($conn);
+
+    $infoStmt = $conn->prepare(
+        'SELECT p.title AS propertyTitle, u.fullname AS clientName
+         FROM properties p, users u
+         WHERE p.propertyID = ? AND u.userID = ?
+         LIMIT 1'
+    );
+    $infoStmt->bind_param('ii', $propertyId, $clientId);
+    $infoStmt->execute();
+    $info = $infoStmt->get_result()->fetch_assoc();
+    $infoStmt->close();
+
+    $propertyTitle = (string) ($info['propertyTitle'] ?? 'Requested Property');
+    $clientName = (string) ($info['clientName'] ?? 'A Client');
+    $schemeText = ($paymentScheme !== null && $paymentScheme !== '') ? (' (' . $paymentScheme . ')') : '';
+
+    $notifTitle = 'New property reservation requested';
+    $notifMessage = sprintf(
+        "Client %s submitted a pre-viewing reservation request%s for '%s' (#KQT-%d). Confirm the reservation so they can schedule a property viewing.",
+        $clientName,
+        $schemeText,
+        $propertyTitle,
+        $transactionId
+    );
+    $link = 'transaction_tracking.php?open_modal=' . $transactionId . '#transactions';
+
+    $agentRes = $conn->query(
+        "SELECT userID FROM users
+         WHERE (role IN ('Agent', 'Admin') OR role LIKE '%Agent%')
+           AND accountStatus = 'Active'"
+    );
+    if (!$agentRes) {
+        return false;
+    }
+
+    $agents = $agentRes->fetch_all(MYSQLI_ASSOC);
+    $agentRes->free();
+
+    $agentCount = 0;
+    $allNotificationsSaved = true;
+    foreach ($agents as $agent) {
+        $agentCount++;
+        $agentId = (int) $agent['userID'];
+        if (!create_user_notification($conn, $agentId, $notifTitle, $notifMessage, $link, 'reservation_requested')) {
+            $allNotificationsSaved = false;
+        }
+    }
+
+    return $agentCount > 0 && $allNotificationsSaved;
+}
+
 function notify_agents_new_inquiry(
     mysqli $conn,
     int $inquiryId,

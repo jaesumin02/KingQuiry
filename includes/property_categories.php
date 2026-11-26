@@ -25,3 +25,15 @@ function property_type_label(string $propertyType): string
 {
     return property_type_labels()[$propertyType] ?? $propertyType;
 }
+
+function property_type_min_area_sqm(string $propertyType): float
+{
+    return match ($propertyType) {
+        'Condo', 'Apartment', 'Office Space' => 20.0,
+        'Townhouse' => 100.0,
+        'Residential', 'House and Lot' => 120.0,
+        'Commercial', 'Beachlot', 'Warehouse', 'Resort' => 200.0,
+        'Farmlot' => 500.0,
+        default => 20.0,
+    };
+}

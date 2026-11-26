@@ -114,9 +114,11 @@ $mlRecommendations = get_personalized_recommendations($conn, $currentUserId, $pr
 $businessTimeZone = new DateTimeZone('Asia/Manila');
 $businessNow = new DateTimeImmutable('now', $businessTimeZone);
 
-$submissionAction = isset($_POST['book_appointment'])
-    ? 'appointment'
-    : (isset($_POST['send_inquiry']) ? 'inquiry' : null);
+$submissionAction = isset($_POST['reserve_property'])
+    ? 'reservation'
+    : (isset($_POST['book_appointment'])
+        ? 'appointment'
+        : (isset($_POST['send_inquiry']) ? 'inquiry' : null));
 if (!isset($_SESSION['property_action_tokens']) || !is_array($_SESSION['property_action_tokens'])) {
     $_SESSION['property_action_tokens'] = [];
 }
@@ -129,7 +131,7 @@ if (!isset($_SESSION['property_action_tokens'][$propertyID])) {
     }
     $_SESSION['property_action_tokens'][$propertyID] = [];
 }
-foreach (['appointment', 'inquiry'] as $actionTokenType) {
+foreach (['reservation', 'appointment', 'inquiry'] as $actionTokenType) {
     $existingToken = $_SESSION['property_action_tokens'][$propertyID][$actionTokenType] ?? null;
     if (!is_string($existingToken) || strlen($existingToken) !== 64) {
         $_SESSION['property_action_tokens'][$propertyID][$actionTokenType] = bin2hex(random_bytes(32));
@@ -182,6 +184,91 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $errorMsg = 'This property is not currently accepting new requests.';
     } elseif ($requestRateLimitMessage !== null) {
         $errorMsg = $requestRateLimitMessage;
+    } elseif ($submissionAction === 'reservation') {
+        $clientID = (int) $_SESSION['user']['userID'];
+        $paymentScheme = is_string($_POST['paymentScheme'] ?? null) ? trim($_POST['paymentScheme']) : '';
+        $postedResAmount = $_POST['reservationAmount'] ?? null;
+        $reservationAmount = ($postedResAmount === null || trim((string) $postedResAmount) === '')
+            ? null
+            : filter_var($postedResAmount, FILTER_VALIDATE_FLOAT);
+        $paymentRef = is_string($_POST['paymentRef'] ?? null) ? trim($_POST['paymentRef']) : '';
+        $reservationNote = is_string($_POST['reservationNote'] ?? null) ? trim($_POST['reservationNote']) : '';
+
+        if ($postedResAmount !== null && trim((string) $postedResAmount) !== '' && ($reservationAmount === false || $reservationAmount <= 0)) {
+            $errorMsg = 'Enter a valid reservation fee greater than zero, or leave it blank.';
+        } else {
+            $transactionStarted = false;
+            try {
+                $conn->begin_transaction();
+                $transactionStarted = true;
+
+                $availableStmt = $conn->prepare(
+                    "SELECT propertyID FROM properties
+                     WHERE propertyID = ? AND status = 'Available' AND isDeleted = 0
+                     FOR UPDATE"
+                );
+                $availableStmt->bind_param('i', $propertyID);
+                $availableStmt->execute();
+
+                if (!$availableStmt->get_result()->fetch_assoc()) {
+                    $conn->rollback();
+                    $transactionStarted = false;
+                    $errorMsg = 'This property is no longer available for reservation.';
+                } else {
+                    $reservationTxId = create_property_reservation(
+                        $conn,
+                        $propertyID,
+                        $clientID,
+                        $paymentScheme !== '' ? $paymentScheme : null,
+                        $reservationAmount === false ? null : ($reservationAmount === null ? null : (float) $reservationAmount),
+                        $paymentRef,
+                        $reservationNote
+                    );
+                    $conn->commit();
+                    $transactionStarted = false;
+                    unset($_SESSION['property_action_tokens'][$propertyID]['reservation']);
+
+                    try {
+                        send_property_notification(
+                            $conn,
+                            $clientID,
+                            'Property reservation request received',
+                            "Your pre-viewing reservation request for '{$property['title']}' (#KQT-{$reservationTxId}) has been received. Once a Sales Agent confirms your reservation, your 7-day hold begins and you can schedule a property viewing.",
+                            'client_dashboard.php#transaction-tracking',
+                            'reservation_requested'
+                        );
+                        notify_agents_new_reservation(
+                            $conn,
+                            $reservationTxId,
+                            $propertyID,
+                            $clientID,
+                            $paymentScheme !== '' ? $paymentScheme : null
+                        );
+                    } catch (Throwable $exception) {
+                        error_log('KingQuiry reservation notification failed: ' . $exception->getMessage());
+                    }
+
+                    $_SESSION['flash_success'] = 'Your property reservation request has been sent. Once confirmed by a Sales Agent, you can schedule your property viewing.';
+                    $_SESSION['flash_success_action'] = 'reservation';
+                    $_SESSION['flash_success_details'] = [
+                        'transactionID' => $reservationTxId,
+                    ];
+                    header('Location: property_detail.php?id=' . $propertyID . '#reservation-confirmation');
+                    exit();
+                }
+            } catch (InvalidArgumentException $exception) {
+                if ($transactionStarted) {
+                    $conn->rollback();
+                }
+                $errorMsg = $exception->getMessage();
+            } catch (Throwable $exception) {
+                if ($transactionStarted) {
+                    $conn->rollback();
+                }
+                error_log('KingQuiry reservation creation failed: ' . $exception->getMessage());
+                $errorMsg = 'We could not submit your reservation request. Please try again.';
+            }
+        }
     } elseif ($submissionAction === 'appointment') {
         $date = is_string($_POST['appointmentDate'] ?? null) ? $_POST['appointmentDate'] : '';
         $time = is_string($_POST['appointmentTime'] ?? null) ? $_POST['appointmentTime'] : '';
@@ -208,19 +295,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $transactionStarted = false;
                     $errorMsg = 'This property is no longer available for viewing requests.';
                 } else {
-                    $activeViewingRequest = get_active_property_viewing_request($conn, $propertyID);
-                    if ($activeViewingRequest !== null) {
+                    $activeReservation = get_active_property_reservation($conn, $propertyID);
+                    if (!$activeReservation) {
                         $conn->rollback();
                         $transactionStarted = false;
-                        $existingDate = date('M j, Y', strtotime((string) $activeViewingRequest['appointmentDate']));
-                        $existingTime = date('g:i A', strtotime((string) $activeViewingRequest['appointmentTime']));
-                        $appointmentDuplicateMessage = sprintf(
-                            'Viewing reference #KQ-%d is already active for this property on %s at %s. Only one active viewing request is allowed per property. Please wait until the visit is completed or the existing request is cancelled.',
-                            1000 + (int) $activeViewingRequest['appointmentID'],
-                            $existingDate,
-                            $existingTime
-                        );
+                        $errorMsg = 'Please reserve this property first before requesting a property viewing.';
+                    } elseif ((int) $activeReservation['clientID'] !== $clientID) {
+                        $conn->rollback();
+                        $transactionStarted = false;
+                        $errorMsg = 'This property is currently reserved by another buyer.';
+                    } elseif ((string) $activeReservation['currentStage'] === 'reservation_requested') {
+                        $conn->rollback();
+                        $transactionStarted = false;
+                        $errorMsg = 'Your reservation is still pending confirmation. You can request a viewing once a Sales Agent confirms it.';
+                    } elseif ((string) $activeReservation['currentStage'] !== 'reservation_confirmed') {
+                        $conn->rollback();
+                        $transactionStarted = false;
+                        $errorMsg = 'A viewing or transaction step is already active for your reservation.';
                     } else {
+                        $activeViewingRequest = get_active_property_viewing_request($conn, $propertyID);
+                        if ($activeViewingRequest !== null) {
+                            $conn->rollback();
+                            $transactionStarted = false;
+                            $existingDate = date('M j, Y', strtotime((string) $activeViewingRequest['appointmentDate']));
+                            $existingTime = date('g:i A', strtotime((string) $activeViewingRequest['appointmentTime']));
+                            $appointmentDuplicateMessage = sprintf(
+                                'Viewing reference #KQ-%d is already active for this property on %s at %s. Only one active viewing request is allowed per property. Please wait until the visit is completed or the existing request is cancelled.',
+                                1000 + (int) $activeViewingRequest['appointmentID'],
+                                $existingDate,
+                                $existingTime
+                            );
+                        } else {
                         // ALGORITHM: Lock the listing, allow only one active viewing request, then save booking and tracking atomically.
                         $bookStmt = $conn->prepare(
                             "INSERT INTO appointments
@@ -265,6 +370,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         ];
                         header('Location: property_detail.php?id=' . $propertyID . '#appointment-confirmation');
                         exit();
+                        }
                     }
                 }
             } catch (Throwable $exception) {
@@ -373,7 +479,7 @@ include 'includes/header.php';
     </div>
 </div>
 
-<?php if ($successMsg !== '' && !in_array($successAction, ['appointment', 'inquiry'], true)): ?><div class="alert alert-success" role="status"><?= htmlspecialchars($successMsg, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
+<?php if ($successMsg !== '' && !in_array($successAction, ['reservation', 'appointment', 'inquiry'], true)): ?><div class="alert alert-success" role="status"><?= htmlspecialchars($successMsg, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
 <?php if ($errorMsg !== '' && $appointmentDuplicateMessage === ''): ?><div class="alert alert-danger" role="alert"><?= htmlspecialchars($errorMsg, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
 
 <div class="row">
@@ -472,8 +578,8 @@ include 'includes/header.php';
                 <!-- Academic & Operational Policy Safeguards -->
                 <div class="alert alert-warning py-2 px-3 small mb-0 d-flex flex-column gap-1">
                     <div>
-                        <strong class="text-dark">⏳ 7-Day Reservation Rule:</strong>
-                        <span class="text-muted">Placing a reservation initiates a strict 7-day period to settle the down payment and required compliance IDs.</span>
+                        <strong class="text-dark">⏳ 7-Day Reservation Rule (Before Viewing):</strong>
+                        <span class="text-muted">Placing and confirming a reservation comes before scheduling a property viewing, starting a strict 7-day hold to complete your viewing, down payment, and compliance IDs.</span>
                     </div>
                     <div class="pt-1 border-top border-warning-subtle">
                         <strong class="text-dark">📑 Contract to Sell (CTS) vs. DOAS:</strong>
@@ -600,7 +706,16 @@ include 'includes/header.php';
                     <?php endif; ?>
                 </div>
             </div>
-        <?php else: ?>
+        <?php else:
+            $activePropertyReservation = get_active_property_reservation($conn, $propertyID);
+            $isReservedByOther = $activePropertyReservation !== null && $currentUserId !== null && (int) $activePropertyReservation['clientID'] !== $currentUserId;
+            $isReservedByGuest = $activePropertyReservation !== null && $currentUserId === null;
+            $myActiveReservation = ($activePropertyReservation !== null && $currentUserId !== null && (int) $activePropertyReservation['clientID'] === $currentUserId)
+                ? $activePropertyReservation
+                : null;
+            $myResStage = (string) ($myActiveReservation['currentStage'] ?? '');
+            $canScheduleViewing = $myActiveReservation !== null && $myResStage === 'reservation_confirmed';
+        ?>
             <!-- Direct Agent Chat Card -->
             <div class="card p-3 p-md-4 mb-4 border-primary-subtle shadow-sm" style="background: linear-gradient(135deg, rgba(23,74,112,0.04) 0%, rgba(216,173,99,0.07) 100%);">
                 <div class="d-flex align-items-center gap-2 mb-2">
@@ -617,6 +732,92 @@ include 'includes/header.php';
                     <i class="bi bi-chat-text-fill"></i>
                     <span>Message an Agent about this property</span>
                 </button>
+            </div>
+
+            <!-- Step 1: Reserve Property (Required Before Viewing) -->
+            <div class="card p-4 mb-4 shadow-sm border-warning-subtle" id="reservation">
+                <?php if ($successMsg !== '' && $successAction === 'reservation'): ?>
+                    <div class="alert alert-success border-success-subtle mb-4" id="reservation-confirmation" role="status" tabindex="-1" style="scroll-margin-top: 6rem;">
+                        <div class="d-flex align-items-start gap-3">
+                            <i class="bi bi-check-circle-fill fs-4 flex-shrink-0" aria-hidden="true"></i>
+                            <div class="flex-grow-1">
+                                <h4 class="h6 fw-bold mb-1">Reservation request submitted</h4>
+                                <p class="small mb-2"><?= htmlspecialchars($successMsg, ENT_QUOTES, 'UTF-8') ?></p>
+                                <div class="d-flex flex-wrap align-items-center gap-2">
+                                    <span class="badge rounded-pill text-bg-warning">Awaiting Sales Agent confirmation</span>
+                                    <?php if (!empty($successDetails['transactionID'])): ?>
+                                        <span class="small text-muted">Ref #KQT-<?= (int) $successDetails['transactionID'] ?></span>
+                                    <?php endif; ?>
+                                </div>
+                                <a href="client_dashboard.php#transaction-tracking" class="btn btn-sm btn-success mt-3">Track reservation</a>
+                            </div>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
+                <div class="page-eyebrow mb-2">Step 1 · Required before viewing</div>
+                <h3 class="h5 fw-bold mb-2">Reserve this property</h3>
+                <p class="text-muted small mb-3">In Kings Land Properties, a reservation must be confirmed before scheduling a property viewing. Once confirmed, a 7-day reservation hold begins.</p>
+
+                <?php if ($myActiveReservation !== null): ?>
+                    <div class="alert <?= $canScheduleViewing ? 'alert-success' : 'alert-info' ?> small mb-0">
+                        <div class="fw-bold mb-1">
+                            <?= $canScheduleViewing
+                                ? '✅ Reservation Confirmed (#KQT-' . (int) $myActiveReservation['transactionID'] . ')'
+                                : ($myResStage === 'reservation_requested'
+                                    ? '⏳ Reservation Pending Confirmation (#KQT-' . (int) $myActiveReservation['transactionID'] . ')'
+                                    : '📋 Active Transaction (#KQT-' . (int) $myActiveReservation['transactionID'] . ')') ?>
+                        </div>
+                        <p class="mb-2">
+                            <?php if ($canScheduleViewing): ?>
+                                Your 7-day reservation hold is active! Use Step 2 below to choose your preferred property viewing date and time.
+                            <?php elseif ($myResStage === 'reservation_requested'): ?>
+                                Our Sales Agent team is reviewing your reservation request. Once confirmed, the viewing scheduler below will unlock.
+                            <?php else: ?>
+                                Your reservation and viewing progress are active. Check your Client Dashboard for the latest updates.
+                            <?php endif; ?>
+                        </p>
+                        <a href="client_dashboard.php#transaction-tracking" class="btn btn-sm btn-outline-primary">Open Client Dashboard</a>
+                    </div>
+                <?php elseif ($isReservedByOther || $isReservedByGuest): ?>
+                    <div class="alert alert-warning small mb-0">
+                        <strong>Currently Reserved:</strong> Another buyer currently holds an active reservation on this property. Please check back later or browse other available properties.
+                    </div>
+                <?php elseif (normalized_user_role($_SESSION['user'] ?? null) === 'Client'): ?>
+                    <form method="POST" data-confirm="Submit a property reservation request? Once confirmed by a Sales Agent, your 7-day hold will start and you can schedule a viewing.">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                        <input type="hidden" name="submission_token" value="<?= htmlspecialchars($_SESSION['property_action_tokens'][$propertyID]['reservation'], ENT_QUOTES, 'UTF-8') ?>">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold" for="reservation-scheme">Preferred payment scheme</label>
+                            <select id="reservation-scheme" name="paymentScheme" class="form-select">
+                                <option value="">Decide later with Sales Agent</option>
+                                <?php foreach (property_transaction_payment_schemes() as $schemeKey => $schemeInfo): ?>
+                                    <option value="<?= htmlspecialchars($schemeKey, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($schemeInfo['label'], ENT_QUOTES, 'UTF-8') ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-sm-6">
+                                <label class="form-label fw-semibold small" for="reservation-amount">Reservation fee paid (₱) <span class="text-muted fw-normal">(optional)</span></label>
+                                <input id="reservation-amount" type="number" name="reservationAmount" class="form-control form-control-sm" min="0.01" max="9999999999.99" step="0.01" placeholder="e.g. 20000.00">
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="form-label fw-semibold small" for="reservation-ref">Receipt / Ref # <span class="text-muted fw-normal">(optional)</span></label>
+                                <input id="reservation-ref" type="text" name="paymentRef" class="form-control form-control-sm" maxlength="100" placeholder="If already paid offline">
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold small" for="reservation-note">Note for Sales Agent <span class="text-muted fw-normal">(optional)</span></label>
+                            <input id="reservation-note" type="text" name="reservationNote" class="form-control form-control-sm" maxlength="1000" placeholder="e.g. Ready to settle reservation at the office.">
+                        </div>
+                        <button type="submit" name="reserve_property" class="btn btn-warning text-dark w-100 py-2 fw-bold shadow-sm">
+                            <i class="bi bi-bookmark-check-fill me-1" aria-hidden="true"></i>Request property reservation
+                        </button>
+                    </form>
+                <?php else: ?>
+                    <p class="text-muted small">Sign in with a client account to reserve this property before scheduling a viewing.</p>
+                    <a href="client_login.php" class="btn btn-warning text-dark fw-semibold w-100">Sign in to reserve</a>
+                <?php endif; ?>
             </div>
 
             <div class="card p-4 mb-4 shadow-sm border-primary-subtle" id="appointment">
@@ -652,10 +853,10 @@ include 'includes/header.php';
                         </div>
                     </div>
                 <?php endif; ?>
-                <div class="page-eyebrow mb-2">Visit the property</div>
+                <div class="page-eyebrow mb-2">Step 2 · Visit the property</div>
                 <h3 class="h5 fw-bold mb-2">Request a viewing</h3>
-                <p class="text-muted small mb-3">Choose a preferred date and time. Your visit is confirmed only after a Sales Agent approves the schedule.</p>
-                <?php if(normalized_user_role($_SESSION['user'] ?? null) === 'Client'): ?>
+                <p class="text-muted small mb-3">Choose a preferred date and time. Only confirmed reservations can schedule a site viewing.</p>
+                <?php if ($canScheduleViewing && normalized_user_role($_SESSION['user'] ?? null) === 'Client'): ?>
                     <form method="POST" data-confirm="Submit your preferred viewing date and time? Your request will be sent to a Sales Agent, and the visit is not confirmed until the agent approves it.">
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                         <input type="hidden" name="submission_token" value="<?= htmlspecialchars($_SESSION['property_action_tokens'][$propertyID]['appointment'], ENT_QUOTES, 'UTF-8') ?>">
@@ -671,9 +872,25 @@ include 'includes/header.php';
                             <i class="bi bi-calendar-check me-1" aria-hidden="true"></i>Request a viewing
                         </button>
                     </form>
+                <?php elseif ($myActiveReservation !== null && $myResStage === 'reservation_requested'): ?>
+                    <div class="alert alert-light border small text-muted mb-0">
+                        🔒 <strong>Waiting for reservation confirmation:</strong> Once a Sales Agent confirms reservation #KQT-<?= (int) $myActiveReservation['transactionID'] ?>, this viewing form will unlock.
+                    </div>
+                <?php elseif ($myActiveReservation !== null): ?>
+                    <div class="alert alert-light border small text-muted mb-0">
+                        📅 You already have an active viewing or transaction stage for this property. <a href="client_dashboard.php#transaction-tracking">View status in your dashboard</a>.
+                    </div>
+                <?php elseif ($isReservedByOther || $isReservedByGuest): ?>
+                    <div class="alert alert-light border small text-muted mb-0">
+                        🔒 Property viewing is currently unavailable while another buyer holds an active reservation.
+                    </div>
+                <?php elseif (normalized_user_role($_SESSION['user'] ?? null) === 'Client'): ?>
+                    <div class="alert alert-light border small text-muted mb-0">
+                        🔒 <strong>Reservation required first:</strong> Submit and confirm your property reservation in Step 1 above before requesting a viewing.
+                    </div>
                 <?php else: ?>
-                    <p class="text-muted small">Sign in with a client account to request a viewing.</p>
-                    <a href="client_login.php" class="btn btn-primary w-100">Sign in to continue</a>
+                    <p class="text-muted small">Sign in with a client account, reserve the property first, and then schedule a viewing.</p>
+                    <a href="client_login.php" class="btn btn-outline-primary w-100">Sign in to continue</a>
                 <?php endif; ?>
             </div>
 
@@ -776,8 +993,9 @@ const propertyDetailPrice = <?= json_encode('₱' . number_format((float) $prope
 
 document.addEventListener('DOMContentLoaded', () => {
     const successNoticeId = <?= json_encode(
-        $successAction === 'appointment' ? 'appointment-confirmation'
-            : ($successAction === 'inquiry' ? 'inquiry-confirmation' : '')
+        $successAction === 'reservation' ? 'reservation-confirmation'
+            : ($successAction === 'appointment' ? 'appointment-confirmation'
+                : ($successAction === 'inquiry' ? 'inquiry-confirmation' : ''))
     ) ?>;
     if (successNoticeId !== '') {
         const successNotice = document.getElementById(successNoticeId);

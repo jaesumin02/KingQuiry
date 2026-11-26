@@ -5,6 +5,8 @@ require_once __DIR__ . '/appointment_management.php';
 function property_transaction_stages(): array
 {
     return [
+        'reservation_requested' => 'Reservation requested',
+        'reservation_confirmed' => 'Reservation confirmed (7-day hold)',
         'viewing_requested' => 'Viewing requested',
         'reviewing_schedule' => 'Reviewing schedule',
         'viewing_confirmed' => 'Viewing approved',
@@ -75,10 +77,12 @@ function is_valid_transaction_currency_amount(float $amount): bool
 
 function property_transaction_next_stages(string $stage, ?string $paymentMethod = null): array
 {
-    // ALGORITHM: State machine mapping each stage to allowed next stages; Spot Cash skips document verification.
+    // ALGORITHM: State machine mapping each stage to allowed next stages; reservations precede viewings, and Spot Cash skips document verification.
     $isSpotCash = $paymentMethod !== null && (strcasecmp($paymentMethod, 'Spot Cash') === 0 || strcasecmp($paymentMethod, 'Spot cash') === 0);
 
     $transitions = [
+        'reservation_requested' => ['reservation_confirmed', 'cancelled'],
+        'reservation_confirmed' => ['viewing_requested', 'reviewing_schedule', 'viewing_confirmed', 'payment_in_process', 'cancelled'],
         'viewing_requested' => ['reviewing_schedule', 'viewing_confirmed', 'cancelled'],
         'reviewing_schedule' => ['viewing_confirmed', 'viewing_completed', 'cancelled'],
         'viewing_confirmed' => ['viewing_completed', 'payment_in_process', 'cancelled'],
@@ -119,6 +123,30 @@ function get_transaction_stage_notification(
         ];
     }
 
+    if ($newStage === 'reservation_requested') {
+        return [
+            'title' => 'Property reservation request received',
+            'message' => sprintf(
+                "Hello %s,\n\nYour reservation request for '%s' has been received by our Sales Agent team.%s\n\nOnce your reservation is confirmed, your 7-day reservation hold will begin and you can schedule your property viewing.",
+                $clientName,
+                $propertyTitle,
+                $noteSection
+            ),
+        ];
+    }
+
+    if ($newStage === 'reservation_confirmed') {
+        return [
+            'title' => 'Reservation confirmed — You can now schedule a viewing',
+            'message' => sprintf(
+                "Hello %s,\n\nGreat news! Your reservation for '%s' has been confirmed and your 7-day reservation hold is now active.%s\n\nNext step: Visit the property listing or your dashboard to schedule your property viewing with your Sales Agent.",
+                $clientName,
+                $propertyTitle,
+                $noteSection
+            ),
+        ];
+    }
+
     if ($newStage === 'reviewing_schedule') {
         return [
             'title' => 'Viewing request accepted — Reviewing schedule',
@@ -147,7 +175,7 @@ function get_transaction_stage_notification(
         return [
             'title' => 'Viewing completed — Next: Payment processing',
             'message' => sprintf(
-                "Hello %s,\n\nYour property viewing for '%s' has been successfully completed! Your Sales Agent has completed the viewing.%s\n\nNext stage: Payment in process. Your Sales Agent will now coordinate payment terms and agreement paperwork.",
+                "Hello %s,\n\nYour property viewing for '%s' has been successfully completed! Your Sales Agent has completed the viewing.%s\n\nNext stage: Payment in process. Your Sales Agent will now coordinate your down payment / balance terms and agreement paperwork.",
                 $clientName,
                 $propertyTitle,
                 $noteSection
@@ -159,7 +187,7 @@ function get_transaction_stage_notification(
         return [
             'title' => 'Payment processing in progress',
             'message' => sprintf(
-                "Hello %s,\n\nPayment processing is now underway for '%s'. Your Sales Agent is actively coordinating the payment terms, down payment / reservation, and paperwork.%s\n\nNext stage: Document verification.",
+                "Hello %s,\n\nPayment processing is now underway for '%s'. Your Sales Agent is actively coordinating your payment terms, down payment / balance settlement, and paperwork.%s\n\nNext stage: Document verification.",
                 $clientName,
                 $propertyTitle,
                 $noteSection
@@ -238,6 +266,156 @@ function get_transaction_stage_notification(
             $noteSection
         ),
     ];
+}
+
+function get_active_property_reservation(mysqli $conn, int $propertyId): ?array
+{
+    if ($propertyId <= 0) {
+        return null;
+    }
+
+    $stmt = $conn->prepare(
+        "SELECT transactionID, clientID, appointmentID, inquiryID, currentStage, paymentMethod, createdAt, updatedAt
+         FROM property_transactions
+         WHERE propertyID = ?
+           AND currentStage NOT IN ('completed', 'cancelled', 'inquiry_received', 'contacting_client')
+         ORDER BY updatedAt DESC, transactionID DESC
+         LIMIT 1"
+    );
+    $stmt->bind_param('i', $propertyId);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    return $row ?: null;
+}
+
+function create_property_reservation(
+    mysqli $conn,
+    int $propertyId,
+    int $clientId,
+    ?string $paymentScheme = null,
+    ?float $reservationAmount = null,
+    string $referenceNo = '',
+    string $note = ''
+): int {
+    if ($propertyId <= 0 || $clientId <= 0) {
+        throw new InvalidArgumentException('Choose a valid property and client account.');
+    }
+    if ($paymentScheme !== null && $paymentScheme !== '' && !in_array($paymentScheme, property_staff_payment_methods(), true)) {
+        throw new InvalidArgumentException('Choose a supported payment scheme.');
+    }
+    if ($reservationAmount !== null && (!is_valid_transaction_currency_amount($reservationAmount) || $reservationAmount <= 0)) {
+        throw new InvalidArgumentException('Enter a reservation amount greater than zero or leave it blank.');
+    }
+    if (strlen($referenceNo) > 100) {
+        throw new InvalidArgumentException('The reference number must be 100 characters or fewer.');
+    }
+    if (strlen($note) > 1000) {
+        throw new InvalidArgumentException('Reservation notes must be 1,000 characters or fewer.');
+    }
+
+    $cleanScheme = ($paymentScheme !== null && $paymentScheme !== '') ? $paymentScheme : null;
+    $cleanRef = trim($referenceNo);
+    $cleanNote = trim($note);
+
+    $existingActiveStmt = $conn->prepare(
+        "SELECT transactionID, clientID
+         FROM property_transactions
+         WHERE propertyID = ?
+           AND currentStage NOT IN ('completed', 'cancelled', 'inquiry_received', 'contacting_client')
+         LIMIT 1
+         FOR UPDATE"
+    );
+    $existingActiveStmt->bind_param('i', $propertyId);
+    $existingActiveStmt->execute();
+    $existingActive = $existingActiveStmt->get_result()->fetch_assoc();
+    $existingActiveStmt->close();
+
+    if ($existingActive) {
+        if ((int) $existingActive['clientID'] === $clientId) {
+            throw new InvalidArgumentException('You already have an active reservation for this property.');
+        }
+        throw new InvalidArgumentException('This property already has an active reservation by another buyer.');
+    }
+
+    $inquiryTxStmt = $conn->prepare(
+        "SELECT transactionID
+         FROM property_transactions
+         WHERE propertyID = ? AND clientID = ?
+           AND currentStage IN ('inquiry_received', 'contacting_client')
+           AND appointmentID IS NULL
+         ORDER BY updatedAt DESC, transactionID DESC
+         LIMIT 1
+         FOR UPDATE"
+    );
+    $inquiryTxStmt->bind_param('ii', $propertyId, $clientId);
+    $inquiryTxStmt->execute();
+    $inquiryTx = $inquiryTxStmt->get_result()->fetch_assoc();
+    $inquiryTxStmt->close();
+
+    if ($inquiryTx) {
+        $transactionId = (int) $inquiryTx['transactionID'];
+        $updateStmt = $conn->prepare(
+            "UPDATE property_transactions
+             SET currentStage = 'reservation_requested',
+                 paymentMethod = COALESCE(?, paymentMethod),
+                 updatedAt = CURRENT_TIMESTAMP
+             WHERE transactionID = ?"
+        );
+        $updateStmt->bind_param('si', $cleanScheme, $transactionId);
+        $updateStmt->execute();
+        $updateStmt->close();
+    } else {
+        $insertStmt = $conn->prepare(
+            "INSERT INTO property_transactions
+                (propertyID, clientID, currentStage, paymentMethod)
+             VALUES (?, ?, 'reservation_requested', ?)"
+        );
+        $insertStmt->bind_param('iis', $propertyId, $clientId, $cleanScheme);
+        $insertStmt->execute();
+        $transactionId = (int) $conn->insert_id;
+        $insertStmt->close();
+    }
+
+    $eventNote = 'Client submitted a pre-viewing property reservation request.';
+    if ($cleanScheme !== null) {
+        $eventNote .= ' Preferred payment scheme: ' . $cleanScheme . '.';
+    }
+    if ($cleanNote !== '') {
+        $eventNote .= ' Note: ' . $cleanNote;
+    }
+    add_property_transaction_event($conn, $transactionId, 'reservation_requested', $eventNote, $clientId);
+
+    if ($reservationAmount !== null && $reservationAmount > 0) {
+        $mappedPayment = kq_map_staff_payment_to_register($cleanScheme ?? 'Cash', 'reservation_confirmed');
+        $paidDate = date('Y-m-d');
+        $pendingStatus = 'Pending';
+        $paymentType = 'Reservation';
+        $paymentNote = $cleanNote !== '' ? $cleanNote : 'Client submitted reservation fee details (pending verification).';
+        $payStmt = $conn->prepare(
+            'INSERT INTO payments
+                (transactionID, clientID, amount, paymentType, paymentMethod, referenceNo, status, paidAt, note, recordedBy)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        $payStmt->bind_param(
+            'iidssssssi',
+            $transactionId,
+            $clientId,
+            $reservationAmount,
+            $paymentType,
+            $mappedPayment['paymentMethod'],
+            $cleanRef,
+            $pendingStatus,
+            $paidDate,
+            $paymentNote,
+            $clientId
+        );
+        $payStmt->execute();
+        $payStmt->close();
+    }
+
+    return $transactionId;
 }
 
 function create_property_transaction(
@@ -325,56 +503,34 @@ function add_property_transaction_event(
     $stmt->close();
 }
 
-function get_verified_transaction_payment_total(mysqli $conn, int $transactionId): float
+function reconcile_verified_payment_entries(array $trackerRows, array $registerRows): array
 {
-    // Retrieve verified payments from property_transaction_payments (operational tracker)
-    $trackerStmt = $conn->prepare(
-        "SELECT paymentID, amount, referenceNumber, submittedAt
-         FROM property_transaction_payments
-         WHERE transactionID = ? AND status = 'confirmed' AND amount > 0"
-    );
-    $trackerStmt->bind_param('i', $transactionId);
-    $trackerStmt->execute();
-    $trackerRows = $trackerStmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    $trackerStmt->close();
-
-    // Retrieve verified payments from payments (admin register)
-    $registerStmt = $conn->prepare(
-        "SELECT paymentID, amount, referenceNo, paidAt
-         FROM payments
-         WHERE transactionID = ? AND status = 'Verified' AND amount > 0"
-    );
-    $registerStmt->bind_param('i', $transactionId);
-    $registerStmt->execute();
-    $registerRows = $registerStmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    $registerStmt->close();
-
-    // If only one ledger has records, return its sum directly
     if (empty($registerRows)) {
-        return (float) array_sum(array_column($trackerRows, 'amount'));
+        $total = (float) array_sum(array_map(static fn(array $row): float => (float) ($row['amount'] ?? 0), $trackerRows));
+        return ['total' => $total, 'count' => count($trackerRows)];
     }
     if (empty($trackerRows)) {
-        return (float) array_sum(array_column($registerRows, 'amount'));
+        $total = (float) array_sum(array_map(static fn(array $row): float => (float) ($row['amount'] ?? 0), $registerRows));
+        return ['total' => $total, 'count' => count($registerRows)];
     }
 
-    // Both ledgers have records: Reconcile to avoid double-counting counterpart entries
-    // while accurately accumulating distinct installment payments.
     $reconciledTotal = 0.0;
+    $reconciledCount = 0;
     $matchedRegisterIds = [];
 
     foreach ($trackerRows as $tRow) {
-        $tAmount = (float) $tRow['amount'];
+        $tAmount = (float) ($tRow['amount'] ?? 0);
         $tRef = trim((string) ($tRow['referenceNumber'] ?? ''));
         $reconciledTotal += $tAmount;
+        $reconciledCount++;
 
-        // Try to find counterpart in admin register
         foreach ($registerRows as $rRow) {
-            $rId = (int) $rRow['paymentID'];
+            $rId = (int) ($rRow['paymentID'] ?? 0);
             if (isset($matchedRegisterIds[$rId])) {
                 continue;
             }
-            $rAmount = (float) $rRow['amount'];
-            $rRef = trim((string) ($rRow['referenceNo'] ?? ''));
+            $rAmount = (float) ($rRow['amount'] ?? 0);
+            $rRef = trim((string) ($rRow['referenceNo'] ?? $rRow['referenceNumber'] ?? ''));
 
             $isRefMatch = ($tRef !== '' && $rRef !== '' && strcasecmp($tRef, $rRef) === 0);
             $isAmountMatch = (abs($tAmount - $rAmount) < 0.01 && ($tRef === '' || $rRef === ''));
@@ -386,15 +542,119 @@ function get_verified_transaction_payment_total(mysqli $conn, int $transactionId
         }
     }
 
-    // Add remaining unmatched verified payments from admin register (distinct installments)
     foreach ($registerRows as $rRow) {
-        $rId = (int) $rRow['paymentID'];
+        $rId = (int) ($rRow['paymentID'] ?? 0);
         if (!isset($matchedRegisterIds[$rId])) {
-            $reconciledTotal += (float) $rRow['amount'];
+            $reconciledTotal += (float) ($rRow['amount'] ?? 0);
+            $reconciledCount++;
         }
     }
 
-    return (float) $reconciledTotal;
+    return ['total' => (float) $reconciledTotal, 'count' => $reconciledCount];
+}
+
+function kq_map_staff_payment_to_register(string $staffMethod, string $targetStage): array
+{
+    $registerMethod = match (trim($staffMethod)) {
+        'Bank Transfer' => 'Bank Transfer',
+        'Check' => 'Check',
+        'Paperwork (Face-to-face)' => 'Other',
+        default => 'Cash',
+    };
+
+    $paymentType = match (true) {
+        strcasecmp(trim($staffMethod), 'Spot Cash') === 0 => 'Full Payment',
+        $targetStage === 'reservation_confirmed' || $targetStage === 'reservation_requested' => 'Reservation',
+        $targetStage === 'payment_in_process' => 'Down Payment',
+        $targetStage === 'completed' => 'Full Payment',
+        default => 'Down Payment',
+    };
+
+    return [
+        'paymentMethod' => $registerMethod,
+        'paymentType' => $paymentType,
+    ];
+}
+
+function get_transaction_payment_summaries(mysqli $conn, array $transactionIds): array
+{
+    $transactionIds = array_values(array_unique(array_filter(
+        array_map('intval', $transactionIds),
+        static fn(int $transactionId): bool => $transactionId > 0
+    )));
+    if ($transactionIds === []) {
+        return [];
+    }
+
+    $summaries = [];
+    foreach ($transactionIds as $transactionId) {
+        $summaries[$transactionId] = [
+            'verifiedTotal' => 0.0,
+            'verifiedCount' => 0,
+            'pendingTotal' => 0.0,
+            'pendingCount' => 0,
+        ];
+    }
+
+    $transactionIdList = implode(',', $transactionIds);
+    $verifiedTrackerByTx = [];
+    $verifiedRegisterByTx = [];
+
+    $trackerRes = $conn->query(
+        "SELECT paymentID, transactionID, amount, referenceNumber, status
+         FROM property_transaction_payments
+         WHERE transactionID IN ($transactionIdList)
+           AND status IN ('confirmed', 'pending', 'in_process')
+           AND amount > 0"
+    );
+    while ($row = $trackerRes->fetch_assoc()) {
+        $txId = (int) $row['transactionID'];
+        $status = strtolower((string) $row['status']);
+        if ($status === 'confirmed') {
+            $verifiedTrackerByTx[$txId][] = $row;
+        } else {
+            $summaries[$txId]['pendingTotal'] += (float) $row['amount'];
+            $summaries[$txId]['pendingCount']++;
+        }
+    }
+
+    $registerRes = $conn->query(
+        "SELECT paymentID, transactionID, amount, referenceNo, status
+         FROM payments
+         WHERE transactionID IN ($transactionIdList)
+           AND status IN ('Verified', 'Pending')
+           AND amount > 0"
+    );
+    while ($row = $registerRes->fetch_assoc()) {
+        $txId = (int) $row['transactionID'];
+        if ((string) $row['status'] === 'Verified') {
+            $verifiedRegisterByTx[$txId][] = $row;
+        } else {
+            $summaries[$txId]['pendingTotal'] += (float) $row['amount'];
+            $summaries[$txId]['pendingCount']++;
+        }
+    }
+
+    foreach ($transactionIds as $txId) {
+        $reconciled = reconcile_verified_payment_entries(
+            $verifiedTrackerByTx[$txId] ?? [],
+            $verifiedRegisterByTx[$txId] ?? []
+        );
+        $summaries[$txId]['verifiedTotal'] = $reconciled['total'];
+        $summaries[$txId]['verifiedCount'] = $reconciled['count'];
+    }
+
+    return $summaries;
+}
+
+function get_verified_transaction_payment_total(mysqli $conn, int $transactionId): float
+{
+    if ($transactionId <= 0) {
+        return 0.0;
+    }
+
+    $summaries = get_transaction_payment_summaries($conn, [$transactionId]);
+    return (float) ($summaries[$transactionId]['verifiedTotal'] ?? 0.0);
 }
 
 function get_transaction_payment_records(mysqli $conn, array $transactionIds): array
@@ -411,19 +671,21 @@ function get_transaction_payment_records(mysqli $conn, array $transactionIds): a
     $records = [];
     $trackerRows = $conn->query(
         "SELECT paymentID, transactionID, amount, paymentMethod, referenceNumber,
-                status, submittedAt, reviewNote
+                status, submittedAt, reviewNote, reviewedBy
          FROM property_transaction_payments
          WHERE transactionID IN ($transactionIdList)
          ORDER BY submittedAt DESC, paymentID DESC"
     );
     while ($payment = $trackerRows->fetch_assoc()) {
         $payment['status'] = strtolower((string) $payment['status']);
-        $payment['sourceLabel'] = 'Client report';
+        $payment['paymentType'] = 'Transaction payment';
+        $payment['sourceLabel'] = !empty($payment['reviewedBy']) ? 'Staff record' : 'Client report';
+        $payment['isClientReport'] = empty($payment['reviewedBy']);
         $records[(int) $payment['transactionID']][] = $payment;
     }
 
     $registerRows = $conn->query(
-        "SELECT paymentID, transactionID, amount, paymentMethod, referenceNo AS referenceNumber,
+        "SELECT paymentID, transactionID, amount, paymentType, paymentMethod, referenceNo AS referenceNumber,
                 status, paidAt AS submittedAt, note AS reviewNote
          FROM payments
          WHERE transactionID IN ($transactionIdList)
@@ -435,7 +697,8 @@ function get_transaction_payment_records(mysqli $conn, array $transactionIds): a
             'Rejected' => 'rejected',
             default => 'pending',
         };
-        $payment['sourceLabel'] = 'Staff record';
+        $payment['sourceLabel'] = 'Official ledger';
+        $payment['isClientReport'] = false;
         $records[(int) $payment['transactionID']][] = $payment;
     }
 
@@ -774,10 +1037,11 @@ function advance_property_transaction(
             }
         } else {
             $defaultNotes = [
+                'reservation_confirmed' => 'Reservation confirmed by ' . $actorName . '. 7-day reservation hold is active; client may now schedule a property viewing.',
                 'reviewing_schedule' => 'Viewing accepted by ' . $actorName,
                 'viewing_confirmed' => 'Viewing schedule confirmed by ' . $actorName . '.',
                 'viewing_completed' => 'Sales Agent team completed the property viewing with the Client.',
-                'payment_in_process' => 'Payment processing initiated: Sales Agent is coordinating payment terms and paperwork.',
+                'payment_in_process' => 'Payment processing initiated: Sales Agent is coordinating down payment / balance terms and paperwork.',
                 'document_verification' => 'Payment processing completed. Sales Agent is verifying property title deeds, clearances, and documents.',
                 'payment_confirmation' => 'Document verification completed. Sales Agent is finalizing payment confirmation and receipts.',
                 'completed' => 'Payment confirmation complete. Transaction finalized and property successfully turned over.',
@@ -786,7 +1050,7 @@ function advance_property_transaction(
             $effectiveNote = $cleanNote !== '' ? $cleanNote : ($defaultNotes[$newStage] ?? 'Transaction advanced to ' . str_replace('_', ' ', $newStage));
         }
 
-        // Record payment if agent provided payment details in this submission so it counts toward verification
+        // Record payment in the unified official ledger if staff provided a payment amount
         $clientId = (int) $transaction['clientID'];
         if ($paymentAmount !== null && $paymentAmount > 0) {
             if (
@@ -795,16 +1059,31 @@ function advance_property_transaction(
             ) {
                 throw new InvalidArgumentException('Choose a supported payment method before recording a payment.');
             }
-            if (!in_array($newStage, ['payment_in_process', 'document_verification', 'payment_confirmation', 'completed'], true)) {
-                throw new InvalidArgumentException('Payment details can only be recorded during payment processing or finalization.');
+            if (!in_array($newStage, ['reservation_confirmed', 'payment_in_process', 'document_verification', 'payment_confirmation', 'completed'], true)) {
+                throw new InvalidArgumentException('Payment details can only be recorded during reservation confirmation, payment processing, or finalization.');
             }
             $refNumber = !empty($paymentRef) ? $paymentRef : 'Paperwork verified';
+            $mappedPayment = kq_map_staff_payment_to_register($effectivePaymentMethod, $newStage);
+            $paidDate = date('Y-m-d');
+            $verifiedStatus = 'Verified';
             $insPayment = $conn->prepare(
-                "INSERT INTO property_transaction_payments
-                    (transactionID, clientID, amount, paymentMethod, referenceNumber, status, reviewedAt, reviewedBy, reviewNote)
-                 VALUES (?, ?, ?, ?, ?, 'confirmed', CURRENT_TIMESTAMP, ?, ?)"
+                'INSERT INTO payments
+                    (transactionID, clientID, amount, paymentType, paymentMethod, referenceNo, status, paidAt, note, recordedBy)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
             );
-            $insPayment->bind_param('iidssis', $transactionId, $clientId, $paymentAmount, $effectivePaymentMethod, $refNumber, $actorId, $effectiveNote);
+            $insPayment->bind_param(
+                'iidssssssi',
+                $transactionId,
+                $clientId,
+                $paymentAmount,
+                $mappedPayment['paymentType'],
+                $mappedPayment['paymentMethod'],
+                $refNumber,
+                $verifiedStatus,
+                $paidDate,
+                $effectiveNote,
+                $actorId
+            );
             $insPayment->execute();
             $insPayment->close();
         }

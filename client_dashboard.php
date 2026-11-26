@@ -267,7 +267,7 @@ $appointmentStmt->execute();
 $appointmentRows = $appointmentStmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $trackingStmt = $conn->prepare(
     "SELECT t.transactionID, t.propertyID, t.currentStage, t.salePrice, t.paymentMethod, t.createdAt, t.updatedAt,
-            p.title, p.image, p.propertyType, a.appointmentDate, a.appointmentTime,
+            p.title, p.image, p.propertyType, p.price AS listingPrice, a.appointmentDate, a.appointmentTime,
             l.municipalityName, l.provinceName, p.location,
             COALESCE(
                 apptAgent.fullname,
@@ -345,9 +345,13 @@ $totalClientAppointments = (int) $clientDashboardCounts['viewingRequests'];
 $pendingClientAppointments = (int) $clientDashboardCounts['pendingViewingRequests'];
 $totalClientInquiries = (int) $clientDashboardCounts['inquiries'];
 $trackingEvents = [];
+$paymentSummaries = [];
+$paymentRecordsByTx = [];
 if ($trackingRows !== []) {
     $transactionIds = array_map(static fn(array $row): int => (int) $row['transactionID'], $trackingRows);
     $transactionIdList = implode(',', $transactionIds);
+    $paymentSummaries = get_transaction_payment_summaries($conn, $transactionIds);
+    $paymentRecordsByTx = get_transaction_payment_records($conn, $transactionIds);
     $events = $conn->query(
         "SELECT e.eventID, e.transactionID, e.stage, e.note, e.createdAt,
                 u.fullname AS changedByName
@@ -363,6 +367,8 @@ if ($trackingRows !== []) {
 
 $stageLabels = property_transaction_stages();
 $progressStages = [
+    'reservation_requested',
+    'reservation_confirmed',
     'viewing_requested',
     'reviewing_schedule',
     'viewing_confirmed',
@@ -475,11 +481,20 @@ $progressStages = [
                 $stageBadgeClass = match ($stage) {
                     'completed' => 'text-bg-success',
                     'cancelled' => 'text-bg-secondary',
+                    'reservation_requested' => 'text-bg-warning text-dark',
+                    'reservation_confirmed' => 'text-bg-success',
                     'reviewing_schedule' => 'text-bg-info text-dark',
                     'payment_in_process' => 'text-bg-warning text-dark',
                     'payment_confirmation' => 'text-bg-info text-dark',
                     default => 'text-bg-primary',
                 };
+                $txPaySummary = $paymentSummaries[$transactionId] ?? ['verifiedTotal' => 0.0, 'verifiedCount' => 0, 'pendingTotal' => 0.0, 'pendingCount' => 0];
+                $txPayRecords = $paymentRecordsByTx[$transactionId] ?? [];
+                $txVerifiedPaid = (float) $txPaySummary['verifiedTotal'];
+                $txPendingPaid = (float) $txPaySummary['pendingTotal'];
+                $txTargetPrice = $tracking['salePrice'] !== null ? (float) $tracking['salePrice'] : (float) ($tracking['listingPrice'] ?? 0);
+                $txRemaining = $txTargetPrice > 0 ? max($txTargetPrice - $txVerifiedPaid, 0.0) : 0.0;
+                $txPaidPercent = $txTargetPrice > 0 ? min(100, (int) round(($txVerifiedPaid / $txTargetPrice) * 100)) : 0;
             ?>
                 <!-- Clickable Property Card Button -->
                 <div class="col-12" id="trackingCardCol<?= $transactionId ?>">
@@ -522,7 +537,14 @@ $progressStages = [
                                     </div>
                                     <?php if ($stage === 'completed' && $tracking['salePrice'] !== null): ?>
                                         <div class="small fw-semibold text-success mt-1">
-                                            💰 Verified sale price: ₱<?= number_format((float) $tracking['salePrice'], 2) ?>
+                                            💰 Verified sale price: ₱<?= number_format((float) $tracking['salePrice'], 2) ?> · Paid: ₱<?= number_format($txVerifiedPaid, 2) ?>
+                                        </div>
+                                    <?php elseif ($txVerifiedPaid > 0 || $txPendingPaid > 0): ?>
+                                        <div class="small text-muted mt-1">
+                                            💳 Verified paid: <strong class="text-success">₱<?= number_format($txVerifiedPaid, 2) ?></strong>
+                                            <?php if ($txTargetPrice > 0): ?>
+                                                · Balance: <strong>₱<?= number_format($txRemaining, 2) ?></strong>
+                                            <?php endif; ?>
                                         </div>
                                     <?php endif; ?>
                                 </div>
@@ -609,6 +631,29 @@ $progressStages = [
                                             This transaction tracking request was cancelled. If you wish to inquire again, feel free to submit a new inquiry or message our sales team.
                                         </div>
                                     </div>
+                                <?php elseif ($stage === 'reservation_requested'): ?>
+                                    <div class="alert alert-warning small py-2 mb-3 d-flex align-items-start gap-2" role="status">
+                                        <i class="bi bi-bookmark-check fs-5 text-warning-emphasis flex-shrink-0 mt-1"></i>
+                                        <div>
+                                            <strong>Step 1: Reservation Requested</strong>
+                                            <p class="mb-0 mt-1">Your pre-viewing reservation request has been received. Once a Sales Agent confirms your reservation, your 7-day reservation hold will start and you can schedule a property viewing.</p>
+                                        </div>
+                                    </div>
+                                <?php elseif ($stage === 'reservation_confirmed'):
+                                    $stageUpdateTs = !empty($tracking['updatedAt']) ? strtotime($tracking['updatedAt']) : time();
+                                    $daysElapsed = (int) floor((time() - $stageUpdateTs) / 86400);
+                                    $daysLeft = max(0, 7 - $daysElapsed);
+                                ?>
+                                    <div class="alert alert-success small py-2 mb-3 d-flex align-items-start justify-content-between flex-wrap gap-2" role="status">
+                                        <div class="d-flex align-items-start gap-2">
+                                            <i class="bi bi-check-circle-fill fs-5 text-success flex-shrink-0 mt-1"></i>
+                                            <div>
+                                                <strong>Step 2: Reservation Confirmed — Schedule Your Viewing</strong>
+                                                <p class="mb-2 mt-1">Your 7-day reservation hold is active (<strong><?= $daysLeft > 0 ? ($daysLeft . ' day' . ($daysLeft === 1 ? '' : 's') . ' remaining') : 'Window elapsed' ?></strong>). You can now schedule your property viewing!</p>
+                                                <a href="property_detail.php?id=<?= (int) $tracking['propertyID'] ?>#appointment" class="btn btn-sm btn-success fw-semibold">Schedule Property Viewing &rarr;</a>
+                                            </div>
+                                        </div>
+                                    </div>
                                 <?php elseif ($stage === 'viewing_requested'): ?>
                                     <div class="alert alert-primary small py-2 mb-3 d-flex align-items-start gap-2" role="status">
                                         <i class="bi bi-calendar-event fs-5 text-primary flex-shrink-0 mt-1"></i>
@@ -649,12 +694,12 @@ $progressStages = [
                                                 <?php endif; ?>
                                             </strong>
                                             <?php if ($stage === 'viewing_completed'): ?>
-                                                <p class="mb-0 mt-1">Your property viewing was successfully conducted! Coordinate with your Sales Agent to finalize your preferred terms and transaction paperwork.</p>
+                                                <p class="mb-0 mt-1">Your property viewing was successfully conducted! Coordinate with your Sales Agent to finalize your payment terms and down payment paperwork.</p>
                                             <?php elseif ($stage === 'payment_in_process'): ?>
                                                 <?php if ($isSpotCash): ?>
                                                     <p class="mb-0 mt-1">Spot Cash selected! Document verification is skipped for Spot Cash transactions. Settle the balance to advance directly to final Deed of Absolute Sale (DOAS) preparation and turnover.</p>
                                                 <?php else: ?>
-                                                    <p class="mb-0 mt-1">Payment processing is active. Settle your reservation deposit / down payment with your Sales Agent within the 7-day grace period to proceed with document verification.</p>
+                                                    <p class="mb-0 mt-1">Payment processing is active. Settle your down payment / balance with your Sales Agent to proceed with document verification.</p>
                                                 <?php endif; ?>
                                             <?php elseif ($stage === 'document_verification'): ?>
                                                 <p class="mb-0 mt-1">Your Sales Agent is actively verifying property title deeds (TCT/CCT), tax declarations, and government clearance papers.</p>
@@ -665,32 +710,18 @@ $progressStages = [
                                     </div>
 
                                     <!-- 7-Day Reservation & Legal Pathway Guidance -->
-                                    <?php if (in_array($stage, ['viewing_completed', 'payment_in_process'], true)):
-                                        $stageUpdateTs = !empty($tracking['updatedAt']) ? strtotime($tracking['updatedAt']) : time();
-                                        $daysElapsed = (int) floor((time() - $stageUpdateTs) / 86400);
-                                        $daysLeft = max(0, 7 - $daysElapsed);
-                                    ?>
-                                        <div class="p-2 px-3 rounded-3 mb-3 bg-warning-subtle border border-warning small d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                    <?php if ($stage === 'viewing_completed'): ?>
+                                        <div class="p-2 px-3 rounded-3 mb-3 bg-light border small d-flex align-items-center justify-content-between flex-wrap gap-2">
                                             <div class="d-flex align-items-center gap-2">
                                                 <span class="fs-5">⏳</span>
                                                 <div>
-                                                    <strong class="text-dark">7-Day Reservation Grace Period:</strong>
+                                                    <strong class="text-dark">7-Day Reservation Policy:</strong>
                                                     <div class="text-muted" style="font-size: 0.78rem;">
-                                                        <?php if ($stage === 'payment_in_process'): ?>
-                                                            <?php if ($daysLeft > 0): ?>
-                                                                Down payment settlement window is active. <strong><?= $daysLeft ?> day<?= $daysLeft === 1 ? '' : 's' ?> remaining</strong> to submit compliance IDs and finalize reservation.
-                                                            <?php else: ?>
-                                                                The 7-day reservation window has elapsed. Please contact your assigned agent immediately to verify your reservation status.
-                                                            <?php endif; ?>
-                                                        <?php else: ?>
-                                                            Please settle the down payment and required compliance documents within 7 days once payment processing begins.
-                                                        <?php endif; ?>
+                                                        Complete your down payment and compliance documents within your 7-day reservation window to advance to contract preparation.
                                                     </div>
                                                 </div>
                                             </div>
-                                            <span class="badge <?= ($stage === 'payment_in_process' && $daysLeft === 0) ? 'text-bg-danger text-white' : 'text-bg-warning text-dark' ?> fw-bold">
-                                                <?= $stage === 'payment_in_process' ? ($daysLeft > 0 ? ($daysLeft . ' Day' . ($daysLeft === 1 ? '' : 's') . ' Left') : 'Grace Period Expired') : '7-Day Rule' ?>
-                                            </span>
+                                            <span class="badge text-bg-warning text-dark fw-bold">7-Day Rule</span>
                                         </div>
                                     <?php endif; ?>
 
@@ -761,6 +792,75 @@ $progressStages = [
                                             <span>Current milestone: <strong><?= htmlspecialchars($stageLabels[$stage] ?? $stage, ENT_QUOTES, 'UTF-8') ?></strong></span>
                                             <span>Updated: <?= htmlspecialchars($tracking['updatedAt'], ENT_QUOTES, 'UTF-8') ?></span>
                                         </div>
+                                    </div>
+                                <?php endif; ?>
+
+                                <?php if ($txVerifiedPaid > 0 || $txPendingPaid > 0 || $txPayRecords !== [] || in_array($stage, ['viewing_completed', 'payment_in_process', 'document_verification', 'payment_confirmation', 'completed'], true)): ?>
+                                    <div class="border rounded-3 p-3 bg-white mb-3 shadow-none">
+                                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                                            <h4 class="h6 fw-bold mb-0"><i class="bi bi-wallet2 me-1"></i> Payment Summary &amp; Receipts</h4>
+                                            <?php if ($txTargetPrice > 0): ?>
+                                                <span class="small fw-semibold text-muted"><?= $txPaidPercent ?>% settled</span>
+                                            <?php endif; ?>
+                                        </div>
+                                        <p class="small text-muted mb-2">Payments are settled offline with your Sales Agent or office. Once verified, they appear below.</p>
+                                        <div class="row g-2 small text-center mb-2">
+                                            <div class="col-4">
+                                                <div class="p-2 rounded-2 bg-body-tertiary border">
+                                                    <div class="text-muted" style="font-size: 0.72rem;"><?= $tracking['salePrice'] !== null ? 'Agreed Price' : 'Listing Price' ?></div>
+                                                    <div class="fw-bold text-dark">₱<?= number_format($txTargetPrice, 2) ?></div>
+                                                </div>
+                                            </div>
+                                            <div class="col-4">
+                                                <div class="p-2 rounded-2 bg-body-tertiary border">
+                                                    <div class="text-muted" style="font-size: 0.72rem;">Verified Paid</div>
+                                                    <div class="fw-bold text-success">₱<?= number_format($txVerifiedPaid, 2) ?></div>
+                                                </div>
+                                            </div>
+                                            <div class="col-4">
+                                                <div class="p-2 rounded-2 bg-body-tertiary border">
+                                                    <div class="text-muted" style="font-size: 0.72rem;">Remaining</div>
+                                                    <div class="fw-bold">
+                                                        <?= ($txRemaining <= 0.01 && $txTargetPrice > 0) ? 'Fully paid' : ('₱' . number_format($txRemaining, 2)) ?>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <?php if ($txTargetPrice > 0): ?>
+                                            <div class="progress mb-2" style="height: 0.5rem;" role="progressbar" aria-label="Payment progress" aria-valuenow="<?= $txPaidPercent ?>" aria-valuemin="0" aria-valuemax="100">
+                                                <div class="progress-bar bg-success" style="width: <?= $txPaidPercent ?>%"></div>
+                                            </div>
+                                        <?php endif; ?>
+                                        <?php if ($txPayRecords !== []): ?>
+                                            <div class="d-grid gap-2 mt-2">
+                                                <?php foreach ($txPayRecords as $payRecord):
+                                                    $payBadgeClass = match ($payRecord['status']) {
+                                                        'confirmed' => 'text-bg-success',
+                                                        'rejected' => 'text-bg-danger',
+                                                        default => 'text-bg-warning text-dark',
+                                                    };
+                                                    $payStatusLabel = match ($payRecord['status']) {
+                                                        'confirmed' => 'Verified',
+                                                        'rejected' => 'Rejected',
+                                                        default => 'Pending review',
+                                                    };
+                                                ?>
+                                                    <div class="border rounded-2 p-2 small bg-body-tertiary d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                                        <div>
+                                                            <div class="fw-semibold">
+                                                                ₱<?= number_format((float) $payRecord['amount'], 2) ?> · <?= htmlspecialchars($payRecord['paymentType'] ?? $payRecord['paymentMethod'], ENT_QUOTES, 'UTF-8') ?>
+                                                                <span class="text-muted fw-normal">(<?= htmlspecialchars($payRecord['paymentMethod'], ENT_QUOTES, 'UTF-8') ?>)</span>
+                                                            </div>
+                                                            <div class="text-muted" style="font-size: 0.76rem;">
+                                                                <?= htmlspecialchars(date('M j, Y', strtotime((string) $payRecord['submittedAt'])), ENT_QUOTES, 'UTF-8') ?>
+                                                                <?php if (!empty($payRecord['referenceNumber'])): ?> · Ref: <?= htmlspecialchars($payRecord['referenceNumber'], ENT_QUOTES, 'UTF-8') ?><?php endif; ?>
+                                                            </div>
+                                                        </div>
+                                                        <span class="badge <?= $payBadgeClass ?>"><?= htmlspecialchars($payStatusLabel, ENT_QUOTES, 'UTF-8') ?></span>
+                                                    </div>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        <?php endif; ?>
                                     </div>
                                 <?php endif; ?>
 

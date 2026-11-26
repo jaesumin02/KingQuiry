@@ -43,10 +43,10 @@ include __DIR__ . '/includes/header.php';
             <div class="p-3 rounded-3 bg-light border h-100">
                 <div class="d-flex align-items-center gap-2 mb-2">
                     <span class="fs-5">⏳</span>
-                    <h3 class="h6 fw-bold mb-0 text-dark">7-Day Reservation Policy</h3>
+                    <h3 class="h6 fw-bold mb-0 text-dark">7-Day Reservation Policy (Before Viewing)</h3>
                 </div>
                 <p class="small text-muted mb-0">
-                    Upon settlement of an initial reservation deposit, a strict <strong>7-day grace period</strong> is initiated. During these 7 days, the buyer must finalize their down payment terms and submit all required compliance identification before the property is advanced to contract preparation.
+                    In Kings Land Properties, a <strong>property reservation is required before scheduling a viewing</strong>. Once a reservation is confirmed, a strict <strong>7-day hold period</strong> begins for the buyer to complete their property viewing, finalize payment terms, and submit required compliance IDs.
                 </p>
             </div>
         </div>

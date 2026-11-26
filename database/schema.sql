@@ -436,26 +436,26 @@ FROM (
     UNION ALL SELECT
         'Condo Unit in Batangas City',
         'Condo unit in Batangas City, Batangas. Contact our team to confirm availability and arrange a viewing.',
-        3500000.00, 100000.00, 35.00, 'Condo',
-        'Condo unit with a listed floor area of 35 sq.m.',
+        3500000.00, 70000.00, 50.00, 'Condo',
+        'Condo unit with a listed floor area of 50 sq.m.',
         'representative-condo-04.jpg'
     UNION ALL SELECT
         'House and Lot in Batangas City',
         'House and lot property in Batangas City, Batangas. Contact our team to confirm availability and arrange a viewing.',
-        4500000.00, 30000.00, 150.00, 'House and Lot',
-        'House and lot property in Batangas City.',
+        4500000.00, 18000.00, 250.00, 'House and Lot',
+        'House and lot property with a listed lot area of 250 sq.m.',
         'representative-residential-06.jpg'
     UNION ALL SELECT
         'Townhouse in Batangas City',
         'Townhouse property in Batangas City, Batangas. Contact our team to confirm availability and arrange a viewing.',
-        3200000.00, 40000.00, 80.00, 'Townhouse',
-        'Townhouse with a listed area of 80 sq.m.',
+        3200000.00, 20000.00, 160.00, 'Townhouse',
+        'Townhouse with a listed area of 160 sq.m.',
         'representative-residential-07.jpg'
     UNION ALL SELECT
         'Apartment in Batangas City',
-        'Apartment unit in Batangas City, Batangas. Contact our team to confirm availability and arrange a viewing.',
-        2500000.00, 100000.00, 25.00, 'Apartment',
-        'Apartment unit with a listed floor area of 25 sq.m.',
+        'Apartment property in Batangas City, Batangas. Contact our team to confirm availability and arrange a viewing.',
+        2500000.00, 20000.00, 125.00, 'Apartment',
+        'Apartment property with a listed area of 125 sq.m.',
         'representative-condo-05.jpg'
     UNION ALL SELECT
         'Warehouse in Batangas City',
@@ -466,8 +466,8 @@ FROM (
     UNION ALL SELECT
         'Office Space in Batangas City',
         'Office space in Batangas City, Batangas. Contact our team to confirm availability and arrange a viewing.',
-        2800000.00, 80000.00, 35.00, 'Office Space',
-        'Office space with a listed floor area of 35 sq.m.',
+        2800000.00, 28000.00, 100.00, 'Office Space',
+        'Office space with a listed floor area of 100 sq.m.',
         'representative-commercial-07.jpg'
     UNION ALL SELECT
         'Resort in Batangas City',

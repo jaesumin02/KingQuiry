@@ -113,20 +113,12 @@ $transactions = [];
 $transactionQuery = $conn->prepare(
     "SELECT t.transactionID, t.propertyID, t.clientID, t.currentStage, t.salePrice,
             t.createdAt, t.updatedAt,
-            p.title, p.location, l.municipalityName, l.provinceName,
-            u.fullname AS clientName, u.email AS clientEmail,
-            COALESCE(pay.paidTotal, 0) AS verifiedPaid,
-            COALESCE(pay.paymentCount, 0) AS verifiedPaymentCount
+            p.title, p.location, p.price AS listingPrice, l.municipalityName, l.provinceName,
+            u.fullname AS clientName, u.email AS clientEmail
      FROM property_transactions t
      JOIN properties p ON p.propertyID = t.propertyID
      JOIN users u ON u.userID = t.clientID
      LEFT JOIN property_locations l ON l.locationID = p.locationID
-     LEFT JOIN (
-        SELECT transactionID, SUM(amount) AS paidTotal, COUNT(*) AS paymentCount
-        FROM payments
-        WHERE status = 'Verified'
-        GROUP BY transactionID
-     ) pay ON pay.transactionID = t.transactionID
      WHERE " . implode(' AND ', $where) . "
      ORDER BY (t.currentStage IN ('completed', 'cancelled')) ASC, t.updatedAt DESC, t.transactionID DESC
      LIMIT 300"
@@ -139,6 +131,9 @@ $transactionResult = $transactionQuery->get_result();
 while ($row = $transactionResult->fetch_assoc()) {
     $transactions[] = $row;
 }
+$salesPaymentSummaries = $transactions !== []
+    ? get_transaction_payment_summaries($conn, array_column($transactions, 'transactionID'))
+    : [];
 
 include 'includes/header.php';
 ?>
@@ -297,15 +292,20 @@ include 'includes/header.php';
                 </thead>
                 <tbody>
                     <?php foreach ($transactions as $transaction):
+                        $txId = (int) $transaction['transactionID'];
                         $currentStage = (string) $transaction['currentStage'];
                         $location = !empty($transaction['municipalityName'])
                             ? $transaction['municipalityName'] . ', ' . $transaction['provinceName']
                             : $transaction['location'];
-                        $verifiedPaid = (float) $transaction['verifiedPaid'];
+                        $txPaySummary = $salesPaymentSummaries[$txId] ?? ['verifiedTotal' => 0.0, 'verifiedCount' => 0];
+                        $verifiedPaid = (float) $txPaySummary['verifiedTotal'];
+                        $verifiedPaymentCount = (int) $txPaySummary['verifiedCount'];
                         $salePrice = $transaction['salePrice'] !== null ? (float) $transaction['salePrice'] : null;
-                        $paidPercent = $salePrice !== null && $salePrice > 0
-                            ? min(100, (int) round(($verifiedPaid / $salePrice) * 100))
+                        $targetPrice = $salePrice ?? (float) ($transaction['listingPrice'] ?? 0);
+                        $paidPercent = $targetPrice > 0
+                            ? min(100, (int) round(($verifiedPaid / $targetPrice) * 100))
                             : 0;
+                        $remainingBalance = $targetPrice > 0 ? max($targetPrice - $verifiedPaid, 0.0) : 0.0;
                     ?>
                         <tr>
                             <td class="fw-semibold text-nowrap">#KQT-<?= (int) $transaction['transactionID'] ?></td>
@@ -320,6 +320,8 @@ include 'includes/header.php';
                                 $stageBadgeClass = match ($currentStage) {
                                     'completed' => 'text-bg-success',
                                     'cancelled' => 'text-bg-secondary',
+                                    'reservation_requested' => 'text-bg-warning text-dark',
+                                    'reservation_confirmed' => 'text-bg-success',
                                     'payment_in_process' => 'text-bg-warning text-dark',
                                     'payment_confirmation' => 'text-bg-info text-dark',
                                     default => 'text-bg-primary',
@@ -337,12 +339,17 @@ include 'includes/header.php';
                             <td class="small" style="min-width: 11rem;">
                                 <div class="d-flex justify-content-between mb-1">
                                     <span class="fw-semibold"><?= kq_format_peso($verifiedPaid) ?></span>
-                                    <?php if ($salePrice !== null): ?><span class="text-muted"><?= $paidPercent ?>%</span><?php endif; ?>
+                                    <?php if ($targetPrice > 0): ?><span class="text-muted"><?= $paidPercent ?>%</span><?php endif; ?>
                                 </div>
-                                <div class="progress" role="progressbar" aria-label="Verified payment progress for transaction #KQT-<?= (int) $transaction['transactionID'] ?>" aria-valuenow="<?= $paidPercent ?>" aria-valuemin="0" aria-valuemax="100" style="height: .5rem;">
+                                <div class="progress" role="progressbar" aria-label="Verified payment progress for transaction #KQT-<?= $txId ?>" aria-valuenow="<?= $paidPercent ?>" aria-valuemin="0" aria-valuemax="100" style="height: .5rem;">
                                     <div class="progress-bar bg-success" style="width: <?= $paidPercent ?>%"></div>
                                 </div>
-                                <div class="text-muted mt-1"><?= (int) $transaction['verifiedPaymentCount'] ?> verified payment(s)</div>
+                                <div class="text-muted mt-1">
+                                    <?= $verifiedPaymentCount ?> verified payment(s)
+                                    <?php if ($salePrice !== null): ?>
+                                        · <?= $remainingBalance <= 0.01 ? 'Fully paid' : (kq_format_peso($remainingBalance) . ' left') ?>
+                                    <?php endif; ?>
+                                </div>
                             </td>
                             <td class="small text-nowrap"><?= kq_e($transaction['updatedAt']) ?></td>
                             <td>
