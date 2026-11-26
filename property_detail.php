@@ -506,18 +506,76 @@ include 'includes/header.php';
             <p class="text-muted mb-3">Location: <strong><?= htmlspecialchars(property_location_label($property), ENT_QUOTES, 'UTF-8') ?><?php if (!empty($property['barangay'])): ?>, <?= htmlspecialchars($property['barangay'], ENT_QUOTES, 'UTF-8') ?><?php endif; ?></strong></p>
             
             <?php
+            $galleryImages = get_property_gallery_images($conn, $propertyID);
             $imageName = basename((string) ($property['image'] ?? ''));
-            $imagePath = __DIR__ . '/assets/images/' . $imageName;
-            $imageCredit = $imageName !== '' && is_file($imagePath) ? get_property_image_credit($imageName) : null;
+            if ($imageName === '' || $imageName === 'default.jpg') {
+                $imageName = property_representative_image((string) $property['propertyType']) ?? '';
+            }
+            if (empty($galleryImages) && $imageName !== '') {
+                $galleryImages = [
+                    [
+                        'imageID' => 0,
+                        'propertyID' => $propertyID,
+                        'imagePath' => $imageName,
+                        'caption' => 'Property Overview',
+                        'isPrimary' => 1
+                    ]
+                ];
+            }
+            $activeImage = !empty($galleryImages) ? $galleryImages[0]['imagePath'] : $imageName;
+            $activeCaption = !empty($galleryImages) ? ($galleryImages[0]['caption'] ?? '') : '';
+            $activePath = __DIR__ . '/assets/images/' . $activeImage;
+            $activeCredit = $activeImage !== '' && is_file($activePath) ? get_property_image_credit($activeImage) : null;
+            $totalPhotos = count($galleryImages);
             ?>
-            <?php if ($imageName !== '' && is_file($imagePath)): ?>
-                <img src="assets/images/<?= rawurlencode($imageName) ?>" class="img-fluid rounded-4 <?= $imageCredit ? 'mb-1' : 'mb-4' ?>" alt="<?= htmlspecialchars($imageCredit ? 'Illustrative photo for ' . $displayTitle : $displayTitle, ENT_QUOTES, 'UTF-8') ?>" style="max-height: 420px; width: 100%; object-fit: cover;">
-                <?php if ($imageCredit): ?>
-                    <p class="small text-muted mb-4" style="font-size: .78rem;">
-                        Image credit: <a href="<?= htmlspecialchars($imageCredit['sourceUrl'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer"><?= htmlspecialchars($imageCredit['title'] . ' by ' . $imageCredit['creator'], ENT_QUOTES, 'UTF-8') ?></a>,
-                        <a href="<?= htmlspecialchars($imageCredit['licenseUrl'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer"><?= htmlspecialchars($imageCredit['license'], ENT_QUOTES, 'UTF-8') ?></a>.
-                    </p>
-                <?php endif; ?>
+            <?php if (!empty($galleryImages)): ?>
+                <div class="kq-property-gallery-container mb-4" id="propertyGallery">
+                    <!-- Main Featured Showcase Photo -->
+                    <div class="position-relative overflow-hidden rounded-4 shadow-sm" style="background: #0f172a; min-height: 260px; max-height: 480px; cursor: pointer;" onclick="kqOpenLightbox(currentGalleryIdx)" title="Click to view full photo">
+                        <img id="kqMainGalleryPhoto" src="assets/images/<?= rawurlencode($activeImage) ?>" class="w-100 rounded-4" alt="<?= htmlspecialchars($activeCaption ?: $displayTitle, ENT_QUOTES, 'UTF-8') ?>" style="max-height: 480px; object-fit: cover; transition: opacity 0.18s ease;">
+                        
+                        <?php if ($totalPhotos > 1): ?>
+                            <span id="kqGalleryBadge" class="badge bg-dark bg-opacity-75 text-white position-absolute top-0 end-0 m-3 px-3 py-2 rounded-pill shadow-sm" style="font-size: 0.8rem; backdrop-filter: blur(4px);">
+                                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="me-1 align-text-bottom"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                                <span id="kqGalleryCounter">1 of <?= $totalPhotos ?> photos</span>
+                            </span>
+                            <div class="position-absolute top-50 start-0 translate-middle-y ps-2">
+                                <button type="button" class="btn btn-sm btn-dark bg-opacity-50 text-white rounded-circle p-2 shadow" onclick="event.stopPropagation(); kqGalleryPrev()" aria-label="Previous photo" style="width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; line-height: 1;">‹</button>
+                            </div>
+                            <div class="position-absolute top-50 end-0 translate-middle-y pe-2">
+                                <button type="button" class="btn btn-sm btn-dark bg-opacity-50 text-white rounded-circle p-2 shadow" onclick="event.stopPropagation(); kqGalleryNext()" aria-label="Next photo" style="width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; line-height: 1;">›</button>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- Caption & Credit -->
+                    <div class="d-flex flex-wrap justify-content-between align-items-center mt-2 px-1 gap-2">
+                        <div id="kqGalleryCaption" class="small text-muted fw-semibold"><?= htmlspecialchars($activeCaption, ENT_QUOTES, 'UTF-8') ?></div>
+                        <div id="kqGalleryCreditBox">
+                            <?php if ($activeCredit): ?>
+                                <span class="small text-muted" style="font-size: 0.75rem;">
+                                    Photo credit: <a href="<?= htmlspecialchars($activeCredit['sourceUrl'], ENT_QUOTES, 'UTF-8') ?>" target="_blank" rel="noopener noreferrer"><?= htmlspecialchars($activeCredit['title'] . ' by ' . $activeCredit['creator'], ENT_QUOTES, 'UTF-8') ?></a>
+                                </span>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
+                    <!-- Thumbnail Strip -->
+                    <?php if ($totalPhotos > 1): ?>
+                        <div class="d-flex gap-2 mt-2 overflow-x-auto pb-1 kq-gallery-thumbs" id="kqGalleryThumbs" style="scrollbar-width: thin;">
+                            <?php foreach ($galleryImages as $idx => $img):
+                                $thumbFile = basename($img['imagePath']);
+                                $thumbCaption = $img['caption'] ?? '';
+                            ?>
+                                <button type="button" class="btn p-0 border-0 flex-shrink-0 kq-thumb-btn <?= $idx === 0 ? 'is-active' : '' ?>" 
+                                    onclick="kqSelectGalleryPhoto(<?= $idx ?>)"
+                                    aria-label="View photo <?= $idx + 1 ?>">
+                                    <img src="assets/images/<?= rawurlencode($thumbFile) ?>" class="rounded-3" style="width: 86px; height: 60px; object-fit: cover; display: block;" alt="Thumbnail <?= $idx + 1 ?>">
+                                </button>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
             <?php else: ?>
                 <div class="property-placeholder rounded-4 mb-4 d-flex align-items-center justify-content-center" style="height:280px" aria-label="No property image available"><span class="property-placeholder-mark">KQ</span></div>
             <?php endif; ?>
@@ -1092,6 +1150,122 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setTimeout(() => map.invalidateSize(), 250);
 });
+
+const kqGalleryPhotos = <?= json_encode(array_map(function($img) {
+    $file = basename($img['imagePath']);
+    $credit = get_property_image_credit($file);
+    return [
+        'src' => 'assets/images/' . rawurlencode($file),
+        'caption' => $img['caption'] ?? '',
+        'creditTitle' => $credit['title'] ?? null,
+        'creditCreator' => $credit['creator'] ?? null,
+        'creditUrl' => $credit['sourceUrl'] ?? null,
+    ];
+}, $galleryImages), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
+
+let currentGalleryIdx = 0;
+
+function kqSelectGalleryPhoto(idx) {
+    if (!kqGalleryPhotos || !kqGalleryPhotos[idx]) return;
+    currentGalleryIdx = idx;
+    const photo = kqGalleryPhotos[idx];
+    const mainImg = document.getElementById('kqMainGalleryPhoto');
+    if (mainImg) {
+        mainImg.style.opacity = '0.3';
+        setTimeout(() => {
+            mainImg.src = photo.src;
+            mainImg.style.opacity = '1';
+        }, 120);
+    }
+    const counter = document.getElementById('kqGalleryCounter');
+    if (counter) counter.textContent = (idx + 1) + ' of ' + kqGalleryPhotos.length + ' photos';
+    
+    const captionEl = document.getElementById('kqGalleryCaption');
+    if (captionEl) captionEl.textContent = photo.caption || '';
+    
+    const creditBox = document.getElementById('kqGalleryCreditBox');
+    if (creditBox) {
+        if (photo.creditTitle && photo.creditUrl) {
+            creditBox.innerHTML = '<span class="small text-muted" style="font-size: 0.75rem;">Photo credit: <a href="' + photo.creditUrl + '" target="_blank" rel="noopener noreferrer">' + photo.creditTitle + ' by ' + (photo.creditCreator || '') + '</a></span>';
+        } else {
+            creditBox.innerHTML = '';
+        }
+    }
+    
+    document.querySelectorAll('.kq-thumb-btn').forEach((btn, i) => {
+        btn.classList.toggle('is-active', i === idx);
+    });
+}
+
+function kqGalleryNext() {
+    if (!kqGalleryPhotos || kqGalleryPhotos.length <= 1) return;
+    const next = (currentGalleryIdx + 1) % kqGalleryPhotos.length;
+    kqSelectGalleryPhoto(next);
+}
+
+function kqGalleryPrev() {
+    if (!kqGalleryPhotos || kqGalleryPhotos.length <= 1) return;
+    const prev = (currentGalleryIdx - 1 + kqGalleryPhotos.length) % kqGalleryPhotos.length;
+    kqSelectGalleryPhoto(prev);
+}
+
+function kqOpenLightbox(idx) {
+    const modalEl = document.getElementById('propertyLightboxModal');
+    if (modalEl && typeof bootstrap !== 'undefined') {
+        kqSelectLightboxPhoto(idx >= 0 ? idx : currentGalleryIdx);
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+}
+
+function kqSelectLightboxPhoto(idx) {
+    if (!kqGalleryPhotos || !kqGalleryPhotos[idx]) return;
+    currentGalleryIdx = idx;
+    const photo = kqGalleryPhotos[idx];
+    const lightImg = document.getElementById('lightboxMainPhoto');
+    if (lightImg) lightImg.src = photo.src;
+    const counter = document.getElementById('lightboxCounter');
+    if (counter) counter.textContent = 'Photo ' + (idx + 1) + ' of ' + kqGalleryPhotos.length;
+    const caption = document.getElementById('lightboxCaption');
+    if (caption) caption.textContent = photo.caption || '';
+    kqSelectGalleryPhoto(idx);
+}
+
+function kqLightboxNext() {
+    if (!kqGalleryPhotos || kqGalleryPhotos.length <= 1) return;
+    const next = (currentGalleryIdx + 1) % kqGalleryPhotos.length;
+    kqSelectLightboxPhoto(next);
+}
+
+function kqLightboxPrev() {
+    if (!kqGalleryPhotos || kqGalleryPhotos.length <= 1) return;
+    const prev = (currentGalleryIdx - 1 + kqGalleryPhotos.length) % kqGalleryPhotos.length;
+    kqSelectLightboxPhoto(prev);
+}
 </script>
+
+<!-- Property Photo Lightbox Modal -->
+<div class="modal fade" id="propertyLightboxModal" tabindex="-1" aria-labelledby="propertyLightboxLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content bg-dark text-white border-0 shadow-lg" style="border-radius: 1rem; overflow: hidden;">
+            <div class="modal-header border-0 pb-0 justify-content-between px-3 pt-3 px-md-4 pt-md-4">
+                <div>
+                    <h5 class="modal-title small text-white-50" id="propertyLightboxLabel"><?= htmlspecialchars($displayTitle, ENT_QUOTES, 'UTF-8') ?></h5>
+                    <div id="lightboxCounter" class="small text-white fw-bold"></div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center p-2 p-md-4 position-relative">
+                <img id="lightboxMainPhoto" src="" class="img-fluid rounded-3 shadow" style="max-height: 75vh; object-fit: contain;" alt="Full photo">
+                <div class="position-absolute top-50 start-0 translate-middle-y ps-3 ps-md-4">
+                    <button type="button" class="btn btn-outline-light rounded-circle shadow p-2" onclick="kqLightboxPrev()" aria-label="Previous" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem;">‹</button>
+                </div>
+                <div class="position-absolute top-50 end-0 translate-middle-y pe-3 pe-md-4">
+                    <button type="button" class="btn btn-outline-light rounded-circle shadow p-2" onclick="kqLightboxNext()" aria-label="Next" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem;">›</button>
+                </div>
+                <div id="lightboxCaption" class="mt-3 text-center text-white-50 small fw-medium"></div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <?php include 'includes/footer.php'; ?>

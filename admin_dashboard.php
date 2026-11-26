@@ -25,6 +25,14 @@ $formSuccess = isset($_GET['property_added'])
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!has_valid_csrf_token()) {
         $formError = 'Your session expired. Refresh the page and try again.';
+    } elseif (isset($_POST['delete_gallery_image'])) {
+        $delImgId = (int) ($_POST['imageID'] ?? 0);
+        $propId = (int) ($_POST['propertyID'] ?? 0);
+        if ($delImgId > 0 && $propId > 0) {
+            delete_property_gallery_image($conn, $delImgId, $propId);
+        }
+        header('Location: admin_dashboard.php?edit_property=' . $propId . '#properties');
+        exit();
     } elseif (isset($_POST['add_property'])) {
         $title = is_string($_POST['title'] ?? null) ? trim($_POST['title']) : '';
         $description = is_string($_POST['description'] ?? null) ? trim($_POST['description']) : '';
@@ -78,6 +86,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->bind_param('ssddsssiddsds', $title, $description, $price, $pricePerSqm, $canonicalLocation, $propertyType, $landCharacteristics, $locationId, $latitude, $longitude, $barangay, $areaSqm, $imageName);
                 try {
                     $stmt->execute();
+                    $newPropertyId = (int) $conn->insert_id;
+                    if ($newPropertyId > 0 && $imageName !== 'default.jpg') {
+                        add_property_gallery_image($conn, $newPropertyId, $imageName, 'Primary photo', 1, true);
+                    }
+                    if ($newPropertyId > 0 && !empty($_FILES['galleryImages'])) {
+                        $galleryFiles = store_property_images_batch($_FILES['galleryImages']);
+                        $gSort = 2;
+                        foreach ($galleryFiles as $gFile) {
+                            add_property_gallery_image($conn, $newPropertyId, $gFile, null, $gSort, false);
+                            $gSort++;
+                        }
+                    }
                     header('Location: admin_dashboard.php?property_added=1#properties');
                     exit();
                 } catch (mysqli_sql_exception $exception) {
@@ -212,6 +232,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     $existingProperty = $lockedProperty;
                     $updateStmt->execute();
+
+                    if ($newImageName !== null && $newImageName !== 'default.jpg') {
+                        add_property_gallery_image($conn, $editPropertyId, $newImageName, 'Primary photo', 1, true);
+                    }
+                    if (!empty($_FILES['galleryImages'])) {
+                        $galleryFiles = store_property_images_batch($_FILES['galleryImages']);
+                        if (!empty($galleryFiles)) {
+                            $maxSortStmt = $conn->prepare("SELECT COALESCE(MAX(sortOrder), 0) AS maxSort FROM property_images WHERE propertyID = ?");
+                            $maxSortStmt->bind_param('i', $editPropertyId);
+                            $maxSortStmt->execute();
+                            $maxSort = (int) $maxSortStmt->get_result()->fetch_assoc()['maxSort'];
+                            foreach ($galleryFiles as $gFile) {
+                                $maxSort++;
+                                add_property_gallery_image($conn, $editPropertyId, $gFile, null, $maxSort, false);
+                            }
+                        }
+                    }
 
                     $removeOldImage = false;
                     if ($newImageName !== null && $newImageName !== 'default.jpg') {
@@ -1069,6 +1106,37 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
                 $currentPropertyImagePath = __DIR__ . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'images' . DIRECTORY_SEPARATOR . $currentPropertyImage;
                 $hasCurrentPropertyImage = $currentPropertyImage !== '' && $currentPropertyImage !== 'default.jpg' && is_file($currentPropertyImagePath);
             ?><img id="property-image-preview" class="img-thumbnail mt-2<?= $hasCurrentPropertyImage ? '' : ' d-none' ?>" style="max-height: 180px;" alt="<?= $hasCurrentPropertyImage ? 'Current property image; selecting a new image will replace it' : 'Preview of the selected property image' ?>"<?= $hasCurrentPropertyImage ? ' src="assets/images/' . htmlspecialchars($currentPropertyImage, ENT_QUOTES, 'UTF-8') . '"' : '' ?>></div>
+
+            <div class="col-12">
+                <label class="form-label fw-semibold" for="property-gallery-images">
+                    <?= $editingProperty ? 'Add more gallery photos' : 'Additional gallery photos' ?>
+                    <span class="text-muted fw-normal">(optional, select multiple JPG/PNG/WebP photos up to 5 MB each)</span>
+                </label>
+                <input id="property-gallery-images" type="file" name="galleryImages[]" class="form-control" multiple accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp">
+            </div>
+
+            <?php if ($editingProperty): 
+                $adminEditGallery = get_property_gallery_images($conn, (int) $editingProperty['propertyID']);
+                if (!empty($adminEditGallery)):
+            ?>
+                <div class="col-12">
+                    <label class="form-label fw-semibold d-block">Existing Property Gallery Photos (<?= count($adminEditGallery) ?>)</label>
+                    <div class="d-flex flex-wrap gap-3 align-items-center p-3 bg-light rounded-3 border">
+                        <?php foreach ($adminEditGallery as $gImg): 
+                            $gFile = basename($gImg['imagePath']);
+                        ?>
+                            <div class="position-relative text-center bg-white p-1 rounded-2 border shadow-sm" style="width: 104px;">
+                                <img src="assets/images/<?= rawurlencode($gFile) ?>" class="rounded-2 w-100" style="height: 68px; object-fit: cover;" alt="Gallery photo">
+                                <?php if (!empty($gImg['isPrimary'])): ?>
+                                    <span class="badge bg-primary position-absolute top-0 start-0 m-1" style="font-size: 0.65rem;">Primary</span>
+                                <?php endif; ?>
+                                <button type="submit" name="delete_gallery_image" form="deleteGalleryPhotoForm_<?= (int) $gImg['imageID'] ?>" class="btn btn-sm btn-outline-danger py-0 px-1 mt-1 w-100" style="font-size: 0.72rem;" title="Remove this photo" onclick="return confirm('Remove this photo from the property gallery?');">Remove</button>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            <?php endif; endif; ?>
+
             <div class="col-12"><label class="form-label fw-semibold" for="property-description">Description</label><textarea id="property-description" name="description" class="form-control" rows="4" required minlength="10" maxlength="10000" placeholder="Share accurate property details, terms, documents available, and viewing instructions."><?= htmlspecialchars((string) ($propertyFormValues['description'] ?? ''), ENT_QUOTES, 'UTF-8') ?></textarea></div>
         </div>
         <?php if ($editingProperty): ?>
@@ -1078,6 +1146,16 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
             <button type="submit" name="add_property" class="btn btn-primary mt-3 px-4">Publish listing</button>
         <?php endif; ?>
     </form>
+    <?php if ($editingProperty && !empty($adminEditGallery)): ?>
+        <?php foreach ($adminEditGallery as $gImg): ?>
+            <form id="deleteGalleryPhotoForm_<?= (int) $gImg['imageID'] ?>" method="POST" action="admin_dashboard.php?edit_property=<?= (int) $editingProperty['propertyID'] ?>#properties" class="d-none">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                <input type="hidden" name="delete_gallery_image" value="1">
+                <input type="hidden" name="imageID" value="<?= (int) $gImg['imageID'] ?>">
+                <input type="hidden" name="propertyID" value="<?= (int) $editingProperty['propertyID'] ?>">
+            </form>
+        <?php endforeach; ?>
+    <?php endif; ?>
 </section>
 
 <?php if (isset($_GET['property_trashed'])): ?>

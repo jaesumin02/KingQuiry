@@ -3,6 +3,74 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-26 — Pre-Viewing Reservation Flow, Payment Simplification, Realistic Property Sizes & Merge Stabilization
+
+- **Pre-Viewing Property Reservation Workflow**:
+  - Updated the transaction stage pipeline in [includes/transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/includes/transaction_tracking.php) so purchases begin with `reservation_requested` and `reservation_confirmed` (activating the 7-day reservation hold) **before** `viewing_requested`.
+  - Added `get_active_property_reservation()` and `create_property_reservation()` in [includes/transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/includes/transaction_tracking.php) plus `notify_agents_new_reservation()` in [includes/notifications.php](file:///c:/xampp/htdocs/kingquiry/includes/notifications.php) to enforce one active reservation hold per available property and alert Sales Agents/Admins on new requests.
+  - Added **Step 1 · Reserve this property** (`#reservation`) and gated **Step 2 · Request a viewing** (`#appointment`) in [property_detail.php](file:///c:/xampp/htdocs/kingquiry/property_detail.php) so clients can schedule a property viewing only after their reservation is confirmed.
+  - Updated stage forms, badges, 7-day hold indicators, and client guidance across [transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/transaction_tracking.php), [client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php), [agent_dashboard.php](file:///c:/xampp/htdocs/kingquiry/agent_dashboard.php), [admin_dashboard.php](file:///c:/xampp/htdocs/kingquiry/admin_dashboard.php), [admin_sales.php](file:///c:/xampp/htdocs/kingquiry/admin_sales.php), and [resources.php](file:///c:/xampp/htdocs/kingquiry/resources.php).
+- **Unified Payment Tracking & Clearer Financial Summaries**:
+  - Added `reconcile_verified_payment_entries()`, `kq_map_staff_payment_to_register()`, and `get_transaction_payment_summaries()` in [includes/transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/includes/transaction_tracking.php), and routed staff-recorded payments from `advance_property_transaction()` into the unified `payments` ledger while preserving reconciliation with legacy `property_transaction_payments` rows.
+  - Added **Payment Summary** cards (Listing/Agreed Price, Verified Paid, Remaining Balance, progress bar) to [transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/transaction_tracking.php) and **Payment Summary & Receipts** to [client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php).
+  - Fixed the Spot Cash milestone selector and added an optional final-payment recording panel with a one-click **Fill remaining** helper in [transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/transaction_tracking.php).
+  - Unified the summary cards, added a live **Selected Transaction Balance** preview with **Fill remaining balance** in [admin_payments.php](file:///c:/xampp/htdocs/kingquiry/admin_payments.php), and updated [admin_sales.php](file:///c:/xampp/htdocs/kingquiry/admin_sales.php) to use `get_transaction_payment_summaries()` so row totals match reconciled collections.
+- **Realistic Property Area Sizing & Validation**:
+  - Updated small starter listings in [database/sample_data.sql](file:///c:/xampp/htdocs/kingquiry/database/sample_data.sql) and active `kingquiry_db.properties` rows (including updating Townhouse `80 sq.m.` → `160 sq.m.`, House and Lot `150 sq.m.` → `250 sq.m.`, Apartment `25 sq.m.` → `125 sq.m.`, Office Space `35 sq.m.` → `100 sq.m.`, and Condo `35 sq.m.` → `50 sq.m.`) while preserving listing prices and recalculating `pricePerSqm`.
+  - Added `property_type_min_area_sqm()` in [includes/property_categories.php](file:///c:/xampp/htdocs/kingquiry/includes/property_categories.php) and enforced category minimum area checks on property creation/updates in [admin_dashboard.php](file:///c:/xampp/htdocs/kingquiry/admin_dashboard.php) and [agent_dashboard.php](file:///c:/xampp/htdocs/kingquiry/agent_dashboard.php).
+- **Post-Merge Stabilization & Bug Fixes**:
+  - Resolved Git merge conflict markers in [database/schema.sql](file:///c:/xampp/htdocs/kingquiry/database/schema.sql) and [tests/production_baseline_test.php](file:///c:/xampp/htdocs/kingquiry/tests/production_baseline_test.php), preserving both gallery helper tests and payment/reservation/area tests.
+  - Added `property_images` to `$requiredTables` and `$fallbacks` in [config/db.php](file:///c:/xampp/htdocs/kingquiry/config/db.php) and stopped `ensure_required_database_tables()` from re-running full `schema.sql` (`USE kingquiry_db;`) on already-populated databases using a custom `.env` `KINGQUIRY_DB_NAME`.
+  - Fixed fatal calls to undefined `record_property_transaction_event()` in [client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php) (replaced with `add_property_transaction_event()`), added future-datetime validation on client rescheduling, synced transaction cancellation on client viewing cancellation, and added flash alert rendering in `#viewing-requests`.
+  - Replaced stale `'notarization_and_closing'` stage on row 13 in [database/sample_data_2years.sql](file:///c:/xampp/htdocs/kingquiry/database/sample_data_2years.sql) with `'payment_confirmation'`.
+
+## 2026-11-26 — 2-Year Comprehensive Real Estate Historical & Active Dataset (sample_data_2years.sql)
+
+- **2-Year Comprehensive Real Estate Dataset**:
+  - Created standalone import script [database/sample_data_2years.sql](file:///d:/xampp/htdocs/KingQuiry/database/sample_data_2years.sql) spanning December 2024 to November 2026 (~2 full years of realistic Batangas property activity).
+  - Populates operational, tracking, and accounting tables:
+    - **16 Users**: 1 Administrator (`admin@kingquiry.ph`), 3 Licensed Sales Agents (Juan Dela Cruz, Maria Santos, Carlos Reyes), and 12 Filipino Buyers/Clients with uniform demo password `Password123!`.
+    - **24 Properties**: Spread across 16 Batangas municipalities with full GIS coordinates, categorized into 12 Sold listings (2025 & 2026), 3 Reserved listings, 3 Pending listings, and 6 Available listings across Residential, Farmlot, Beachlot, Commercial, Condo, and Townhouse categories.
+    - **60 Multi-Photo Gallery Images**: 2 to 3 photos per listing with captions and sort orders in `property_images`.
+    - **18 Viewing Appointments**: Historical approved appointments matching closed deals and upcoming appointments for active deals in `appointments`.
+    - **16 Property Transactions**:
+      - 6 Completed Sales in 2025 totaling **₱24,400,000.00**.
+      - 6 Completed Sales in 2026 totaling **₱25,600,000.00**.
+      - Total Completed Historical Revenue: **₱50,000,000.00** evenly distributed across all months/quarters for realistic monthly revenue charts and YoY growth metrics in `admin_reports.php` and `admin_sales.php`.
+      - 4 Active Pipeline Deals (₱14,750,000.00 total) at various operational stages (`notarization_and_closing`, `payment_in_process`, `document_verification`, `viewing_completed`).
+    - **104 Milestone Events**: Complete 8-stage audit trail (`viewing_requested` through `completed`) for every transaction in `property_transaction_events`.
+    - **Reconciled Dual-Ledger Payments**:
+      - 37 Client Tracking records in `property_transaction_payments` (confirmed and pending records).
+      - 37 Accounting Register records in `payments` (verified and pending records matching reference numbers).
+    - **Client Agent Reviews**: 6 verified 5-star testimonials with descriptive comments in `agent_reviews`.
+    - **Property Inquiries**: 5 feedback inquiries in `feedbackinquiries` (3 read, 2 unread).
+  - Direct import compatibility: includes `USE kingquiry_db;` and `SET FOREIGN_KEY_CHECKS = 0;` allowing 1-click import into phpMyAdmin with zero constraint or "No database selected" errors.
+
+## 2026-11-26 — High-Impact Features: Multi-Photo Property Gallery & Viewing Schedule Management
+
+- **Demo Property Seed Removal & Dedicated Sample Data Script**:
+  - Removed all hardcoded sample/demo property insert queries (`INSERT INTO properties ...`) from [database/schema.sql](file:///d:/xampp/htdocs/KingQuiry/database/schema.sql) (149 lines of demo data removed).
+  - Created a separate [database/sample_data.sql](file:///d:/xampp/htdocs/KingQuiry/database/sample_data.sql) script containing all starter listings and multi-photo gallery sets for optional import.
+  - The main [database/schema.sql](file:///d:/xampp/htdocs/KingQuiry/database/schema.sql) now provides a 100% clean, empty installation containing only the database structure and the official Batangas municipality directory ([property_locations](file:///d:/xampp/htdocs/KingQuiry/database/schema.sql)).
+  - Cleared all demo properties and associated records from the active MySQL database.
+- **Multi-Photo Property Gallery System**:
+  - Created `property_images` table in MySQL and schema specification in [database/schema.sql](file:///d:/xampp/htdocs/KingQuiry/database/schema.sql) with support for primary photos, sorting orders, and captions.
+  - Added gallery management helper functions in [includes/property_images.php](file:///d:/xampp/htdocs/KingQuiry/includes/property_images.php): `get_property_gallery_images()`, `add_property_gallery_image()`, `delete_property_gallery_image()`, and `store_property_images_batch()` to normalize and process multi-file uploads.
+  - Seeded multi-photo gallery sets for all existing properties in Batangas City using high-resolution representative imagery.
+  - Built an interactive showcase photo gallery on [property_detail.php](file:///d:/xampp/htdocs/KingQuiry/property_detail.php) featuring:
+    - Main showcase photo with previous/next controls, dynamic photo counter badge (`1 of X photos`), and smooth fade transitions.
+    - Horizontal thumbnail navigation strip with gold active indicators and touch scrolling.
+    - Full-screen high-resolution photo Lightbox Modal with keyboard/click navigation and attribution credits.
+  - Enhanced Admin Inventory Management in [admin_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/admin_dashboard.php):
+    - Added multi-file upload support (`galleryImages[]`) when publishing and editing properties.
+    - Added existing gallery thumbnail management with individual photo deletion and badge identification.
+- **Client Viewing Appointment Reschedule & Cancel Flow**:
+  - Empowered clients to manage their viewing requests directly from [client_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/client_dashboard.php):
+    - **Request Reschedule**: clients can pick a new preferred date, time, and optional note. Automatically logs a milestone update in property transaction history and notifies the sales agent team.
+    - **Cancel Viewing Request**: confirmation modal allowing clients to safely cancel unneeded viewing requests.
+    - **Confirm Attendance**: 1-click confirmation acknowledging scheduled viewing dates confirmed by sales agents.
+  - Upgraded viewing requests in [client_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/client_dashboard.php) with clear status badges, formatted dates/times, and an inviting onboarding empty state directing new clients to browse available listings.
+
 ## 2026-11-25 — Turnkey Production Deployment Ready Pass
 
 - **Turnkey Environment & Configuration System**:

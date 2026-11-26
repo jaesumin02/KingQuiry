@@ -4,6 +4,7 @@ require_once 'includes/auth.php';
 require_once 'includes/property_images.php';
 require_once 'includes/location_directory.php';
 require_once 'includes/transaction_tracking.php';
+require_once 'includes/appointment_management.php';
 require_once 'includes/rate_limit.php';
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -16,11 +17,158 @@ if (normalized_user_role($_SESSION['user'] ?? null) !== 'Client') {
 
 $clientID = (int) $_SESSION['user']['userID'];
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_agent_review'])) {
-    http_response_code(410);
-    header('Content-Type: application/json');
-    echo json_encode(['success' => false, 'message' => 'Client reviews are no longer available.']);
-    exit();
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (isset($_POST['submit_agent_review'])) {
+        http_response_code(410);
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Client reviews are no longer available.']);
+        exit();
+    }
+
+    if (isset($_POST['client_reschedule_appointment'])) {
+        if (!has_valid_csrf_token()) {
+            $_SESSION['flash_error'] = 'Your session has expired. Please try again.';
+            header('Location: client_dashboard.php#viewing-requests');
+            exit();
+        }
+        $apptId = (int) ($_POST['appointmentID'] ?? 0);
+        $newDate = trim((string) ($_POST['appointmentDate'] ?? ''));
+        $newTime = trim((string) ($_POST['appointmentTime'] ?? ''));
+        $reason = trim((string) ($_POST['rescheduleReason'] ?? ''));
+
+        $checkStmt = $conn->prepare("SELECT a.*, p.title, p.propertyID FROM appointments a JOIN properties p ON p.propertyID = a.propertyID WHERE a.appointmentID = ? AND a.clientID = ? LIMIT 1");
+        $checkStmt->bind_param('ii', $apptId, $clientID);
+        $checkStmt->execute();
+        $appt = $checkStmt->get_result()->fetch_assoc();
+
+        if (!$appt) {
+            $_SESSION['flash_error'] = 'Viewing request not found.';
+            header('Location: client_dashboard.php#viewing-requests');
+            exit();
+        }
+        if ($appt['status'] === 'Cancelled') {
+            $_SESSION['flash_error'] = 'Cancelled viewing requests cannot be rescheduled.';
+            header('Location: client_dashboard.php#viewing-requests');
+            exit();
+        }
+
+        if (!kq_is_future_appointment_datetime($newDate, $newTime)) {
+            $_SESSION['flash_error'] = 'Please select a valid future date and time.';
+            header('Location: client_dashboard.php#viewing-requests');
+            exit();
+        }
+
+        $updateStmt = $conn->prepare("UPDATE appointments SET appointmentDate = ?, appointmentTime = ?, status = 'Pending' WHERE appointmentID = ? AND clientID = ?");
+        $updateStmt->bind_param('ssii', $newDate, $newTime, $apptId, $clientID);
+        $updateStmt->execute();
+
+        $transStmt = $conn->prepare("SELECT transactionID, currentStage FROM property_transactions WHERE appointmentID = ? LIMIT 1");
+        $transStmt->bind_param('i', $apptId);
+        $transStmt->execute();
+        $transRow = $transStmt->get_result()->fetch_assoc();
+        if ($transRow) {
+            $transId = (int) $transRow['transactionID'];
+            if (in_array((string) $transRow['currentStage'], ['reviewing_schedule', 'viewing_confirmed'], true)) {
+                $resetStageStmt = $conn->prepare("UPDATE property_transactions SET currentStage = 'viewing_requested', updatedAt = CURRENT_TIMESTAMP WHERE transactionID = ?");
+                $resetStageStmt->bind_param('i', $transId);
+                $resetStageStmt->execute();
+            }
+            $eventMsg = "Client requested to reschedule viewing to {$newDate} at {$newTime}." . ($reason !== '' ? " Note: {$reason}" : "");
+            add_property_transaction_event($conn, $transId, 'viewing_requested', $eventMsg, $clientID);
+        }
+
+        $notifyMsg = "Client requested to reschedule viewing for '{$appt['title']}' to {$newDate} at {$newTime}." . ($reason !== '' ? " Note: {$reason}" : "");
+        if (!empty($appt['agentID'])) {
+            send_property_notification($conn, (int) $appt['agentID'], 'Viewing Reschedule Request', $notifyMsg, 'transaction_tracking.php', 'viewing_reschedule');
+        } else {
+            notify_agents_new_viewing($conn, $apptId, (int) $appt['propertyID'], $clientID, $newDate, $newTime);
+        }
+
+        $_SESSION['flash_success'] = "Viewing request rescheduled to {$newDate} at {$newTime}. The sales agent team has been notified.";
+        header('Location: client_dashboard.php#viewing-requests');
+        exit();
+    }
+
+    if (isset($_POST['client_cancel_appointment'])) {
+        if (!has_valid_csrf_token()) {
+            $_SESSION['flash_error'] = 'Your session has expired. Please try again.';
+            header('Location: client_dashboard.php#viewing-requests');
+            exit();
+        }
+        $apptId = (int) ($_POST['appointmentID'] ?? 0);
+
+        $checkStmt = $conn->prepare("SELECT a.*, p.title FROM appointments a JOIN properties p ON p.propertyID = a.propertyID WHERE a.appointmentID = ? AND a.clientID = ? LIMIT 1");
+        $checkStmt->bind_param('ii', $apptId, $clientID);
+        $checkStmt->execute();
+        $appt = $checkStmt->get_result()->fetch_assoc();
+
+        if (!$appt) {
+            $_SESSION['flash_error'] = 'Viewing request not found.';
+            header('Location: client_dashboard.php#viewing-requests');
+            exit();
+        }
+
+        $cancelStmt = $conn->prepare("UPDATE appointments SET status = 'Cancelled' WHERE appointmentID = ? AND clientID = ?");
+        $cancelStmt->bind_param('ii', $apptId, $clientID);
+        $cancelStmt->execute();
+
+        $transStmt = $conn->prepare("SELECT transactionID FROM property_transactions WHERE appointmentID = ? LIMIT 1");
+        $transStmt->bind_param('i', $apptId);
+        $transStmt->execute();
+        $transRow = $transStmt->get_result()->fetch_assoc();
+        if ($transRow) {
+            $transId = (int) $transRow['transactionID'];
+            $cancelTxStmt = $conn->prepare("UPDATE property_transactions SET currentStage = 'cancelled', updatedAt = CURRENT_TIMESTAMP WHERE transactionID = ? AND currentStage NOT IN ('completed', 'cancelled')");
+            $cancelTxStmt->bind_param('i', $transId);
+            $cancelTxStmt->execute();
+            add_property_transaction_event($conn, $transId, 'cancelled', 'Client cancelled the viewing request for this property.', $clientID);
+        }
+
+        if (!empty($appt['agentID'])) {
+            send_property_notification($conn, (int) $appt['agentID'], 'Viewing Request Cancelled', "Client cancelled the viewing appointment for '{$appt['title']}'.", 'transaction_tracking.php', 'viewing_cancelled');
+        }
+
+        $_SESSION['flash_success'] = "Viewing request #KQ-" . (1000 + $apptId) . " has been cancelled.";
+        header('Location: client_dashboard.php#viewing-requests');
+        exit();
+    }
+
+    if (isset($_POST['client_confirm_appointment'])) {
+        if (!has_valid_csrf_token()) {
+            $_SESSION['flash_error'] = 'Your session has expired. Please try again.';
+            header('Location: client_dashboard.php#viewing-requests');
+            exit();
+        }
+        $apptId = (int) ($_POST['appointmentID'] ?? 0);
+        $checkStmt = $conn->prepare("SELECT a.*, p.title FROM appointments a JOIN properties p ON p.propertyID = a.propertyID WHERE a.appointmentID = ? AND a.clientID = ? LIMIT 1");
+        $checkStmt->bind_param('ii', $apptId, $clientID);
+        $checkStmt->execute();
+        $appt = $checkStmt->get_result()->fetch_assoc();
+        if (!$appt) {
+            $_SESSION['flash_error'] = 'Viewing request not found.';
+            header('Location: client_dashboard.php#viewing-requests');
+            exit();
+        }
+        $transStmt = $conn->prepare("SELECT transactionID, currentStage FROM property_transactions WHERE appointmentID = ? LIMIT 1");
+        $transStmt->bind_param('i', $apptId);
+        $transStmt->execute();
+        $transRow = $transStmt->get_result()->fetch_assoc();
+        if ($transRow) {
+            add_property_transaction_event(
+                $conn,
+                (int) $transRow['transactionID'],
+                (string) $transRow['currentStage'],
+                "Client confirmed attendance for the viewing schedule on {$appt['appointmentDate']} at " . substr($appt['appointmentTime'], 0, 5) . ".",
+                $clientID
+            );
+        }
+        if (!empty($appt['agentID'])) {
+            send_property_notification($conn, (int) $appt['agentID'], 'Viewing Schedule Confirmed by Client', "Client confirmed they will attend the scheduled viewing for '{$appt['title']}' on {$appt['appointmentDate']}.", 'transaction_tracking.php', 'viewing_confirmed');
+        }
+        $_SESSION['flash_success'] = "Thank you! You have confirmed your attendance for the viewing on {$appt['appointmentDate']}.";
+        header('Location: client_dashboard.php#viewing-requests');
+        exit();
+    }
 }
 
 include 'includes/header.php';
@@ -920,25 +1068,131 @@ $progressStages = [
             <h2 class="h4 fw-bold mb-0">Viewing requests</h2>
         </div>
     </div>
+    <?php if (!empty($_SESSION['flash_success'])): ?>
+        <div class="alert alert-success alert-dismissible fade show small" role="status">
+            <?= htmlspecialchars((string) $_SESSION['flash_success'], ENT_QUOTES, 'UTF-8') ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        <?php unset($_SESSION['flash_success']); ?>
+    <?php elseif (!empty($_SESSION['flash_error'])): ?>
+        <div class="alert alert-danger alert-dismissible fade show small" role="alert">
+            <?= htmlspecialchars((string) $_SESSION['flash_error'], ENT_QUOTES, 'UTF-8') ?>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        <?php unset($_SESSION['flash_error']); ?>
+    <?php endif; ?>
     <?php if ($appointmentRows !== []): ?>
         <?php foreach ($appointmentRows as $appt): ?>
             <?php $status = $appt['status']; ?>
-            <article class="border rounded-3 p-3 p-lg-4 mb-3">
-                <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+            <article class="border rounded-3 p-3 p-lg-4 mb-3 bg-white shadow-sm">
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
                     <div>
                         <h3 class="h5 fw-bold mb-1"><?= htmlspecialchars($appt['title'], ENT_QUOTES, 'UTF-8') ?></h3>
                         <div class="small text-muted"><?= htmlspecialchars(!empty($appt['municipalityName']) ? $appt['municipalityName'] . ', ' . $appt['provinceName'] : $appt['location'], ENT_QUOTES, 'UTF-8') ?><?php if (!empty($appt['barangay'])): ?>, <?= htmlspecialchars($appt['barangay'], ENT_QUOTES, 'UTF-8') ?><?php endif; ?></div>
                     </div>
-                    <span class="badge rounded-pill <?= $status === 'Approved' ? 'text-bg-success' : ($status === 'Cancelled' ? 'text-bg-danger' : 'text-bg-warning') ?>"><?= htmlspecialchars($status, ENT_QUOTES, 'UTF-8') ?></span>
+                    <div>
+                        <?php if ($status === 'Approved'): ?>
+                            <span class="badge rounded-pill text-bg-success px-3 py-2 fw-semibold">✓ Schedule Confirmed</span>
+                        <?php elseif ($status === 'Cancelled'): ?>
+                            <span class="badge rounded-pill text-bg-secondary px-3 py-2 fw-semibold">Cancelled</span>
+                        <?php else: ?>
+                            <span class="badge rounded-pill text-bg-warning text-dark px-3 py-2 fw-semibold">Awaiting Agent Confirmation</span>
+                        <?php endif; ?>
+                    </div>
                 </div>
-                <div class="row g-3 small">
-                    <div class="col-sm-6"><span class="text-muted">Viewing date and time</span><div class="fw-semibold"><?= htmlspecialchars($appt['appointmentDate'], ENT_QUOTES, 'UTF-8') ?> at <?= htmlspecialchars(substr($appt['appointmentTime'], 0, 5), ENT_QUOTES, 'UTF-8') ?></div></div>
-                    <div class="col-sm-6"><span class="text-muted">Reference number</span><div class="fw-semibold">#KQ-<?= 1000 + (int) $appt['appointmentID'] ?></div></div>
+                <div class="row g-3 small mb-3">
+                    <div class="col-sm-6"><span class="text-muted d-block">Viewing date and time</span><div class="fw-bold fs-6 text-dark"><?= htmlspecialchars(date('F j, Y', strtotime($appt['appointmentDate'])), ENT_QUOTES, 'UTF-8') ?> at <?= htmlspecialchars(date('g:i A', strtotime($appt['appointmentTime'])), ENT_QUOTES, 'UTF-8') ?></div></div>
+                    <div class="col-sm-6"><span class="text-muted d-block">Reference number</span><div class="fw-semibold">#KQ-<?= 1000 + (int) $appt['appointmentID'] ?></div></div>
+                </div>
+                <div class="d-flex flex-wrap gap-2 pt-2 border-top">
+                    <a href="property_detail.php?id=<?= (int) $appt['propertyID'] ?>" class="btn btn-sm btn-outline-primary">View Property</a>
+                    <?php if ($status !== 'Cancelled'): ?>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#rescheduleModal_<?= (int) $appt['appointmentID'] ?>">
+                            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" class="me-1 align-text-bottom"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                            Request Reschedule
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#cancelModal_<?= (int) $appt['appointmentID'] ?>">
+                            Cancel Viewing
+                        </button>
+                        <?php if ($status === 'Approved'): ?>
+                            <form method="POST" action="client_dashboard.php#viewing-requests" class="d-inline m-0">
+                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                                <input type="hidden" name="appointmentID" value="<?= (int) $appt['appointmentID'] ?>">
+                                <input type="hidden" name="client_confirm_appointment" value="1">
+                                <button type="submit" class="btn btn-sm btn-success">✓ Confirm Attendance</button>
+                            </form>
+                        <?php endif; ?>
+                    <?php endif; ?>
                 </div>
             </article>
+
+            <!-- Reschedule Modal -->
+            <div class="modal fade" id="rescheduleModal_<?= (int) $appt['appointmentID'] ?>" tabindex="-1" aria-labelledby="rescheduleModalLabel_<?= (int) $appt['appointmentID'] ?>" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content rounded-4 border-0 shadow">
+                        <form method="POST" action="client_dashboard.php#viewing-requests">
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                            <input type="hidden" name="client_reschedule_appointment" value="1">
+                            <input type="hidden" name="appointmentID" value="<?= (int) $appt['appointmentID'] ?>">
+                            <div class="modal-header border-bottom">
+                                <h5 class="modal-title fw-bold" id="rescheduleModalLabel_<?= (int) $appt['appointmentID'] ?>">Request Reschedule</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body p-4">
+                                <p class="small text-muted mb-3">Choose a new preferred date and time for viewing <strong><?= htmlspecialchars($appt['title'], ENT_QUOTES, 'UTF-8') ?></strong>. Our sales team will verify agent availability.</p>
+                                <div class="mb-3">
+                                    <label class="form-label fw-semibold small">New Preferred Date</label>
+                                    <input type="date" name="appointmentDate" class="form-control" required min="<?= date('Y-m-d') ?>" value="<?= htmlspecialchars($appt['appointmentDate'], ENT_QUOTES, 'UTF-8') ?>">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-semibold small">New Preferred Time</label>
+                                    <input type="time" name="appointmentTime" class="form-control" required min="08:00" max="17:00" value="<?= htmlspecialchars(substr($appt['appointmentTime'], 0, 5), ENT_QUOTES, 'UTF-8') ?>">
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label fw-semibold small">Reason or Note <span class="text-muted fw-normal">(optional)</span></label>
+                                    <textarea name="rescheduleReason" class="form-control" rows="2" placeholder="e.g. Can we meet in the afternoon instead?"></textarea>
+                                </div>
+                            </div>
+                            <div class="modal-footer border-top bg-light rounded-bottom-4">
+                                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                                <button type="submit" class="btn btn-primary btn-sm px-4">Submit Reschedule Request</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cancel Confirmation Modal -->
+            <div class="modal fade" id="cancelModal_<?= (int) $appt['appointmentID'] ?>" tabindex="-1" aria-labelledby="cancelModalLabel_<?= (int) $appt['appointmentID'] ?>" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered modal-sm">
+                    <div class="modal-content rounded-4 border-0 shadow">
+                        <form method="POST" action="client_dashboard.php#viewing-requests">
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                            <input type="hidden" name="client_cancel_appointment" value="1">
+                            <input type="hidden" name="appointmentID" value="<?= (int) $appt['appointmentID'] ?>">
+                            <div class="modal-body text-center p-4">
+                                <div class="text-danger mb-3">
+                                    <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                                </div>
+                                <h5 class="fw-bold mb-2">Cancel Viewing Request?</h5>
+                                <p class="small text-muted mb-0">Are you sure you want to cancel your viewing request for <strong><?= htmlspecialchars($appt['title'], ENT_QUOTES, 'UTF-8') ?></strong>?</p>
+                            </div>
+                            <div class="modal-footer border-top bg-light justify-content-center p-2 rounded-bottom-4">
+                                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Keep Request</button>
+                                <button type="submit" class="btn btn-sm btn-danger px-3">Yes, Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
         <?php endforeach; ?>
     <?php else: ?>
-        <div class="text-muted">You do not have any viewing requests yet. <a href="index.php">Browse available properties</a>.</div>
+        <div class="text-center py-5 px-3 bg-light rounded-4 border">
+            <svg width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" class="text-secondary mb-3"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg>
+            <h4 class="h5 fw-bold mb-1">No Viewing Requests Yet</h4>
+            <p class="text-muted small mb-3" style="max-width: 440px; margin: 0 auto;">When you find a lot or property you love in our Batangas catalog, book a viewing appointment to inspect the land in person with a licensed sales agent.</p>
+            <a href="index.php" class="btn btn-primary px-4 shadow-sm">Explore Available Listings &rarr;</a>
+        </div>
     <?php endif; ?>
 </section>
 </div>

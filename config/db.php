@@ -102,6 +102,7 @@ function ensure_required_database_tables(mysqli $connection, bool $allowSchemaCh
         'users',
         'property_locations',
         'properties',
+        'property_images',
         'appointments',
         'feedbackinquiries',
         'auditlogs',
@@ -146,14 +147,7 @@ function ensure_required_database_tables(mysqli $connection, bool $allowSchemaCh
             throw new RuntimeException("Required database table `" . implode('`, `', $missingTables) . "` is missing. Apply the documented database migration; no data was changed.");
         }
 
-        // In non-production environments, automatically create missing tables
-        try {
-            initialize_kingquiry_schema($connection);
-        } catch (Throwable $e) {
-            error_log('KingQuiry auto-schema import warning: ' . $e->getMessage());
-        }
-
-        // Verify and apply individual DDL fallbacks for any still-missing tables
+        // In non-production environments, automatically create only missing tables without re-running full schema.sql
         $existingTables = $connection->query('SHOW TABLES');
         $tableNames = [];
         while ($tableRow = $existingTables->fetch_row()) {
@@ -260,6 +254,19 @@ function ensure_required_database_tables(mysqli $connection, bool $allowSchemaCh
                 KEY `idx_dm_users` (`senderID`, `receiverID`),
                 CONSTRAINT `fk_dm_transaction` FOREIGN KEY (`transactionID`) REFERENCES `property_transactions` (`transactionID`) ON DELETE CASCADE,
                 CONSTRAINT `fk_dm_sender` FOREIGN KEY (`senderID`) REFERENCES `users` (`userID`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+            'property_images' => "CREATE TABLE IF NOT EXISTS `property_images` (
+                `imageID` INT NOT NULL AUTO_INCREMENT,
+                `propertyID` INT NOT NULL,
+                `imagePath` VARCHAR(255) NOT NULL,
+                `caption` VARCHAR(150) DEFAULT NULL,
+                `sortOrder` INT NOT NULL DEFAULT 0,
+                `isPrimary` TINYINT(1) NOT NULL DEFAULT 0,
+                `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`imageID`),
+                KEY `idx_property_images_property` (`propertyID`),
+                CONSTRAINT `fk_property_images_property` FOREIGN KEY (`propertyID`) REFERENCES `properties` (`propertyID`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
         ];
 
