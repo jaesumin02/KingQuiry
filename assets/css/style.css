@@ -2561,4 +2561,31 @@ body.kq-auth-body {
     color: #94a3b8 !important;
 }
 
+/* ══════════ PROPERTY PHOTO GALLERY & THUMBNAILS ══════════ */
+.kq-thumb-btn {
+    border-radius: 0.6rem;
+    overflow: hidden;
+    opacity: 0.65;
+    transition: all 0.18s ease;
+    border: 2.5px solid transparent !important;
+    background: transparent;
+    cursor: pointer;
+}
+
+.kq-thumb-btn:hover {
+    opacity: 0.95;
+    transform: translateY(-2px);
+}
+
+.kq-thumb-btn.is-active {
+    opacity: 1;
+    border-color: var(--kq-gold, #d9a74a) !important;
+    box-shadow: 0 0 0 2px rgba(217, 167, 74, 0.45);
+}
+
+.kq-gallery-thumbs {
+    -webkit-overflow-scrolling: touch;
+}
+
+
 

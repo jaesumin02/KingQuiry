@@ -194,4 +194,17 @@ $daysElapsed8 = (int) floor((time() - $simulated8DaysAgo) / 86400);
 $daysRemaining8 = max(0, 7 - $daysElapsed8);
 expect_true($daysRemaining8 === 0, 'Transactions updated over 7 days ago must indicate window expiration.');
 
+// Gallery helper tests
+$fakeFiles = [
+    'name' => ['photo1.jpg', 'photo2.png'],
+    'type' => ['image/jpeg', 'image/png'],
+    'tmp_name' => ['/tmp/1', '/tmp/2'],
+    'error' => [UPLOAD_ERR_OK, UPLOAD_ERR_OK],
+    'size' => [1000, 2000]
+];
+$normalized = normalize_uploaded_files($fakeFiles);
+expect_true(count($normalized) === 2, 'normalize_uploaded_files must split multi-upload files properly.');
+expect_true($normalized[0]['name'] === 'photo1.jpg' && $normalized[1]['name'] === 'photo2.png', 'normalize_uploaded_files must retain original file names.');
+expect_true(property_representative_image('Residential') === 'representative-residential-01.jpg', 'Representative image fallback must return correct filename.');
+
 fwrite(STDOUT, "Production baseline checks passed.\n");

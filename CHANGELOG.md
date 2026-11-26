@@ -3,6 +3,53 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-26 — 2-Year Comprehensive Real Estate Historical & Active Dataset (sample_data_2years.sql)
+
+- **2-Year Comprehensive Real Estate Dataset**:
+  - Created standalone import script [database/sample_data_2years.sql](file:///d:/xampp/htdocs/KingQuiry/database/sample_data_2years.sql) spanning December 2024 to November 2026 (~2 full years of realistic Batangas property activity).
+  - Populates operational, tracking, and accounting tables:
+    - **16 Users**: 1 Administrator (`admin@kingquiry.ph`), 3 Licensed Sales Agents (Juan Dela Cruz, Maria Santos, Carlos Reyes), and 12 Filipino Buyers/Clients with uniform demo password `Password123!`.
+    - **24 Properties**: Spread across 16 Batangas municipalities with full GIS coordinates, categorized into 12 Sold listings (2025 & 2026), 3 Reserved listings, 3 Pending listings, and 6 Available listings across Residential, Farmlot, Beachlot, Commercial, Condo, and Townhouse categories.
+    - **60 Multi-Photo Gallery Images**: 2 to 3 photos per listing with captions and sort orders in `property_images`.
+    - **18 Viewing Appointments**: Historical approved appointments matching closed deals and upcoming appointments for active deals in `appointments`.
+    - **16 Property Transactions**:
+      - 6 Completed Sales in 2025 totaling **₱24,400,000.00**.
+      - 6 Completed Sales in 2026 totaling **₱25,600,000.00**.
+      - Total Completed Historical Revenue: **₱50,000,000.00** evenly distributed across all months/quarters for realistic monthly revenue charts and YoY growth metrics in `admin_reports.php` and `admin_sales.php`.
+      - 4 Active Pipeline Deals (₱14,750,000.00 total) at various operational stages (`notarization_and_closing`, `payment_in_process`, `document_verification`, `viewing_completed`).
+    - **104 Milestone Events**: Complete 8-stage audit trail (`viewing_requested` through `completed`) for every transaction in `property_transaction_events`.
+    - **Reconciled Dual-Ledger Payments**:
+      - 37 Client Tracking records in `property_transaction_payments` (confirmed and pending records).
+      - 37 Accounting Register records in `payments` (verified and pending records matching reference numbers).
+    - **Client Agent Reviews**: 6 verified 5-star testimonials with descriptive comments in `agent_reviews`.
+    - **Property Inquiries**: 5 feedback inquiries in `feedbackinquiries` (3 read, 2 unread).
+  - Direct import compatibility: includes `USE kingquiry_db;` and `SET FOREIGN_KEY_CHECKS = 0;` allowing 1-click import into phpMyAdmin with zero constraint or "No database selected" errors.
+
+## 2026-11-26 — High-Impact Features: Multi-Photo Property Gallery & Viewing Schedule Management
+
+- **Demo Property Seed Removal & Dedicated Sample Data Script**:
+  - Removed all hardcoded sample/demo property insert queries (`INSERT INTO properties ...`) from [database/schema.sql](file:///d:/xampp/htdocs/KingQuiry/database/schema.sql) (149 lines of demo data removed).
+  - Created a separate [database/sample_data.sql](file:///d:/xampp/htdocs/KingQuiry/database/sample_data.sql) script containing all starter listings and multi-photo gallery sets for optional import.
+  - The main [database/schema.sql](file:///d:/xampp/htdocs/KingQuiry/database/schema.sql) now provides a 100% clean, empty installation containing only the database structure and the official Batangas municipality directory ([property_locations](file:///d:/xampp/htdocs/KingQuiry/database/schema.sql)).
+  - Cleared all demo properties and associated records from the active MySQL database.
+- **Multi-Photo Property Gallery System**:
+  - Created `property_images` table in MySQL and schema specification in [database/schema.sql](file:///d:/xampp/htdocs/KingQuiry/database/schema.sql) with support for primary photos, sorting orders, and captions.
+  - Added gallery management helper functions in [includes/property_images.php](file:///d:/xampp/htdocs/KingQuiry/includes/property_images.php): `get_property_gallery_images()`, `add_property_gallery_image()`, `delete_property_gallery_image()`, and `store_property_images_batch()` to normalize and process multi-file uploads.
+  - Seeded multi-photo gallery sets for all existing properties in Batangas City using high-resolution representative imagery.
+  - Built an interactive showcase photo gallery on [property_detail.php](file:///d:/xampp/htdocs/KingQuiry/property_detail.php) featuring:
+    - Main showcase photo with previous/next controls, dynamic photo counter badge (`1 of X photos`), and smooth fade transitions.
+    - Horizontal thumbnail navigation strip with gold active indicators and touch scrolling.
+    - Full-screen high-resolution photo Lightbox Modal with keyboard/click navigation and attribution credits.
+  - Enhanced Admin Inventory Management in [admin_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/admin_dashboard.php):
+    - Added multi-file upload support (`galleryImages[]`) when publishing and editing properties.
+    - Added existing gallery thumbnail management with individual photo deletion and badge identification.
+- **Client Viewing Appointment Reschedule & Cancel Flow**:
+  - Empowered clients to manage their viewing requests directly from [client_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/client_dashboard.php):
+    - **Request Reschedule**: clients can pick a new preferred date, time, and optional note. Automatically logs a milestone update in property transaction history and notifies the sales agent team.
+    - **Cancel Viewing Request**: confirmation modal allowing clients to safely cancel unneeded viewing requests.
+    - **Confirm Attendance**: 1-click confirmation acknowledging scheduled viewing dates confirmed by sales agents.
+  - Upgraded viewing requests in [client_dashboard.php](file:///d:/xampp/htdocs/KingQuiry/client_dashboard.php) with clear status badges, formatted dates/times, and an inviting onboarding empty state directing new clients to browse available listings.
+
 ## 2026-11-25 — Turnkey Production Deployment Ready Pass
 
 - **Turnkey Environment & Configuration System**:

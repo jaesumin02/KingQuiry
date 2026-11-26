@@ -281,3 +281,164 @@ function store_property_image(array $upload): ?string
 
     return $filename;
 }
+
+/**
+ * Normalizes multi-file upload arrays from $_FILES['galleryImages'] into a list of single upload arrays.
+ *
+ * @param array $fileInput
+ * @return array
+ */
+function normalize_uploaded_files(array $fileInput): array
+{
+    $files = [];
+    if (!isset($fileInput['name'])) {
+        return $files;
+    }
+
+    if (is_array($fileInput['name'])) {
+        $count = count($fileInput['name']);
+        for ($i = 0; $i < $count; $i++) {
+            if (($fileInput['error'][$i] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+                continue;
+            }
+            $files[] = [
+                'name' => $fileInput['name'][$i] ?? '',
+                'type' => $fileInput['type'][$i] ?? '',
+                'tmp_name' => $fileInput['tmp_name'][$i] ?? '',
+                'error' => $fileInput['error'][$i] ?? UPLOAD_ERR_OK,
+                'size' => $fileInput['size'][$i] ?? 0,
+            ];
+        }
+    } elseif (($fileInput['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+        $files[] = $fileInput;
+    }
+
+    return $files;
+}
+
+/**
+ * Stores multiple uploaded property images and returns their saved filenames.
+ *
+ * @param array $fileInput
+ * @return array Array of saved filenames
+ */
+function store_property_images_batch(array $fileInput): array
+{
+    $normalized = normalize_uploaded_files($fileInput);
+    $saved = [];
+    foreach ($normalized as $upload) {
+        $filename = store_property_image($upload);
+        if ($filename !== null && $filename !== 'default.jpg') {
+            $saved[] = $filename;
+        }
+    }
+    return $saved;
+}
+
+/**
+ * Retrieves all gallery images for a property ordered by primary status and sort order.
+ *
+ * @param mysqli $conn
+ * @param int $propertyId
+ * @return array
+ */
+function get_property_gallery_images(mysqli $conn, int $propertyId): array
+{
+    if ($propertyId <= 0) {
+        return [];
+    }
+
+    $stmt = $conn->prepare(
+        "SELECT imageID, propertyID, imagePath, caption, sortOrder, isPrimary, createdAt
+         FROM property_images
+         WHERE propertyID = ?
+         ORDER BY isPrimary DESC, sortOrder ASC, imageID ASC"
+    );
+    if (!$stmt) {
+        return [];
+    }
+
+    $stmt->bind_param('i', $propertyId);
+    $stmt->execute();
+    return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+}
+
+/**
+ * Inserts a gallery image for a property.
+ *
+ * @param mysqli $conn
+ * @param int $propertyId
+ * @param string $filename
+ * @param string|null $caption
+ * @param int $sortOrder
+ * @param bool $isPrimary
+ * @return int Inserted imageID
+ */
+function add_property_gallery_image(
+    mysqli $conn,
+    int $propertyId,
+    string $filename,
+    ?string $caption = null,
+    int $sortOrder = 0,
+    bool $isPrimary = false
+): int {
+    $stmt = $conn->prepare(
+        "INSERT INTO property_images (propertyID, imagePath, caption, sortOrder, isPrimary)
+         VALUES (?, ?, ?, ?, ?)"
+    );
+    if (!$stmt) {
+        return 0;
+    }
+    $primaryInt = $isPrimary ? 1 : 0;
+    $stmt->bind_param('issii', $propertyId, $filename, $caption, $sortOrder, $primaryInt);
+    $stmt->execute();
+    return (int) $conn->insert_id;
+}
+
+/**
+ * Deletes a gallery image and removes the file if it is an uploaded file.
+ *
+ * @param mysqli $conn
+ * @param int $imageId
+ * @param int|null $propertyId
+ * @return bool
+ */
+function delete_property_gallery_image(mysqli $conn, int $imageId, ?int $propertyId = null): bool
+{
+    if ($imageId <= 0) {
+        return false;
+    }
+
+    $query = "SELECT imagePath, propertyID FROM property_images WHERE imageID = ?";
+    if ($propertyId !== null && $propertyId > 0) {
+        $query .= " AND propertyID = ?";
+        $stmt = $conn->prepare($query);
+        $stmt->bind_param('ii', $imageId, $propertyId);
+    } else {
+        $stmt = $conn->prepare($query);
+        $stmt->bind_param('i', $imageId);
+    }
+
+    $stmt->execute();
+    $imageRow = $stmt->get_result()->fetch_assoc();
+    if (!$imageRow) {
+        return false;
+    }
+
+    $delStmt = $conn->prepare("DELETE FROM property_images WHERE imageID = ?");
+    $delStmt->bind_param('i', $imageId);
+    $deleted = $delStmt->execute();
+
+    if ($deleted) {
+        $path = $imageRow['imagePath'];
+        // Only unlink if not a seeded representative image
+        if (!str_starts_with($path, 'representative-') && $path !== 'default.jpg') {
+            $fullPath = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'images' . DIRECTORY_SEPARATOR . $path;
+            if (is_file($fullPath)) {
+                @unlink($fullPath);
+            }
+        }
+    }
+
+    return $deleted;
+}
