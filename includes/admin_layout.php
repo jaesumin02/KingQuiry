@@ -20,6 +20,10 @@ function kq_admin_pages(): array
             'title' => 'Clients',
             'subtitle' => 'Create and maintain client accounts, contact details, and account status.',
         ],
+        'admin_agents.php' => [
+            'title' => 'Sales Agents',
+            'subtitle' => 'Create staff accounts, update contact details, reset passwords, and manage account access.',
+        ],
         'admin_payments.php' => [
             'title' => 'Payments',
             'subtitle' => 'Record client payments, verify references, and reconcile collections against tracked transactions.',
@@ -32,17 +36,18 @@ function kq_admin_pages(): array
 }
 
 /**
- * Standard 9 navigation drawer items for the Administrator Control Room.
+ * Standard navigation drawer items for the Administrator Control Room.
  * Rendered in exact order across every admin view:
  * 1. Admin dashboard
  * 2. Reports & analytics
  * 3. Sales & transactions
  * 4. Clients
- * 5. Payments
- * 6. Transaction tracking
- * 7. Client transactions
- * 8. Property listings
- * 9. Audit logs
+ * 5. Sales Agents
+ * 6. Payments
+ * 7. Transaction tracking
+ * 8. Client transactions
+ * 9. Property listings
+ * 10. Audit logs
  */
 function kq_admin_sidebar_items(string $currentPage = ''): array
 {
@@ -77,6 +82,14 @@ function kq_admin_sidebar_items(string $currentPage = ''): array
             'href' => 'admin_clients.php',
             'is_page' => true,
             'is_active' => ($currentPage === 'admin_clients.php'),
+            'type' => 'link',
+        ],
+        [
+            'id' => 'nav-admin-agents',
+            'title' => 'Sales Agents',
+            'href' => 'admin_agents.php',
+            'is_page' => true,
+            'is_active' => ($currentPage === 'admin_agents.php'),
             'type' => 'link',
         ],
         [

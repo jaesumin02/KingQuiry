@@ -39,13 +39,14 @@ if (!empty($currentUser['userID'])) {
             if (normalized_user_role($currentUser) === 'Client') {
                 $navTxStmt = $conn->prepare(
                     "SELECT t.transactionID, t.propertyID, p.title, p.image, p.propertyType,
-                            COALESCE(agentUser.fullname, inqAgentUser.fullname, 'Assigned Sales Agent') AS agentName
+                            COALESCE(transactionAgent.fullname, agentUser.fullname, inqAgentUser.fullname, 'Assigned Sales Agent') AS agentName
                      FROM property_transactions t
                      JOIN properties p ON p.propertyID = t.propertyID
                      LEFT JOIN appointments a ON a.appointmentID = t.appointmentID
                      LEFT JOIN users agentUser ON agentUser.userID = a.agentID
                      LEFT JOIN agent_inquiry_assignments ia ON ia.inquiryID = t.inquiryID
                      LEFT JOIN users inqAgentUser ON inqAgentUser.userID = ia.agentID
+                     LEFT JOIN users transactionAgent ON transactionAgent.userID = t.assignedAgentID
                      WHERE t.clientID = ?
                      ORDER BY (t.currentStage NOT IN ('completed', 'cancelled')) DESC, t.updatedAt DESC
                      LIMIT 10"

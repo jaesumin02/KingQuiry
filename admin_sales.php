@@ -272,7 +272,7 @@ include 'includes/header.php';
                         <option value="<?= kq_e($stageKey) ?>" <?= $stageFilter === $stageKey ? 'selected' : '' ?>><?= kq_e($stageLabel) ?></option>
                     <?php endforeach; ?>
                 </select>
-                <button type="submit" class="btn btn-sm btn-primary">Apply filters</button>
+                <button type="submit" class="btn btn-sm btn-primary">Apply</button>
                 <?php if ($search !== '' || $stageFilter !== ''): ?><a href="admin_sales.php#sales-results" class="btn btn-sm btn-outline-secondary">Clear filters</a><?php endif; ?>
             </form>
         </div>
@@ -317,17 +317,9 @@ include 'includes/header.php';
                             </td>
                             <td>
                                 <?php
-                                $stageBadgeClass = match ($currentStage) {
-                                    'completed' => 'text-bg-success',
-                                    'cancelled' => 'text-bg-secondary',
-                                    'reservation_requested' => 'text-bg-warning text-dark',
-                                    'reservation_confirmed' => 'text-bg-success',
-                                    'payment_in_process' => 'text-bg-warning text-dark',
-                                    'payment_confirmation' => 'text-bg-info text-dark',
-                                    default => 'text-bg-primary',
-                                };
+                                $stageBadgeClass = property_transaction_stage_badge_class($currentStage);
                                 ?>
-                                <span class="badge rounded-pill <?= $stageBadgeClass ?>"><?= kq_e($stageLabels[$currentStage] ?? 'Status unavailable') ?></span>
+                                <span class="badge rounded-pill <?= $stageBadgeClass ?>"><?= kq_e(property_transaction_stage_label($currentStage)) ?></span>
                             </td>
                             <td class="small text-nowrap">
                                 <?php if ($salePrice !== null): ?>

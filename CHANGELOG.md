@@ -3,6 +3,27 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-27 — One-File Demo Database and Documentation Cleanup
+
+- Combined the full demonstration dataset with [database/schema.sql](database/schema.sql) so a new local database can be initialized with one import. The import is for new or disposable databases and resets demonstration records.
+- Removed the unused Agent reviews table, seed records, migration fallback, and client dashboard query.
+- Removed the SAD screenshot appendix and local screenshot files; updated the report and setup instructions to match the consolidated import.
+- Removed the redundant standalone SQL seed files.
+
+## 2026-11-27 — Sales Agent and Admin Workflow Improvements
+
+- Added an Admin Sales Agents directory for creating accounts, editing contact details, resetting passwords, and deactivating/reactivating access while retaining assignments.
+- Fixed transaction claims so open requests (including reservation-only cases) retain a single Agent assignment, existing assignments cannot be overwritten, and terminal cases cannot be claimed.
+- Added intake stages to transaction tracking so Agents can claim inquiry cases and move them through permitted next steps.
+- Standardized status labels and badges, changed filter buttons to **Apply**, and show status counts in the Client directory.
+- Removed the unused transaction-summary PDF endpoint and helper.
+
+## 2026-11-27 — Complete Demo Property Records
+
+- Completed the gallery entries so all 24 demo properties have at least three representative photos.
+- Replaced unsupported `Pending` property statuses with `Available` and corrected the Santo Tomas listing's location reference.
+- Verified the fresh SQL import for complete listing fields, valid statuses, matching locations and price-per-square-meter values, category minimum areas, and existing image assets.
+
 ## 2026-11-26 — Pre-Viewing Reservation Flow, Payment Simplification, Realistic Property Sizes & Merge Stabilization
 
 - **Pre-Viewing Property Reservation Workflow**:
@@ -16,18 +37,18 @@ Dates use `YYYY-MM-DD`.
   - Fixed the Spot Cash milestone selector and added an optional final-payment recording panel with a one-click **Fill remaining** helper in [transaction_tracking.php](file:///c:/xampp/htdocs/kingquiry/transaction_tracking.php).
   - Unified the summary cards, added a live **Selected Transaction Balance** preview with **Fill remaining balance** in [admin_payments.php](file:///c:/xampp/htdocs/kingquiry/admin_payments.php), and updated [admin_sales.php](file:///c:/xampp/htdocs/kingquiry/admin_sales.php) to use `get_transaction_payment_summaries()` so row totals match reconciled collections.
 - **Realistic Property Area Sizing & Validation**:
-  - Updated small starter listings in [database/sample_data.sql](file:///c:/xampp/htdocs/kingquiry/database/sample_data.sql) and active `kingquiry_db.properties` rows (including updating Townhouse `80 sq.m.` → `160 sq.m.`, House and Lot `150 sq.m.` → `250 sq.m.`, Apartment `25 sq.m.` → `125 sq.m.`, Office Space `35 sq.m.` → `100 sq.m.`, and Condo `35 sq.m.` → `50 sq.m.`) while preserving listing prices and recalculating `pricePerSqm`.
+  - Updated small starter listings in the former `sample_data.sql` (later consolidated into `database/schema.sql`) and active `kingquiry_db.properties` rows (including updating Townhouse `80 sq.m.` → `160 sq.m.`, House and Lot `150 sq.m.` → `250 sq.m.`, Apartment `25 sq.m.` → `125 sq.m.`, Office Space `35 sq.m.` → `100 sq.m.`, and Condo `35 sq.m.` → `50 sq.m.`) while preserving listing prices and recalculating `pricePerSqm`.
   - Added `property_type_min_area_sqm()` in [includes/property_categories.php](file:///c:/xampp/htdocs/kingquiry/includes/property_categories.php) and enforced category minimum area checks on property creation/updates in [admin_dashboard.php](file:///c:/xampp/htdocs/kingquiry/admin_dashboard.php) and [agent_dashboard.php](file:///c:/xampp/htdocs/kingquiry/agent_dashboard.php).
 - **Post-Merge Stabilization & Bug Fixes**:
   - Resolved Git merge conflict markers in [database/schema.sql](file:///c:/xampp/htdocs/kingquiry/database/schema.sql) and [tests/production_baseline_test.php](file:///c:/xampp/htdocs/kingquiry/tests/production_baseline_test.php), preserving both gallery helper tests and payment/reservation/area tests.
   - Added `property_images` to `$requiredTables` and `$fallbacks` in [config/db.php](file:///c:/xampp/htdocs/kingquiry/config/db.php) and stopped `ensure_required_database_tables()` from re-running full `schema.sql` (`USE kingquiry_db;`) on already-populated databases using a custom `.env` `KINGQUIRY_DB_NAME`.
   - Fixed fatal calls to undefined `record_property_transaction_event()` in [client_dashboard.php](file:///c:/xampp/htdocs/kingquiry/client_dashboard.php) (replaced with `add_property_transaction_event()`), added future-datetime validation on client rescheduling, synced transaction cancellation on client viewing cancellation, and added flash alert rendering in `#viewing-requests`.
-  - Replaced stale `'notarization_and_closing'` stage on row 13 in [database/sample_data_2years.sql](file:///c:/xampp/htdocs/kingquiry/database/sample_data_2years.sql) with `'payment_confirmation'`.
+  - Replaced stale `'notarization_and_closing'` stage on row 13 in the former 2-year seed (later consolidated into `database/schema.sql`) with `'payment_confirmation'`.
 
-## 2026-11-26 — 2-Year Comprehensive Real Estate Historical & Active Dataset (sample_data_2years.sql)
+## 2026-11-26 — 2-Year Comprehensive Real Estate Historical & Active Dataset
 
 - **2-Year Comprehensive Real Estate Dataset**:
-  - Created standalone import script [database/sample_data_2years.sql](file:///d:/xampp/htdocs/KingQuiry/database/sample_data_2years.sql) spanning December 2024 to November 2026 (~2 full years of realistic Batangas property activity).
+  - Created a standalone import script, subsequently consolidated into [database/schema.sql](database/schema.sql), spanning December 2024 to November 2026 (~2 full years of Batangas property activity).
   - Populates operational, tracking, and accounting tables:
     - **16 Users**: 1 Administrator (`admin@kingquiry.ph`), 3 Licensed Sales Agents (Juan Dela Cruz, Maria Santos, Carlos Reyes), and 12 Filipino Buyers/Clients with uniform demo password `Password123!`.
     - **24 Properties**: Spread across 16 Batangas municipalities with full GIS coordinates, categorized into 12 Sold listings (2025 & 2026), 3 Reserved listings, 3 Pending listings, and 6 Available listings across Residential, Farmlot, Beachlot, Commercial, Condo, and Townhouse categories.
@@ -42,7 +63,7 @@ Dates use `YYYY-MM-DD`.
     - **Reconciled Dual-Ledger Payments**:
       - 37 Client Tracking records in `property_transaction_payments` (confirmed and pending records).
       - 37 Accounting Register records in `payments` (verified and pending records matching reference numbers).
-    - **Client Agent Reviews**: 6 verified 5-star testimonials with descriptive comments in `agent_reviews`.
+    - The former standalone seed included six Agent reviews; the feature and sample records were removed in the November 27, 2026 cleanup.
     - **Property Inquiries**: 5 feedback inquiries in `feedbackinquiries` (3 read, 2 unread).
   - Direct import compatibility: includes `USE kingquiry_db;` and `SET FOREIGN_KEY_CHECKS = 0;` allowing 1-click import into phpMyAdmin with zero constraint or "No database selected" errors.
 
@@ -50,7 +71,7 @@ Dates use `YYYY-MM-DD`.
 
 - **Demo Property Seed Removal & Dedicated Sample Data Script**:
   - Removed all hardcoded sample/demo property insert queries (`INSERT INTO properties ...`) from [database/schema.sql](file:///d:/xampp/htdocs/KingQuiry/database/schema.sql) (149 lines of demo data removed).
-  - Created a separate [database/sample_data.sql](file:///d:/xampp/htdocs/KingQuiry/database/sample_data.sql) script containing all starter listings and multi-photo gallery sets for optional import.
+  - Created a separate starter-listings script that was later retired when the database imports were consolidated into [database/schema.sql](database/schema.sql).
   - The main [database/schema.sql](file:///d:/xampp/htdocs/KingQuiry/database/schema.sql) now provides a 100% clean, empty installation containing only the database structure and the official Batangas municipality directory ([property_locations](file:///d:/xampp/htdocs/KingQuiry/database/schema.sql)).
   - Cleared all demo properties and associated records from the active MySQL database.
 - **Multi-Photo Property Gallery System**:
@@ -439,8 +460,8 @@ Dates use `YYYY-MM-DD`.
   workflows, Mermaid diagrams, relational data dictionary, security notes,
   user guide, test evidence, and explicit stakeholder-evidence checklists.
 - Captured 12 local public/catalog, listing, resource, sign-in, registration,
-  and chat screenshots. Authenticated portal screenshots remain for an
-  approved test-account session; no private data or demo accounts were added.
+  and chat screenshots. These files and their appendix were removed in the
+  November 27, 2026 documentation cleanup.
 - Corrected README setup and feature descriptions to match the current annual
   reports page, property-detail/chat estimator, checked-in schema, and current
   test files. Removed obsolete migration/demo-seed instructions and credentials

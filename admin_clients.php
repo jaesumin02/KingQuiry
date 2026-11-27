@@ -482,11 +482,11 @@ include 'includes/header.php';
                 <input id="client-search" type="search" name="q" class="form-control form-control-sm" value="<?= kq_e($search) ?>" placeholder="Search name, email, or phone">
                 <label class="visually-hidden" for="client-filter-status">Filter by status</label>
                 <select id="client-filter-status" name="status" class="form-select form-select-sm">
-                    <option value="">All statuses</option>
-                    <option value="Active" <?= $statusFilter === 'Active' ? 'selected' : '' ?>>Active</option>
-                    <option value="Inactive" <?= $statusFilter === 'Inactive' ? 'selected' : '' ?>>Inactive</option>
+                    <option value="">All statuses (<?= (int) $clientStats['totalClients'] ?>)</option>
+                    <option value="Active" <?= $statusFilter === 'Active' ? 'selected' : '' ?>>Active (<?= (int) $clientStats['activeClients'] ?>)</option>
+                    <option value="Inactive" <?= $statusFilter === 'Inactive' ? 'selected' : '' ?>>Inactive (<?= (int) $clientStats['inactiveClients'] ?>)</option>
                 </select>
-                <button type="submit" class="btn btn-sm btn-primary">Apply filters</button>
+                <button type="submit" class="btn btn-sm btn-primary">Apply</button>
                 <?php if ($search !== '' || $statusFilter !== ''): ?><a href="admin_clients.php#client-results" class="btn btn-sm btn-outline-secondary">Clear filters</a><?php endif; ?>
             </form>
         </div>

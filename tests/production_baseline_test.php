@@ -69,13 +69,19 @@ expect_true(
     'Invalid appointment times must be rejected.'
 );
 expect_true(
-    !array_key_exists('inquiry_received', property_transaction_stages())
-        && !array_key_exists('contacting_client', property_transaction_stages()),
-    'Transaction tracking stages must exclude casual chat inquiries.'
+    property_transaction_stage_label('inquiry_received') === 'Inquiry received'
+        && property_transaction_stage_label('contacting_client') === 'Contacting client',
+    'Property inquiries must display readable intake-stage labels.'
 );
 expect_true(
-    array_key_first(property_transaction_stages()) === 'reservation_requested',
-    'Transaction tracking stages must start at reservation_requested before property viewing.'
+    array_key_first(property_transaction_stages()) === 'inquiry_received',
+    'Transaction tracking stages must start with the client inquiry intake stage.'
+);
+expect_true(
+    in_array('contacting_client', property_transaction_next_stages('inquiry_received'), true)
+        && in_array('viewing_requested', property_transaction_next_stages('inquiry_received'), true)
+        && in_array('viewing_requested', property_transaction_next_stages('contacting_client'), true),
+    'Agents must be able to advance claimed inquiries toward a viewing request.'
 );
 expect_true(
     in_array('reservation_confirmed', property_transaction_next_stages('reservation_requested'), true)

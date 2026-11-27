@@ -197,13 +197,14 @@ if ($action === 'initiate_property_chat') {
         "SELECT t.transactionID, t.propertyID, t.clientID, t.appointmentID, t.inquiryID, t.currentStage,
                 p.title AS propertyTitle,
                 a.appointmentDate, a.status AS appointmentStatus,
-                COALESCE(agentUser.fullname, inqAgentUser.fullname, 'Assigned Sales Agent') AS assignedAgentName
+                COALESCE(transactionAgent.fullname, agentUser.fullname, inqAgentUser.fullname, 'Assigned Sales Agent') AS assignedAgentName
          FROM property_transactions t
          JOIN properties p ON p.propertyID = t.propertyID
          LEFT JOIN appointments a ON a.appointmentID = t.appointmentID
          LEFT JOIN users agentUser ON agentUser.userID = a.agentID
          LEFT JOIN agent_inquiry_assignments ia ON ia.inquiryID = t.inquiryID
          LEFT JOIN users inqAgentUser ON inqAgentUser.userID = ia.agentID
+         LEFT JOIN users transactionAgent ON transactionAgent.userID = t.assignedAgentID
          WHERE t.propertyID = ? AND t.clientID = ?
            AND t.currentStage NOT IN ('completed', 'cancelled')
          ORDER BY t.updatedAt DESC, t.transactionID DESC
@@ -262,8 +263,8 @@ if ($action === 'initiate_property_chat') {
         $asStmt->close();
     }
 
-    $newTxStmt = $conn->prepare("INSERT INTO property_transactions (propertyID, clientID, inquiryID, currentStage) VALUES (?, ?, ?, 'inquiry_received')");
-    $newTxStmt->bind_param('iii', $propId, $currentUserId, $newInqId);
+    $newTxStmt = $conn->prepare("INSERT INTO property_transactions (propertyID, clientID, inquiryID, assignedAgentID, currentStage) VALUES (?, ?, ?, ?, 'inquiry_received')");
+    $newTxStmt->bind_param('iiii', $propId, $currentUserId, $newInqId, $assignedAgentId);
     $newTxStmt->execute();
     $newTxId = (int) $conn->insert_id;
     $newTxStmt->close();
@@ -298,10 +299,10 @@ $txStmt = $conn->prepare(
             p.title AS propertyTitle, p.location, p.price AS propertyPrice, p.pricePerSqm, p.areaSqm, p.propertyType, p.locationID,
             u.fullname AS clientName, u.email AS clientEmail,
             a.appointmentDate, a.appointmentTime, a.status AS appointmentStatus,
-            COALESCE(a.agentID, ia.agentID) AS assignedAgentID,
-            COALESCE(agentUser.fullname, inqAgentUser.fullname, 'Unassigned') AS assignedAgentName,
-            COALESCE(agentUser.email, inqAgentUser.email, '') AS assignedAgentEmail,
-            COALESCE(agentUser.phone, inqAgentUser.phone, '') AS assignedAgentPhone
+            COALESCE(t.assignedAgentID, a.agentID, ia.agentID) AS assignedAgentID,
+            COALESCE(transactionAgent.fullname, agentUser.fullname, inqAgentUser.fullname, 'Unassigned') AS assignedAgentName,
+            COALESCE(transactionAgent.email, agentUser.email, inqAgentUser.email, '') AS assignedAgentEmail,
+            COALESCE(transactionAgent.phone, agentUser.phone, inqAgentUser.phone, '') AS assignedAgentPhone
      FROM property_transactions t
      JOIN properties p ON p.propertyID = t.propertyID
      JOIN users u ON u.userID = t.clientID
@@ -309,6 +310,7 @@ $txStmt = $conn->prepare(
      LEFT JOIN users agentUser ON agentUser.userID = a.agentID
      LEFT JOIN agent_inquiry_assignments ia ON ia.inquiryID = t.inquiryID
      LEFT JOIN users inqAgentUser ON inqAgentUser.userID = ia.agentID
+     LEFT JOIN users transactionAgent ON transactionAgent.userID = t.assignedAgentID
      WHERE t.transactionID = ?
      LIMIT 1"
 );
@@ -479,24 +481,24 @@ if ($method === 'POST' || $action === 'send') {
         kq_json_send(['ok' => false, 'error' => 'Message exceeds 2,000 characters limit.'], 422);
     }
 
-    // If an agent sends a message on an unassigned transaction, automatically assign the agent
-    if ($isStaff && empty($transaction['assignedAgentID'])) {
+    // Let an active Sales Agent claim an open case by initiating direct contact.
+    if (
+        in_array($currentRole, ['Agent', 'Sales Agent'], true)
+        && empty($transaction['assignedAgentID'])
+        && !in_array((string) $transaction['currentStage'], ['completed', 'cancelled'], true)
+    ) {
         try {
-            if (!empty($transaction['appointmentID'])) {
-                $apptStmt = $conn->prepare("UPDATE appointments SET agentID = ? WHERE appointmentID = ?");
-                $apptStmt->bind_param('ii', $currentUserId, $transaction['appointmentID']);
-                $apptStmt->execute();
-            }
-            if (!empty($transaction['inquiryID'])) {
-                $inqStmt = $conn->prepare("INSERT INTO agent_inquiry_assignments (inquiryID, agentID, assignedAt) VALUES (?, ?, CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE agentID = ?, assignedAt = CURRENT_TIMESTAMP");
-                $inqStmt->bind_param('iii', $transaction['inquiryID'], $currentUserId, $currentUserId);
-                $inqStmt->execute();
-            }
+            claim_property_transaction($conn, $transactionId, $currentUserId);
             $transaction['assignedAgentID'] = $currentUserId;
-            $agentName = (string) ($currentUser['fullname'] ?? 'Sales Agent');
-            add_property_transaction_event($conn, $transactionId, (string) $transaction['currentStage'], 'Sales Agent ' . $agentName . ' initiated contact with client.', $currentUserId);
-        } catch (Throwable $e) {
-            error_log('Auto agent assignment on message failed: ' . $e->getMessage());
+            $transaction['assignedAgentName'] = (string) ($currentUser['fullname'] ?? 'Sales Agent');
+            if ($transaction['currentStage'] === 'viewing_requested') {
+                $transaction['currentStage'] = 'reviewing_schedule';
+            }
+        } catch (InvalidArgumentException $exception) {
+            kq_json_send(['ok' => false, 'error' => $exception->getMessage()], 409);
+        } catch (Throwable $exception) {
+            error_log('Auto agent claim on message failed: ' . $exception->getMessage());
+            kq_json_send(['ok' => false, 'error' => 'The client request could not be claimed. Please refresh and try again.'], 500);
         }
     }
 

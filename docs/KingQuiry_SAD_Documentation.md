@@ -16,10 +16,10 @@ Batangas State University TNEU - ARASOF Nasugbu
 IT 313 - System Analysis and Design
 
 **Target presentation:** December 2026  
-**System and source review date:** November 20, 2026  
+**System and source review date:** November 27, 2026
 **Document status:** Technical draft aligned to the repository; client evidence and approvals still require team verification.
 
-> **Evidence and accuracy note.** This report describes the implementation found in the KingQuiry repository on the review date. The supplied template is a PDF and cannot be edited in place. This Markdown file is an editable companion that follows its chapter structure. Mermaid blocks are the diagram source and render in GitHub Markdown or compatible Mermaid viewers. Statements about Kings Land Properties' offline/current business practices, project schedule, approvals, and interview results are not verifiable from application code; they are marked for confirmation rather than presented as measured facts. Do not submit the marked appendices as completed evidence until the team inserts the genuine approved materials.
+> **Evidence and accuracy note.** This report describes the implementation found in the KingQuiry repository on the review date. Mermaid blocks are the diagram source and render in GitHub Markdown or compatible Mermaid viewers. Statements about Kings Land Properties' offline/current business practices, project schedule, approvals, and interview results are not verifiable from application code; they are marked for confirmation rather than presented as measured facts. Do not submit the marked appendices as completed evidence until the team inserts the genuine approved materials.
 
 ## Table of Contents
 
@@ -45,8 +45,7 @@ IT 313 - System Analysis and Design
   - [3.4 Testing and Verification](#34-testing-and-verification)
 - [Appendix 1 - User Manual](#appendix-1---user-manual)
 - [Appendix 2 - Approved Request Letter](#appendix-2---approved-request-letter)
-- [Appendix 3 - System Screenshots and Demonstration Evidence](#appendix-3---system-screenshots-and-demonstration-evidence)
-- [Appendix 4 - Technical Curriculum Vitae](#appendix-4---technical-curriculum-vitae)
+- [Appendix 3 - Technical Curriculum Vitae](#appendix-3---technical-curriculum-vitae)
 - [References](#references)
 
 ## List of Tables
@@ -58,7 +57,6 @@ IT 313 - System Analysis and Design
 5. Database table dictionary
 6. Verification cases and recorded results
 7. User-role access summary
-8. Screenshot register
 
 ## List of Figures
 
@@ -129,7 +127,7 @@ To develop and document a role-based web system that centralizes property discov
 | Provide listing details | A listing detail page displays its description, asking price, area and price per square meter when available, location, illustrative/credited image, comparable estimate when supported, and inquiry/viewing entry points. |
 | Record client requests | An authenticated Client can submit a valid property inquiry or future viewing request. Successful requests create tracking records and can be found from role-appropriate views. |
 | Track request progress | Authorized staff can advance a transaction only through an allowed next stage, and the Client can read the dated, client-visible timeline. |
-| Coordinate staff work | Sales Agents can view their assigned requests and manage permitted appointment or inquiry work; Administrators can manage the full operational scope. |
+| Coordinate staff work | Sales Agents can view and claim open requests and manage permitted appointment or inquiry work; Administrators can assign work and manage agent accounts. |
 | Reconcile payment information | Client payment reports and staff-recorded payments are stored with distinct review statuses and shown in transaction and administrative views. |
 | Report actual performance | Administrators can review completed-sale revenue and operational counts without treating asking prices or future years as actual revenue. |
 | Protect application actions | Authenticated operations use role checks and request protections such as CSRF checks; account credentials are stored as password hashes. |
@@ -145,10 +143,10 @@ To develop and document a role-based web system that centralizes property discov
 | Search and discovery | Keyword, property category, and location filters; price/title/date sorting; page-size selection and pagination. |
 | Recommendations | Weighted similarity ranking based on listing features. A cold-start result does not claim a match percentage. |
 | Property calculator | Calculates an asking price from entered lot area and the listing's price per square meter, then displays a 20% down-payment figure. It is not an independent market valuation. |
-| Accounts | Client registration, Client/Agent/Admin role-specific sign-in, session handling, account management, and role-based pages. Registration creates a Client; privileged setup assigns staff roles. |
+| Accounts | Client registration, Client/Agent/Admin role-specific sign-in, session handling, account management, and role-based pages. Registration creates a Client; Administrators manage Sales Agent accounts. |
 | Client services | Property inquiries, viewing requests, client notifications, transaction tracking, text chat, and offline payment reports using the supported methods. |
 | Agent services | Appointment and inquiry work, inquiry ownership/assignment, and authorized transaction stage updates. |
-| Administrative services | Property and location management; client directory; transaction tracking; payments; sales and analytics; customer inbox; and account-status management. |
+| Administrative services | Property and location management; Client and Sales Agent account management; transaction tracking; payments; sales and analytics; customer inbox; and account-status management. |
 | Data and reporting | MySQL records for users, locations, listings, appointments, inquiries, chat, transaction events, payments, notifications, and related operational records. |
 
 ### Delimitations and Known Limits
@@ -161,8 +159,8 @@ To develop and document a role-based web system that centralizes property discov
 6. The system does not perform legal title searches, certify ownership, calculate all taxes or closing costs, or replace legal, financial, or real-estate professional advice.
 7. Public listing content is limited to data entered in KingQuiry. External social-media posts, calendars, and contact channels are not automatically synchronized.
 8. The implementation uses a server-rendered PHP application, MySQL/MariaDB, and third-party front-end assets loaded from CDNs. Availability of those assets depends on network access.
-9. Detailed Client, Agent, and Admin pages require authorized accounts. The public screenshot appendix does not substitute for authenticated acceptance evidence.
-10. The fresh-install schema includes property listings and location reference data but does not create user accounts or business transactions. Any live or production records remain outside this source repository.
+9. Detailed Client, Agent, and Admin pages require authorized accounts. Demonstration accounts and records are included in the one-file local database import; replace them before deployment.
+10. The fresh-install import is for a new or disposable database, not for upgrading a live system. It resets operational demonstration records.
 
 ## 1.4 SWOT Analysis
 
@@ -193,7 +191,7 @@ The template's December 2026 target is retained. The source repository does not 
 | Design interface, database, and system architecture |  |  | X | X |  |  | Reviewed designs and prototype |
 | Implement and integrate system functions |  |  |  | X | X |  | Integrated application |
 | Execute tests, correct issues, and conduct acceptance review |  |  |  |  | X | X | Test results and signed acceptance record |
-| Finalize report, screenshots, and presentation |  |  |  |  | X | X | Approved documentation package |
+| Finalize report and presentation |  |  |  |  | X | X | Approved documentation package |
 
 # 2. System Analysis
 
@@ -399,11 +397,23 @@ stateDiagram-v2
     [*] --> inquiry_received
     inquiry_received --> contacting_client
     inquiry_received --> viewing_requested
+    inquiry_received --> reservation_requested: client reservation request
     inquiry_received --> cancelled
     contacting_client --> viewing_requested
     contacting_client --> cancelled
+    reservation_requested --> reservation_confirmed
+    reservation_requested --> cancelled
+    reservation_confirmed --> viewing_requested
+    reservation_confirmed --> reviewing_schedule
+    reservation_confirmed --> viewing_confirmed
+    reservation_confirmed --> payment_in_process
+    reservation_confirmed --> cancelled
+    viewing_requested --> reviewing_schedule
     viewing_requested --> viewing_confirmed
     viewing_requested --> cancelled
+    reviewing_schedule --> viewing_confirmed
+    reviewing_schedule --> viewing_completed
+    reviewing_schedule --> cancelled
     viewing_confirmed --> viewing_completed
     viewing_confirmed --> payment_in_process
     viewing_confirmed --> cancelled
@@ -517,7 +527,7 @@ For hosted use, the organization must select server capacity from a load test an
 
 ### 3.2.1 Data Design
 
-KingQuiry uses a relational MySQL/MariaDB schema defined for a fresh installation in `database/schema.sql`. The schema contains 18 principal tables. Most business records link to user, property, request, or transaction identifiers using foreign keys. A fresh schema seeds the Batangas location directory and example property listings; it does not seed users, chat histories, requests, payments, or sales.
+KingQuiry uses a relational MySQL/MariaDB schema defined in `database/schema.sql`. The single fresh-install import creates 19 application tables, seeds the Batangas location directory, and loads demonstration accounts, properties, appointments, inquiries, transactions, and payment records. It is intended for a new or disposable database; the data section resets application records and must not be run against a database whose records need to be retained. The demonstration records are not verified business data.
 
 #### Entity Relationship Diagram
 
@@ -551,6 +561,14 @@ erDiagram
         string propertyType
         string status
         bool isDeleted
+    }
+    PROPERTY_IMAGES {
+        int imageID PK
+        int propertyID FK
+        string imagePath
+        string caption
+        int sortOrder
+        bool isPrimary
     }
     APPOINTMENTS {
         int appointmentID PK
@@ -601,6 +619,14 @@ erDiagram
         string note
         datetime createdAt
     }
+    DIRECT_MESSAGES {
+        int messageID PK
+        int transactionID FK
+        int senderID FK
+        int receiverID
+        string message
+        bool isRead
+    }
     PROPERTY_TRANSACTION_PAYMENTS {
         int paymentID PK
         int transactionID FK
@@ -620,13 +646,6 @@ erDiagram
         string paymentMethod
         string status
         date paidAt
-    }
-    AGENT_REVIEWS {
-        int reviewID PK
-        int transactionID FK
-        int clientID FK
-        int agentID FK
-        int rating
     }
     USER_NOTIFICATIONS {
         int notificationID PK
@@ -659,6 +678,7 @@ erDiagram
     }
 
     PROPERTY_LOCATIONS o|--o{ PROPERTIES : "locationID"
+    PROPERTIES ||--o{ PROPERTY_IMAGES : "propertyID"
     PROPERTIES ||--o{ APPOINTMENTS : "propertyID"
     USERS ||--o{ APPOINTMENTS : "clientID"
     USERS o|--o{ APPOINTMENTS : "agentID"
@@ -675,24 +695,23 @@ erDiagram
     FEEDBACKINQUIRIES o|--o| PROPERTY_TRANSACTIONS : "inquiryID"
     PROPERTY_TRANSACTIONS ||--o{ PROPERTY_TRANSACTION_EVENTS : "transactionID"
     USERS o|--o{ PROPERTY_TRANSACTION_EVENTS : "changedBy"
+    PROPERTY_TRANSACTIONS ||--o{ DIRECT_MESSAGES : "transactionID"
+    USERS ||--o{ DIRECT_MESSAGES : "senderID"
     PROPERTY_TRANSACTIONS ||--o{ PROPERTY_TRANSACTION_PAYMENTS : "transactionID"
     USERS ||--o{ PROPERTY_TRANSACTION_PAYMENTS : "clientID"
     USERS o|--o{ PROPERTY_TRANSACTION_PAYMENTS : "reviewedBy"
     PROPERTY_TRANSACTIONS o|--o{ PAYMENTS : "transactionID"
     USERS ||--o{ PAYMENTS : "clientID"
     USERS o|--o{ PAYMENTS : "recordedBy"
-    PROPERTY_TRANSACTIONS ||--o| AGENT_REVIEWS : "transactionID"
-    USERS ||--o{ AGENT_REVIEWS : "clientID"
-    USERS o|--o{ AGENT_REVIEWS : "agentID"
     USERS ||--o{ USER_NOTIFICATIONS : "userID"
     CHAT_CONVERSATIONS ||--o{ CHAT_MESSAGES : "conversation_id"
 ```
 
 **Relationship notes**
 
-- `property_transactions` associates a property and Client with either a source appointment, an inquiry, or both over the life of a case. Each source reference is unique in the transaction table.
+- `property_transactions` associates a property and Client with a source appointment, inquiry, or reservation-only case. A separate nullable `assignedAgentID` preserves ownership for every case type; source-specific assignments are synchronized when present.
 - `property_transaction_payments` stores Client-submitted reports associated with transaction review. `payments` stores staff-entered payment-register records. They are separate ledgers with different review fields; the administrative reports reconcile their relevant records rather than treating a Client report as proof of settlement.
-- `agent_reviews` remains in the schema for historical records. The current Client-facing interface does not show the removed feedback prompt.
+- The application does not collect Agent ratings or testimonials.
 - `chat_conversations.user_id` and `chat_admin_presence.admin_id` are identifiers, but the schema does not declare every application-level relationship as a foreign key. Do not infer an enforced FK where the DDL does not define one.
 - `security_rate_limits` stores keyed request-throttling buckets; it is not a business transaction table.
 
@@ -703,25 +722,28 @@ erDiagram
 | `users` | `userID` | Name, unique email, password hash, role, account status, and optional phone/address. |
 | `property_locations` | `locationID` | Region, province, municipality/city, active/deleted flags, and creation time. |
 | `properties` | `propertyID` | Listing content, asking price, price per square meter, location, area, type, status, image, optional coordinates, and deletion state. |
+| `property_images` | `imageID` | Additional property gallery image, caption, sort order, and primary-image flag. |
 | `appointments` | `appointmentID` | Client viewing date/time, property, optional assigned Agent, and `Pending`/`Approved`/`Cancelled` status. |
 | `agent_dismissed_appointments` | `agentID`, `appointmentID` | Per-Agent dismissal of appointment items. |
 | `feedbackinquiries` | `inquiryID` | Client's property question and `Unread`/`Read`/`Replied` status. The historical table name is retained. |
-| `agent_inquiry_assignments` | `inquiryID` | Agent ownership and assignment time for an inquiry. |
+| `agent_inquiry_assignments` | `inquiryID` | Sales Agent ownership and assignment time for an inquiry. |
 | `auditlogs` | `logID` | User-attributed audit action text and timestamp, including successful sign-ins/sign-outs and administrative actions recorded by the application. |
 | `chat_conversations` | `conversation_id` | Chat session key, optional signed-in user, status, and timestamps. |
 | `chat_messages` | `message_id` | Conversation, sender type (`client`, `admin`, `bot`), message body, and time. |
 | `chat_admin_presence` | `admin_id` | Administrator last-seen/heartbeat time used by chat availability behavior. |
-| `property_transactions` | `transactionID` | Client/property case, source request, current stage, optional sale price/payment method, and timestamps. |
+| `property_transactions` | `transactionID` | Client/property case, source request, assigned Sales Agent, current stage, optional sale price/payment method, and timestamps. |
 | `property_transaction_events` | `eventID` | Dated transaction stage/note and optional staff actor. |
+| `direct_messages` | `messageID` | Transaction-linked message, sender, optional receiver, read state, and creation time. |
 | `property_transaction_payments` | `paymentID` | Client-submitted transaction payment report, reference, review status, reviewer, and note. |
-| `agent_reviews` | `reviewID` | Historical transaction-linked Agent rating/comment data. Current UI feedback collection is removed. |
 | `user_notifications` | `notificationID` | In-app notice, optional link/type, read state, and timestamp. |
 | `payments` | `paymentID` | Staff payment register entry: transaction, Client, amount, type, method, reference, status, date, note, and recorder. |
 | `security_rate_limits` | `key_hash` | HMAC-keyed request limit bucket, attempt count, time window, and expiry. |
 
 #### Data Rules
 
-- New accounts are Clients. Administrator/Agent accounts must be provisioned by an authorized setup process; the fresh schema does not include credentials.
+- Demonstration accounts are included for local testing. Replace or remove them before deployment; new self-registered accounts receive the Client role.
+- Account statuses are `Active` and `Inactive`. An inactive account cannot sign in; deactivation preserves linked transaction history.
+- Viewing requests use `Pending`, `Approved`, or `Cancelled`; inquiries use `Unread`, `Read`, or `Replied`; staff payment records use `Pending`, `Verified`, or `Rejected`.
 - Property statuses include `Available`, `Reserved`, and `Sold`; soft-deleted listings are excluded from active catalog/report totals.
 - Supported public property types are defined in `includes/property_categories.php` (including Residential, Commercial, Farmlot, Beachlot, Condo, House and Lot, Townhouse, Apartment, Warehouse, Office Space, and Resort). Display labels may differ from stored values.
 - A new listing's price per square meter is calculated from total asking price divided by area. Asking price is not recorded revenue.
@@ -729,6 +751,26 @@ erDiagram
 - Finalizing a transaction locks and marks its property `Sold` in the same database transaction. Competing open transactions and linked viewings are cancelled and their clients are notified. Sold properties are excluded from public listings and new requests; only Administrators can see the `Sold` status, while other users receive a generic unavailable response. An administrator cannot relist a sold property.
 - A future report year is an empty actuals view, not a forecast.
 - The Client report ledger and the staff payment register are distinct. Pending/rejected submissions are not verified collections.
+
+#### Transaction Stage Reference
+
+| Stage | Meaning |
+|---|---|
+| `inquiry_received` | A property inquiry has been received and is awaiting staff follow-up. |
+| `contacting_client` | Staff is following up with the Client before a viewing or reservation. |
+| `reservation_requested` | Client asks to reserve a property; awaiting staff review. |
+| `reservation_confirmed` | Staff confirms the reservation and starts the seven-day hold. |
+| `viewing_requested` | Client requests a property viewing. |
+| `reviewing_schedule` | A Sales Agent has claimed the request and is coordinating the schedule. |
+| `viewing_confirmed` | The viewing schedule is approved. |
+| `viewing_completed` | The property viewing has taken place. |
+| `payment_in_process` | Staff and Client are coordinating payment and paperwork. |
+| `document_verification` | Staff verifies documents for applicable payment paths. |
+| `payment_confirmation` | Required payment records are verified. |
+| `completed` | Staff records the agreed sale price and completes the transaction. |
+| `cancelled` | The request is closed and cannot advance. |
+
+Allowed transitions are enforced by the application. Spot Cash can move from payment processing directly to payment confirmation; other payment methods go through document verification.
 
 ### 3.2.2 System Architecture
 
@@ -798,17 +840,16 @@ Deployment safeguards and limitations:
 
 ### Recorded Automated Checks
 
-The following checks were run against the reviewed workspace on November 20, 2026:
+The following checks were run against the reviewed workspace on November 27, 2026:
 
 | Check | Command / evidence | Result |
 |---|---|---|
-| PHP syntax for the changed/reporting and transaction test files | `php -l` on the applicable PHP files | Passed; no syntax errors. |
+| PHP syntax for changed application files | `php -l client_dashboard.php` and `php -l config/db.php` | Passed; no syntax errors. |
 | Production baseline and business-rule assertions | `php tests/production_baseline_test.php` | Passed. |
-| Inquiry/viewing, assignment, portal visibility, payment review, and cross-ledger integration checks | `php tests/transaction_records_test.php` | Passed. |
+| One-file SQL import | Imported `database/schema.sql` into a disposable MySQL database and checked seeded row counts, sales total, and property data integrity | Passed: 16 users, 24 properties, 18 appointments, 5 inquiries, 16 transactions, 37 client payment reports, 37 staff payments, and ₱50,000,000 completed sales; all properties have required fields, valid statuses, matching locations/prices, three gallery images, and existing local image assets; no Agent reviews table. |
 | Whitespace/error check | `git diff --check` | Passed for the reviewed changes. |
-| Local visual evidence | Screenshots listed in Appendix 3 | Captured from the local application on November 20, 2026; public pages and sign-in/registration screens only. |
 
-The transaction integration test uses connection-scoped temporary tables. Its test fixture data is discarded with the connection; it does not add permanent Client, inquiry, payment, or transaction records to the application database. The local PHP CLI also emitted a duplicate OpenSSL-module-load warning during test startup; the tests themselves passed. That environment warning is not represented as an application test failure.
+The local PHP CLI emitted a duplicate OpenSSL-module-load warning during PHP checks; the checks themselves passed. That environment warning is not represented as an application test failure. The repository does not include automated database integration tests; role workflows and payment processing still require acceptance testing in an isolated environment.
 
 ### Verification Cases
 
@@ -818,12 +859,13 @@ The transaction integration test uses connection-scoped temporary tables. Its te
 | T-02 | Attempt to skip required transaction stages | Reject an invalid direct transition | Covered by production baseline checks; passed. |
 | T-03 | Continue a Spot Cash path | Allow Spot Cash to go from payment processing to payment confirmation without document verification | Covered by production baseline checks; passed. |
 | T-04 | Select a supported payment method | Accept Cash, Bank Transfer, and Check for Client reports; reject unsupported GCash | Covered by production baseline checks; passed. |
-| T-05 | Create inquiry- and viewing-linked cases | Store and expose the case to the appropriate Client/Admin/assigned Agent views | Covered by transaction integration checks; passed. |
-| T-06 | Claim an unassigned inquiry | Make it visible to the claiming Agent; prevent another Agent from taking an already assigned inquiry | Covered by transaction integration checks; passed. |
-| T-07 | Report the same Client payment reference twice | Reject the duplicate report | Covered by transaction integration checks; passed. |
-| T-08 | Confirm or reject a Client payment report | Apply the selected review state and calculate the relevant ledger totals | Covered by transaction integration checks; passed. |
-| T-09 | Generate annual sales report years | Include recorded years, current year, and five future years without duplicates; show future years as actuals-only | Covered by production baseline checks; passed. |
-| T-10 | Open public catalog, search/filter/sort, details, guidance, sign-in, and registration pages | Render the expected public interfaces | Manually captured in Appendix 3; no automated end-to-end assertion is claimed. |
+| T-05 | Create inquiry- and viewing-linked cases | Store and expose the case to the appropriate Client/Admin/assigned Agent views | Acceptance test required; not covered by an automated repository test. |
+| T-06 | Claim an unassigned inquiry or transaction | Persist the Agent on the case and linked source records; prevent another staff member from taking or managing it | Passed isolated MariaDB checks for reservation-only and inquiry cases, reassignment prevention, and assigned-agent access. UI acceptance remains required. |
+| T-07 | Advance an inquiry from intake | Show readable intake stages and allow the next permitted stage | Intake-stage labels and transitions covered by production baseline checks; passed. |
+| T-08 | Report the same Client payment reference twice | Reject the duplicate report | Acceptance test required; not covered by an automated repository test. |
+| T-09 | Confirm or reject a Client payment report | Apply the selected review state and calculate the relevant ledger totals | Acceptance test required; not covered by an automated repository test. |
+| T-10 | Generate annual sales report years | Include recorded years, current year, and five future years without duplicates; show future years as actuals-only | Covered by production baseline checks; passed. |
+| T-11 | Open public catalog, search/filter/sort, details, guidance, sign-in, and registration pages | Render the expected public interfaces | Manual walkthrough; no automated end-to-end assertion is claimed. |
 
 ### Further Acceptance Testing Required
 
@@ -859,7 +901,7 @@ The transaction integration test uses connection-scoped temporary tables. Its te
 
 1. Sign in through the Sales Agent portal using an account provisioned by the administrator.
 2. Review assigned/available inquiries and viewing requests.
-3. Claim an unassigned inquiry when appropriate; an inquiry already assigned to another Agent cannot be claimed.
+3. Claim an open client request when appropriate; a request assigned to another staff member cannot be claimed.
 4. Review the property's request, Client, and viewing details. Update appointment status only when the workflow permits.
 5. Use Transaction Tracking to advance an authorized case by one permitted stage at a time and add an accurate note.
 6. Record/confirm payment details only when supported by the organization's verification process and the application permits the current stage.
@@ -867,16 +909,17 @@ The transaction integration test uses connection-scoped temporary tables. Its te
 
 ## D. Administrator: Maintain and Review the System
 
-1. Sign in through the Admin portal. The fresh schema contains no administrator account.
-2. For a local first install, register the intended administrator account and have the database owner assign its role through an approved, scoped setup operation. Confirm exactly one account was updated. Do not use shared or default production credentials.
+1. Sign in through the Admin portal using the local demonstration administrator account. Replace or remove all demonstration accounts before deployment.
+2. For production, create staff accounts through the authorized setup process and use unique credentials. Do not use shared or default demo credentials.
 3. Use the Admin dashboard to manage property listings, listing status, locations, and overview tasks.
 4. Use **Clients** to search and maintain Client accounts and account status.
-5. Use **Reports & Analytics** to review actual completed-sale revenue and other activity. Choose a year; future years display actual data only and are not forecasts.
-6. Use **Sales & Transactions** and **Transaction Tracking** to review a case, assignment, stage, event history, sale price, and outstanding amount.
-7. Use **Payments** to record staff payments and review Client reports. Verify actual offline payment evidence before confirming a report.
-8. Use **Client Inbox** to review conversations and reply when the Administrator is active.
-9. Keep an auditable operational process outside the application for tasks that KingQuiry does not perform, including title verification, actual fund settlement, statutory fees, and legal approvals.
-10. Sign out after administrative work, especially on a shared device.
+5. Use **Sales Agents** to create and maintain Sales Agent accounts, reset passwords, and deactivate or reactivate access without deleting assignment history.
+6. Use **Reports & Analytics** to review actual completed-sale revenue and other activity. Choose a year; future years display actual data only and are not forecasts.
+7. Use **Sales & Transactions** and **Transaction Tracking** to review a case, assignment, stage, event history, sale price, and outstanding amount.
+8. Use **Payments** to record staff payments and review Client reports. Verify actual offline payment evidence before confirming a report.
+9. Use **Client Inbox** to review conversations and reply when the Administrator is active.
+10. Keep an auditable operational process outside the application for tasks that KingQuiry does not perform, including title verification, actual fund settlement, statutory fees, and legal approvals.
+11. Sign out after administrative work, especially on a shared device.
 
 ## E. Transaction and Payment Terms
 
@@ -892,7 +935,7 @@ The transaction integration test uses connection-scoped temporary tables. Its te
 
 # Appendix 2 - Approved Request Letter
 
-**Not included in the repository.** Insert a scan or approved electronic copy of the actual signed request/permission letter here. Confirm that it identifies the organization, purpose, date, authorized signatories, and any restrictions on screenshots or sample data. Do not create or reproduce signatures.
+**Not included in the repository.** Insert a scan or approved electronic copy of the actual signed request/permission letter here. Confirm that it identifies the organization, purpose, date, authorized signatories, and any restrictions on sample data. Do not create or reproduce signatures.
 
 ## Required evidence checklist
 
@@ -901,43 +944,7 @@ The transaction integration test uses connection-scoped temporary tables. Its te
 - [ ] Name/title and contact details are approved for academic submission.
 - [ ] Any personal or confidential details not needed for the submission are redacted with approval.
 
-# Appendix 3 - System Screenshots and Demonstration Evidence
-
-The following 12 screenshots were captured from the local KingQuiry application on November 20, 2026. They document public catalog, search/filter/sort states, listing details, guidance, directory, sign-in/registration pages, and the customer chat bubble. These screenshots do **not** show authenticated Client, Sales Agent, or Admin dashboards. Add screenshots of those portals only after logging in with organization-approved non-production test accounts; redact personal data and payment references.
-
-| Figure | Screenshot | Description |
-|---|---|---|
-| A3-1 | ![Public catalog](screenshots/01-public-catalog.png) | Public property catalog. |
-| A3-2 | ![Search results](screenshots/02-search-results.png) | Catalog with keyword search query. |
-| A3-3 | ![Category filter](screenshots/03-category-filter.png) | Catalog with a category filter. |
-| A3-4 | ![Price-sorted results](screenshots/04-price-sorted-results.png) | Catalog with price sort selected. |
-| A3-5 | ![Property details](screenshots/05-property-details.png) | Property detail, comparable estimate, calculator, and visitor action area. |
-| A3-6 | ![Resources and guides](screenshots/06-resources-guides.png) | Public buyer resources and guides. |
-| A3-7 | ![Agent directory](screenshots/07-agent-directory.png) | Public Agent directory. |
-| A3-8 | ![Client sign-in](screenshots/08-client-sign-in.png) | Client sign-in page. |
-| A3-9 | ![Agent sign-in](screenshots/09-agent-sign-in.png) | Sales Agent sign-in page. |
-| A3-10 | ![Admin sign-in](screenshots/10-admin-sign-in.png) | Administrator sign-in page. |
-| A3-11 | ![Client registration](screenshots/11-client-registration.png) | Client account registration form. |
-| A3-12 | ![Customer chat](screenshots/12-customer-chat.png) | Customer chat bubble and available text-only assistant. |
-
-### Additional authenticated screenshots to collect
-
-Capture at least one representative screen from each role and redact names, email addresses, phone numbers, transaction references, exact private addresses, and payment notes:
-
-1. Client dashboard summary and tracking timeline.
-2. Client inquiry/viewing record and status.
-3. Client payment report status (use a test payment, not a real reference).
-4. Sales Agent dashboard with test inquiry and viewing assignments.
-5. Sales Agent transaction-stage update form.
-6. Admin dashboard and property/location management.
-7. Admin Reports & Analytics year selector and chart.
-8. Admin Payments review screen.
-9. Admin Sales & Transactions register/reconciliation.
-10. Admin Client Inbox.
-
-Do not populate the production database merely to produce screenshots. Use isolated test data or an approved demonstration environment, then record which environment and test date were used.
-
-# Appendix 4 - Technical Curriculum Vitae
+# Appendix 3 - Technical Curriculum Vitae
 
 The supplied template reserves this appendix for team-member CVs. Keep each member's approved CV in the final school submission package. This repository copy intentionally does not reproduce home addresses, private phone numbers, personal references, or other unnecessary CV data.
 
@@ -953,12 +960,11 @@ The supplied template reserves this appendix for team-member CVs. Keep each memb
 ## Project artifacts reviewed
 
 - KingQuiry application source and role-specific PHP pages in this repository.
-- `database/schema.sql` - fresh-install relational schema and reference/property data.
+- `database/schema.sql` - one-file fresh-install schema and demonstration dataset.
 - `includes/transaction_tracking.php` - transaction stage and payment business rules.
 - `includes/ml_recommender.php` - property recommendation ranking.
 - `includes/admin_analytics.php` and `admin_reports.php` - annual actual-sales reporting.
 - `tests/production_baseline_test.php` - baseline assertions.
-- `tests/transaction_records_test.php` - isolated transaction/payment integration checks.
 - `README.md` and `CHANGELOG.md` - setup and dated implementation notes.
 
 ## Technical references
@@ -976,7 +982,6 @@ The supplied template reserves this appendix for team-member CVs. Keep each memb
 - [ ] Existing-process diagram validated against an actual interview/observation.
 - [ ] Objectives and scope approved by the adviser and project stakeholder.
 - [ ] Proposed schedule replaced with the team's actual approved dates.
-- [ ] Authenticated Client, Sales Agent, and Admin screenshots added using approved test accounts.
 - [ ] Signed request letter and permitted interview/demo evidence inserted.
 - [ ] CVs checked for consent and unnecessary personal data removed.
 - [ ] Table of contents, figure list, table list, page numbering, and final PDF refreshed after Word/Markdown conversion.

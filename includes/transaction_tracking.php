@@ -5,6 +5,8 @@ require_once __DIR__ . '/appointment_management.php';
 function property_transaction_stages(): array
 {
     return [
+        'inquiry_received' => 'Inquiry received',
+        'contacting_client' => 'Contacting client',
         'reservation_requested' => 'Reservation requested',
         'reservation_confirmed' => 'Reservation confirmed (7-day hold)',
         'viewing_requested' => 'Viewing requested',
@@ -17,6 +19,171 @@ function property_transaction_stages(): array
         'completed' => 'Successful / completed',
         'cancelled' => 'Cancelled',
     ];
+}
+
+function property_transaction_stage_label(string $stage): string
+{
+    $labels = property_transaction_stages();
+    return $labels[$stage] ?? ucfirst(str_replace('_', ' ', $stage));
+}
+
+function property_transaction_stage_badge_class(string $stage): string
+{
+    return match ($stage) {
+        'completed', 'reservation_confirmed' => 'text-bg-success',
+        'cancelled' => 'text-bg-secondary',
+        'inquiry_received', 'reservation_requested', 'payment_in_process' => 'text-bg-warning text-dark',
+        'contacting_client' => 'text-bg-info text-dark',
+        'reviewing_schedule', 'viewing_confirmed', 'payment_confirmation' => 'text-bg-info text-dark',
+        'viewing_requested', 'viewing_completed', 'document_verification' => 'text-bg-primary',
+        default => 'text-bg-light text-dark',
+    };
+}
+
+function claim_property_transaction(mysqli $conn, int $transactionId, int $actorId): void
+{
+    if ($transactionId <= 0 || $actorId <= 0) {
+        throw new InvalidArgumentException('Choose a valid transaction to claim.');
+    }
+
+    $notification = null;
+    $conn->begin_transaction();
+    try {
+        $actorStmt = $conn->prepare(
+            "SELECT fullname FROM users
+             WHERE userID = ? AND role IN ('Agent', 'Sales Agent', 'Admin') AND accountStatus = 'Active'
+             FOR UPDATE"
+        );
+        $actorStmt->bind_param('i', $actorId);
+        $actorStmt->execute();
+        $actor = $actorStmt->get_result()->fetch_assoc();
+        if (!$actor) {
+            throw new InvalidArgumentException('An active Sales Agent account is required to claim a transaction.');
+        }
+
+        $transactionStmt = $conn->prepare(
+            'SELECT transactionID, clientID, appointmentID, inquiryID, assignedAgentID, currentStage
+             FROM property_transactions
+             WHERE transactionID = ?
+             FOR UPDATE'
+        );
+        $transactionStmt->bind_param('i', $transactionId);
+        $transactionStmt->execute();
+        $transaction = $transactionStmt->get_result()->fetch_assoc();
+        if (!$transaction) {
+            throw new InvalidArgumentException('The selected transaction was not found.');
+        }
+
+        $currentStage = (string) $transaction['currentStage'];
+        if (in_array($currentStage, ['completed', 'cancelled'], true)) {
+            throw new InvalidArgumentException('A completed or cancelled transaction cannot be claimed.');
+        }
+
+        $assignedAgentIds = [];
+        $inquiryAssigned = false;
+        if (!empty($transaction['assignedAgentID'])) {
+            $assignedAgentIds[] = (int) $transaction['assignedAgentID'];
+        }
+        $appointmentId = (int) ($transaction['appointmentID'] ?? 0);
+        if ($appointmentId > 0) {
+            $appointmentStmt = $conn->prepare(
+                'SELECT agentID FROM appointments WHERE appointmentID = ? FOR UPDATE'
+            );
+            $appointmentStmt->bind_param('i', $appointmentId);
+            $appointmentStmt->execute();
+            $appointment = $appointmentStmt->get_result()->fetch_assoc();
+            if ($appointment && !empty($appointment['agentID'])) {
+                $assignedAgentIds[] = (int) $appointment['agentID'];
+            }
+        }
+
+        $inquiryId = (int) ($transaction['inquiryID'] ?? 0);
+        if ($inquiryId > 0) {
+            $assignmentStmt = $conn->prepare(
+                'SELECT agentID FROM agent_inquiry_assignments WHERE inquiryID = ? FOR UPDATE'
+            );
+            $assignmentStmt->bind_param('i', $inquiryId);
+            $assignmentStmt->execute();
+            $assignment = $assignmentStmt->get_result()->fetch_assoc();
+            if ($assignment) {
+                $assignedAgentIds[] = (int) $assignment['agentID'];
+                $inquiryAssigned = true;
+            }
+        }
+
+        foreach (array_unique($assignedAgentIds) as $assignedAgentId) {
+            if ($assignedAgentId !== $actorId) {
+                throw new InvalidArgumentException('This transaction has already been claimed by another staff member.');
+            }
+        }
+
+        if ($appointmentId > 0) {
+            $assignAppointmentStmt = $conn->prepare(
+                'UPDATE appointments SET agentID = ? WHERE appointmentID = ? AND agentID IS NULL'
+            );
+            $assignAppointmentStmt->bind_param('ii', $actorId, $appointmentId);
+            $assignAppointmentStmt->execute();
+        }
+
+        if ($inquiryId > 0 && !$inquiryAssigned) {
+            $assignInquiryStmt = $conn->prepare(
+                'INSERT INTO agent_inquiry_assignments (inquiryID, agentID) VALUES (?, ?)'
+            );
+            $assignInquiryStmt->bind_param('ii', $inquiryId, $actorId);
+            $assignInquiryStmt->execute();
+        }
+
+        if (empty($transaction['assignedAgentID'])) {
+            $assignTransactionStmt = $conn->prepare(
+                'UPDATE property_transactions SET assignedAgentID = ? WHERE transactionID = ? AND assignedAgentID IS NULL'
+            );
+            $assignTransactionStmt->bind_param('ii', $actorId, $transactionId);
+            $assignTransactionStmt->execute();
+        }
+
+        $agentName = (string) $actor['fullname'];
+        $claimedStage = $currentStage;
+        $claimNote = 'Sales Agent ' . $agentName . ' claimed this transaction request.';
+        if ($currentStage === 'viewing_requested') {
+            $claimedStage = 'reviewing_schedule';
+            $claimNote = 'Viewing accepted by ' . $agentName;
+            $updateStageStmt = $conn->prepare(
+                "UPDATE property_transactions
+                 SET currentStage = 'reviewing_schedule', updatedAt = CURRENT_TIMESTAMP
+                 WHERE transactionID = ?"
+            );
+            $updateStageStmt->bind_param('i', $transactionId);
+            $updateStageStmt->execute();
+        }
+
+        add_property_transaction_event($conn, $transactionId, $claimedStage, $claimNote, $actorId);
+        $notification = [
+            'clientId' => (int) $transaction['clientID'],
+            'agentName' => $agentName,
+            'transactionId' => $transactionId,
+            'stage' => $claimedStage,
+        ];
+        $conn->commit();
+    } catch (Throwable $exception) {
+        $conn->rollback();
+        throw $exception;
+    }
+
+    try {
+        $message = $notification['stage'] === 'reviewing_schedule'
+            ? 'Sales Agent ' . $notification['agentName'] . ' accepted your viewing request and is reviewing the schedule for transaction #KQT-' . $transactionId . '.'
+            : 'Sales Agent ' . $notification['agentName'] . ' is now handling transaction #KQT-' . $transactionId . '.';
+        send_property_notification(
+            $conn,
+            $notification['clientId'],
+            'Sales Agent assigned',
+            $message,
+            'client_dashboard.php#transaction-tracking',
+            'agent_assigned'
+        );
+    } catch (Throwable $exception) {
+        error_log('KingQuiry transaction claim notification failed: ' . $exception->getMessage());
+    }
 }
 
 function property_client_payment_methods(): array
@@ -81,6 +248,8 @@ function property_transaction_next_stages(string $stage, ?string $paymentMethod 
     $isSpotCash = $paymentMethod !== null && (strcasecmp($paymentMethod, 'Spot Cash') === 0 || strcasecmp($paymentMethod, 'Spot cash') === 0);
 
     $transitions = [
+        'inquiry_received' => ['contacting_client', 'viewing_requested', 'cancelled'],
+        'contacting_client' => ['viewing_requested', 'cancelled'],
         'reservation_requested' => ['reservation_confirmed', 'cancelled'],
         'reservation_confirmed' => ['viewing_requested', 'reviewing_schedule', 'viewing_confirmed', 'payment_in_process', 'cancelled'],
         'viewing_requested' => ['reviewing_schedule', 'viewing_confirmed', 'cancelled'],
@@ -736,6 +905,20 @@ function assert_staff_transaction_access(mysqli $conn, array $transaction, int $
         throw new InvalidArgumentException('Only an Admin or the assigned Sales Agent can manage this transaction.');
     }
 
+    $assignedAgentStmt = $conn->prepare(
+        'SELECT assignedAgentID FROM property_transactions WHERE transactionID = ? LIMIT 1'
+    );
+    $transactionId = (int) ($transaction['transactionID'] ?? 0);
+    $assignedAgentStmt->bind_param('i', $transactionId);
+    $assignedAgentStmt->execute();
+    $transactionAssignment = $assignedAgentStmt->get_result()->fetch_assoc();
+    $assignedAgentStmt->close();
+    $assignedAgentId = (int) ($transactionAssignment['assignedAgentID'] ?? 0);
+    if ($assignedAgentId === $actorId) {
+        return;
+    }
+    $hasAssignedTransactionAgent = $assignedAgentId > 0;
+
     $hasAssignedAppointmentAgent = false;
     $appointmentId = (int) ($transaction['appointmentID'] ?? 0);
     if ($appointmentId > 0) {
@@ -771,7 +954,7 @@ function assert_staff_transaction_access(mysqli $conn, array $transaction, int $
     }
 
     // If transaction is not yet assigned to any agent, allow the active sales agent to manage/claim it
-    if (!$hasAssignedAppointmentAgent && !$hasAssignedInquiryAgent) {
+    if (!$hasAssignedTransactionAgent && !$hasAssignedAppointmentAgent && !$hasAssignedInquiryAgent) {
         return;
     }
 

@@ -146,6 +146,18 @@ function claim_inquiry_for_agent(mysqli $conn, int $agentId, int $inquiryId): vo
         throw new InvalidArgumentException('Choose a valid inquiry.');
     }
 
+    $transactionStmt = $conn->prepare(
+        'SELECT transactionID FROM property_transactions WHERE inquiryID = ? LIMIT 1'
+    );
+    $transactionStmt->bind_param('i', $inquiryId);
+    $transactionStmt->execute();
+    $transaction = $transactionStmt->get_result()->fetch_assoc();
+    $transactionStmt->close();
+    if ($transaction && function_exists('claim_property_transaction')) {
+        claim_property_transaction($conn, (int) $transaction['transactionID'], $agentId);
+        return;
+    }
+
     $conn->begin_transaction();
     try {
         $agentStmt = $conn->prepare(

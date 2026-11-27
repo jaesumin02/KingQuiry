@@ -493,8 +493,8 @@ $adminRecentTx = $conn->query(
     "SELECT t.transactionID, t.propertyID, t.clientID, t.currentStage, t.salePrice, t.updatedAt, t.createdAt,
             p.title, p.location,
             u.fullname AS clientName, u.email AS clientEmail,
-            COALESCE(agentUser.fullname, inqAgentUser.fullname, 'Unassigned') AS assignedAgentName,
-            COALESCE(a.agentID, ia.agentID) AS assignedAgentID
+            COALESCE(transactionAgent.fullname, agentUser.fullname, inqAgentUser.fullname, 'Unassigned') AS assignedAgentName,
+            COALESCE(t.assignedAgentID, a.agentID, ia.agentID) AS assignedAgentID
      FROM property_transactions t
      JOIN properties p ON p.propertyID = t.propertyID
      JOIN users u ON u.userID = t.clientID
@@ -502,8 +502,8 @@ $adminRecentTx = $conn->query(
      LEFT JOIN users agentUser ON agentUser.userID = a.agentID
      LEFT JOIN agent_inquiry_assignments ia ON ia.inquiryID = t.inquiryID
      LEFT JOIN users inqAgentUser ON inqAgentUser.userID = ia.agentID
-     WHERE t.currentStage NOT IN ('inquiry_received', 'contacting_client')
-     ORDER BY (a.agentID IS NULL AND ia.agentID IS NULL) DESC, t.updatedAt DESC, t.transactionID DESC
+     LEFT JOIN users transactionAgent ON transactionAgent.userID = t.assignedAgentID
+     ORDER BY (t.assignedAgentID IS NULL AND a.agentID IS NULL AND ia.agentID IS NULL) DESC, t.updatedAt DESC, t.transactionID DESC
      LIMIT 25"
 )->fetch_all(MYSQLI_ASSOC);
 

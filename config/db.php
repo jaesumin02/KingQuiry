@@ -112,7 +112,6 @@ function ensure_required_database_tables(mysqli $connection, bool $allowSchemaCh
         'property_transactions',
         'property_transaction_events',
         'property_transaction_payments',
-        'agent_reviews',
         'user_notifications',
         'payments',
         'security_rate_limits',
@@ -199,23 +198,6 @@ function ensure_required_database_tables(mysqli $connection, bool $allowSchemaCh
                 CONSTRAINT `fk_user_notifications_user` FOREIGN KEY (`userID`) REFERENCES `users` (`userID`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
-            'agent_reviews' => "CREATE TABLE IF NOT EXISTS `agent_reviews` (
-                `reviewID` INT NOT NULL AUTO_INCREMENT,
-                `transactionID` INT NOT NULL,
-                `clientID` INT NOT NULL,
-                `agentID` INT NOT NULL,
-                `rating` TINYINT NOT NULL,
-                `comment` TEXT DEFAULT NULL,
-                `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (`reviewID`),
-                UNIQUE KEY `uq_review_transaction` (`transactionID`),
-                KEY `idx_agent_reviews_agent` (`agentID`),
-                KEY `idx_agent_reviews_client` (`clientID`),
-                CONSTRAINT `fk_agent_reviews_transaction` FOREIGN KEY (`transactionID`) REFERENCES `property_transactions` (`transactionID`) ON DELETE CASCADE,
-                CONSTRAINT `fk_agent_reviews_client` FOREIGN KEY (`clientID`) REFERENCES `users` (`userID`) ON DELETE CASCADE,
-                CONSTRAINT `fk_agent_reviews_agent` FOREIGN KEY (`agentID`) REFERENCES `users` (`userID`) ON DELETE CASCADE
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-
             'payments' => "CREATE TABLE IF NOT EXISTS `payments` (
                 `paymentID` INT NOT NULL AUTO_INCREMENT,
                 `transactionID` INT NOT NULL,
@@ -285,8 +267,8 @@ function ensure_required_database_tables(mysqli $connection, bool $allowSchemaCh
         ensure_required_database_columns($connection, [
             'agent_dismissed_appointments' => ['agentID', 'appointmentID', 'dismissedAt'],
             'agent_inquiry_assignments' => ['inquiryID', 'agentID', 'assignedAt'],
-            'agent_reviews' => ['reviewID', 'transactionID', 'clientID', 'agentID', 'rating', 'comment', 'createdAt'],
             'properties' => ['latitude', 'longitude'],
+            'property_transactions' => ['assignedAgentID'],
             'security_rate_limits' => ['key_hash', 'window_started_at', 'attempts', 'expires_at'],
             'user_notifications' => ['notificationID', 'userID', 'title', 'message', 'link', 'type', 'isRead', 'createdAt'],
         ]);
@@ -366,12 +348,43 @@ function ensure_transaction_extended_columns(mysqli $connection, bool $allowSche
         return;
     }
     try {
-        $check = $connection->query("SHOW COLUMNS FROM `property_transactions` LIKE 'paymentMethod'");
-        if ($check && $check->num_rows === 0) {
-            if (!$allowSchemaChanges) {
-                throw new RuntimeException("The production database is missing property_transactions.paymentMethod. Apply the reviewed migration.");
+        $columns = [
+            'paymentMethod' => 'VARCHAR(50) DEFAULT NULL AFTER `currentStage`',
+            'assignedAgentID' => 'INT DEFAULT NULL AFTER `inquiryID`',
+        ];
+        foreach ($columns as $column => $definition) {
+            $check = $connection->query("SHOW COLUMNS FROM `property_transactions` LIKE '{$column}'");
+            if ($check && $check->num_rows === 0) {
+                if (!$allowSchemaChanges) {
+                    throw new RuntimeException("The production database is missing property_transactions.{$column}. Apply the reviewed migration.");
+                }
+                $connection->query("ALTER TABLE `property_transactions` ADD COLUMN `{$column}` {$definition}");
             }
-            $connection->query("ALTER TABLE `property_transactions` ADD COLUMN `paymentMethod` VARCHAR(50) DEFAULT NULL AFTER `currentStage`");
+        }
+        $index = $connection->query("SHOW INDEX FROM `property_transactions` WHERE Key_name = 'idx_property_transactions_agent'");
+        if ($index && $index->num_rows === 0) {
+            if (!$allowSchemaChanges) {
+                throw new RuntimeException('The production database is missing the property transaction agent index. Apply the reviewed migration.');
+            }
+            $connection->query('ALTER TABLE `property_transactions` ADD KEY `idx_property_transactions_agent` (`assignedAgentID`, `updatedAt`)');
+        }
+        $foreignKey = $connection->query(
+            "SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE
+             WHERE TABLE_SCHEMA = DATABASE()
+               AND TABLE_NAME = 'property_transactions'
+               AND COLUMN_NAME = 'assignedAgentID'
+               AND REFERENCED_TABLE_NAME = 'users'
+             LIMIT 1"
+        );
+        if ($foreignKey && $foreignKey->num_rows === 0) {
+            if (!$allowSchemaChanges) {
+                throw new RuntimeException('The production database is missing the property transaction agent foreign key. Apply the reviewed migration.');
+            }
+            $connection->query(
+                'ALTER TABLE `property_transactions`
+                 ADD CONSTRAINT `fk_property_transactions_agent`
+                 FOREIGN KEY (`assignedAgentID`) REFERENCES `users` (`userID`) ON DELETE SET NULL'
+            );
         }
         $ensured = true;
     } catch (mysqli_sql_exception $exception) {

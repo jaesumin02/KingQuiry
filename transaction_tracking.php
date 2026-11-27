@@ -16,7 +16,7 @@ if (!user_has_role($_SESSION['user'] ?? null, 'Admin', 'Sales Agent')) {
 $formError = '';
 $formSuccess = isset($_GET['updated']) ? 'Transaction tracking was updated.' : '';
 if (isset($_GET['claimed'])) {
-    $formSuccess = 'Transaction request claimed and viewing accepted.';
+    $formSuccess = 'The transaction was claimed and assigned to your account.';
 }
 if (isset($_GET['agent_assigned'])) {
     $formSuccess = 'Sales Agent successfully assigned to transaction.';
@@ -182,6 +182,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_payment_review
                     $inqStmt->execute();
                 }
 
+                $assignTransactionStmt = $conn->prepare(
+                    'UPDATE property_transactions SET assignedAgentID = ? WHERE transactionID = ?'
+                );
+                $assignTransactionStmt->bind_param('ii', $assignedAgentId, $transactionId);
+                $assignTransactionStmt->execute();
+
                 $assignNote = 'Administrator manually assigned Sales Agent ' . $agent['fullname'] . ' to handle this transaction.';
                 add_property_transaction_event($conn, (int) $transactionId, (string) $tRow['currentStage'], $assignNote, $actorId);
 
@@ -227,62 +233,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_payment_review
             $formError = 'Choose a valid transaction to claim.';
         } else {
             try {
-                $tStmt = $conn->prepare("SELECT transactionID, propertyID, clientID, appointmentID, inquiryID, currentStage FROM property_transactions WHERE transactionID = ? LIMIT 1");
-                $tStmt->bind_param('i', $transactionId);
-                $tStmt->execute();
-                $tRow = $tStmt->get_result()->fetch_assoc();
-                if (!$tRow) {
-                    throw new InvalidArgumentException('Transaction not found.');
-                }
-
-                $conn->begin_transaction();
-
-                if (!empty($tRow['appointmentID'])) {
-                    $apptStmt = $conn->prepare("UPDATE appointments SET agentID = ? WHERE appointmentID = ?");
-                    $apptStmt->bind_param('ii', $actorId, $tRow['appointmentID']);
-                    $apptStmt->execute();
-                    $apptStmt->close();
-                }
-
-                if (!empty($tRow['inquiryID'])) {
-                    $inqStmt = $conn->prepare("INSERT INTO agent_inquiry_assignments (inquiryID, agentID, assignedAt) VALUES (?, ?, CURRENT_TIMESTAMP) ON DUPLICATE KEY UPDATE agentID = ?, assignedAt = CURRENT_TIMESTAMP");
-                    $inqStmt->bind_param('iii', $tRow['inquiryID'], $actorId, $actorId);
-                    $inqStmt->execute();
-                    $inqStmt->close();
-                }
-
-                $agentName = (string) ($_SESSION['user']['fullname'] ?? 'Sales Agent');
-
-                // If claiming a viewing_requested transaction, advance stage to reviewing_schedule to replace viewing_requested!
-                if ($tRow['currentStage'] === 'viewing_requested') {
-                    $claimStage = 'reviewing_schedule';
-                    $updateStageStmt = $conn->prepare("UPDATE property_transactions SET currentStage = 'reviewing_schedule', updatedAt = CURRENT_TIMESTAMP WHERE transactionID = ?");
-                    $updateStageStmt->bind_param('i', $transactionId);
-                    $updateStageStmt->execute();
-                    $updateStageStmt->close();
-                    $claimNote = 'Viewing accepted by ' . $agentName;
+                claim_property_transaction($conn, (int) $transactionId, $actorId);
+                if ($role === 'Admin') {
+                    $openParam = ($transactionId && $transactionId > 0) ? '&open_modal=' . $transactionId : '';
+                    header('Location: transaction_tracking.php?claimed=1' . $openParam . '#transactions');
                 } else {
-                    $claimStage = (string) $tRow['currentStage'];
-                    $claimNote = 'Sales Agent ' . $agentName . ' claimed this transaction request.';
+                    header('Location: agent_dashboard.php?claimed=1#agent-transactions');
                 }
-
-                add_property_transaction_event($conn, (int) $transactionId, $claimStage, $claimNote, $actorId);
-
-                send_property_notification(
-                    $conn,
-                    (int) $tRow['clientID'],
-                    'Sales Agent assigned',
-                    'Sales Agent ' . $agentName . ' has accepted your request and is now reviewing the schedule for transaction #KQT-' . $transactionId . '.',
-                    'client_dashboard.php#transaction-tracking',
-                    'agent_assigned'
-                );
-
-                $conn->commit();
-                $openParam = ($transactionId && $transactionId > 0) ? '&open_modal=' . $transactionId : '';
-                header('Location: transaction_tracking.php?claimed=1' . $openParam . '#transactions');
                 exit();
             } catch (Throwable $ex) {
-                $conn->rollback();
                 error_log('Transaction claim failed: ' . $ex->getMessage());
                 $formError = $ex->getMessage();
             }
@@ -308,8 +267,8 @@ $transactionsSql =
             p.title, p.location, p.image, p.propertyType, p.price AS listingPrice, l.municipalityName, l.provinceName,
             u.fullname AS clientName, u.email AS clientEmail,
             a.appointmentDate, a.appointmentTime,
-            COALESCE(a.agentID, ia.agentID) AS assignedAgentID,
-            COALESCE(agentUser.fullname, inqAgentUser.fullname, 'Unassigned') AS assignedAgentName
+            COALESCE(t.assignedAgentID, a.agentID, ia.agentID) AS assignedAgentID,
+            COALESCE(transactionAgent.fullname, agentUser.fullname, inqAgentUser.fullname, 'Unassigned') AS assignedAgentName
      FROM property_transactions t
      JOIN properties p ON p.propertyID = t.propertyID
      JOIN users u ON u.userID = t.clientID
@@ -317,23 +276,23 @@ $transactionsSql =
      LEFT JOIN appointments a ON a.appointmentID = t.appointmentID
      LEFT JOIN users agentUser ON agentUser.userID = a.agentID
      LEFT JOIN agent_inquiry_assignments ia ON ia.inquiryID = t.inquiryID
-     LEFT JOIN users inqAgentUser ON inqAgentUser.userID = ia.agentID";
+     LEFT JOIN users inqAgentUser ON inqAgentUser.userID = ia.agentID
+     LEFT JOIN users transactionAgent ON transactionAgent.userID = t.assignedAgentID";
 if ($role === 'Admin') {
     $transactions = $conn->query(
         $transactionsSql . "
-         WHERE t.currentStage NOT IN ('inquiry_received', 'contacting_client')
          ORDER BY (t.currentStage IN ('completed', 'cancelled')) ASC, t.updatedAt DESC, t.transactionID DESC
          LIMIT 300"
     );
 } else {
     $transactionsStmt = $conn->prepare(
         $transactionsSql . "
-         WHERE t.currentStage NOT IN ('inquiry_received', 'contacting_client')
-           AND ((a.agentID = ? OR ia.agentID = ?) OR (a.agentID IS NULL AND ia.agentID IS NULL))
+         WHERE ((t.assignedAgentID = ? OR a.agentID = ? OR ia.agentID = ?)
+             OR (t.assignedAgentID IS NULL AND a.agentID IS NULL AND ia.agentID IS NULL))
          ORDER BY (t.currentStage IN ('completed', 'cancelled')) ASC, t.updatedAt DESC, t.transactionID DESC
          LIMIT 300"
     );
-    $transactionsStmt->bind_param('ii', $actorId, $actorId);
+    $transactionsStmt->bind_param('iii', $actorId, $actorId, $actorId);
     $transactionsStmt->execute();
     $transactions = $transactionsStmt->get_result();
     $transactionsStmt->close();
@@ -456,18 +415,9 @@ include 'includes/header.php';
                         </td>
                         <td>
                             <?php
-                            $stageBadgeClass = match ($currentStage) {
-                                'completed' => 'text-bg-success',
-                                'cancelled' => 'text-bg-secondary',
-                                'reservation_requested' => 'text-bg-warning text-dark',
-                                'reservation_confirmed' => 'text-bg-success',
-                                'reviewing_schedule' => 'text-bg-info text-dark',
-                                'payment_in_process' => 'text-bg-warning text-dark',
-                                'payment_confirmation' => 'text-bg-info text-dark',
-                                default => 'text-bg-primary',
-                            };
+                            $stageBadgeClass = property_transaction_stage_badge_class($currentStage);
                             ?>
-                            <span class="badge rounded-pill <?= $stageBadgeClass ?>"><?= htmlspecialchars($stageLabels[$currentStage] ?? 'Status unavailable', ENT_QUOTES, 'UTF-8') ?></span>
+                            <span class="badge rounded-pill <?= $stageBadgeClass ?>"><?= htmlspecialchars(property_transaction_stage_label($currentStage), ENT_QUOTES, 'UTF-8') ?></span>
                             <?php if ($currentStage === 'payment_in_process'): ?>
                                 <div class="small text-muted mt-1" style="max-width: 170px; font-size: 0.75rem; line-height: 1.25;">
                                     <i class="bi bi-clock-history"></i> Sales Agent reviewing payment information
@@ -604,7 +554,7 @@ include 'includes/header.php';
                                 <div class="col-sm-6">
                                     <div class="small text-muted">Current Stage</div>
                                     <div>
-                                        <span class="badge rounded-pill <?= $stageBadgeClass ?> px-3 py-1"><?= htmlspecialchars($stageLabels[$currentStage] ?? $currentStage, ENT_QUOTES, 'UTF-8') ?></span>
+                                        <span class="badge rounded-pill <?= $stageBadgeClass ?> px-3 py-1"><?= htmlspecialchars(property_transaction_stage_label($currentStage), ENT_QUOTES, 'UTF-8') ?></span>
                                     </div>
                                     <div class="small text-muted mt-1">Last updated: <?= htmlspecialchars($transaction['updatedAt'], ENT_QUOTES, 'UTF-8') ?></div>
                                 </div>
@@ -1333,7 +1283,7 @@ include 'includes/header.php';
                                     <?php foreach ($txEvents as $evt): ?>
                                         <div class="border-start border-3 border-primary ps-2 py-1 small">
                                             <div class="d-flex justify-content-between gap-2">
-                                                <strong class="text-dark"><?= htmlspecialchars($stageLabels[$evt['stage']] ?? ucfirst(str_replace('_', ' ', $evt['stage'])), ENT_QUOTES, 'UTF-8') ?></strong>
+                                                <strong class="text-dark"><?= htmlspecialchars(property_transaction_stage_label((string) $evt['stage']), ENT_QUOTES, 'UTF-8') ?></strong>
                                                 <span class="text-muted" style="font-size: 0.72rem;"><?= htmlspecialchars($evt['createdAt'], ENT_QUOTES, 'UTF-8') ?></span>
                                             </div>
                                             <div class="text-muted small"><?= htmlspecialchars($evt['note'], ENT_QUOTES, 'UTF-8') ?></div>

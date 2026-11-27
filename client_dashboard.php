@@ -18,13 +18,6 @@ if (normalized_user_role($_SESSION['user'] ?? null) !== 'Client') {
 $clientID = (int) $_SESSION['user']['userID'];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['submit_agent_review'])) {
-        http_response_code(410);
-        header('Content-Type: application/json');
-        echo json_encode(['success' => false, 'message' => 'Client reviews are no longer available.']);
-        exit();
-    }
-
     if (isset($_POST['client_reschedule_appointment'])) {
         if (!has_valid_csrf_token()) {
             $_SESSION['flash_error'] = 'Your session has expired. Please try again.';
@@ -418,9 +411,9 @@ $trackingStmt = $conn->prepare(
             p.title, p.image, p.propertyType, p.price AS listingPrice, a.appointmentDate, a.appointmentTime,
             l.municipalityName, l.provinceName, p.location,
             COALESCE(
+                txAgent.fullname,
                 apptAgent.fullname,
                 inqAgent.fullname,
-                reviewAgent.fullname,
                 (
                     SELECT u2.fullname FROM property_transaction_events e
                     JOIN users u2 ON u2.userID = e.changedBy
@@ -430,19 +423,21 @@ $trackingStmt = $conn->prepare(
                 'Kings Land Sales Agent'
             ) AS agentName,
             COALESCE(
+                txAgent.phone,
                 apptAgent.phone,
                 inqAgent.phone,
                 '0965 803 0933'
             ) AS agentPhone,
             COALESCE(
+                txAgent.email,
                 apptAgent.email,
                 inqAgent.email,
                 'contact@kingsland.ph'
             ) AS agentEmail,
             COALESCE(
+                t.assignedAgentID,
                 a.agentID,
                 ia.agentID,
-                ar.agentID,
                 (
                     SELECT e.changedBy FROM property_transaction_events e
                     WHERE e.transactionID = t.transactionID AND e.changedBy IS NOT NULL
@@ -452,12 +447,11 @@ $trackingStmt = $conn->prepare(
      FROM property_transactions t
      JOIN properties p ON p.propertyID = t.propertyID
      LEFT JOIN appointments a ON a.appointmentID = t.appointmentID
+     LEFT JOIN users txAgent ON txAgent.userID = t.assignedAgentID
      LEFT JOIN users apptAgent ON apptAgent.userID = a.agentID
      LEFT JOIN agent_inquiry_assignments ia ON ia.inquiryID = t.inquiryID
      LEFT JOIN users inqAgent ON inqAgent.userID = ia.agentID
      LEFT JOIN property_locations l ON l.locationID = p.locationID
-     LEFT JOIN agent_reviews ar ON ar.transactionID = t.transactionID
-     LEFT JOIN users reviewAgent ON reviewAgent.userID = ar.agentID
      WHERE t.clientID = ? AND t.currentStage NOT IN ('inquiry_received', 'contacting_client')
      ORDER BY t.updatedAt DESC, t.transactionID DESC
      LIMIT 100"
@@ -626,16 +620,7 @@ $progressStages = [
                 $location = !empty($tracking['municipalityName'])
                     ? $tracking['municipalityName'] . ', ' . $tracking['provinceName']
                     : $tracking['location'];
-                $stageBadgeClass = match ($stage) {
-                    'completed' => 'text-bg-success',
-                    'cancelled' => 'text-bg-secondary',
-                    'reservation_requested' => 'text-bg-warning text-dark',
-                    'reservation_confirmed' => 'text-bg-success',
-                    'reviewing_schedule' => 'text-bg-info text-dark',
-                    'payment_in_process' => 'text-bg-warning text-dark',
-                    'payment_confirmation' => 'text-bg-info text-dark',
-                    default => 'text-bg-primary',
-                };
+                $stageBadgeClass = property_transaction_stage_badge_class($stage);
                 $txPaySummary = $paymentSummaries[$transactionId] ?? ['verifiedTotal' => 0.0, 'verifiedCount' => 0, 'pendingTotal' => 0.0, 'pendingCount' => 0];
                 $txPayRecords = $paymentRecordsByTx[$transactionId] ?? [];
                 $txVerifiedPaid = (float) $txPaySummary['verifiedTotal'];
@@ -670,7 +655,7 @@ $progressStages = [
                                 <div>
                                     <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
                                         <span class="small fw-bold text-primary">#KQT-<?= $transactionId ?></span>
-                                        <span class="badge rounded-pill <?= $stageBadgeClass ?>"><?= htmlspecialchars($stageLabels[$stage] ?? 'Status unavailable', ENT_QUOTES, 'UTF-8') ?></span>
+                                        <span class="badge rounded-pill <?= $stageBadgeClass ?>"><?= htmlspecialchars(property_transaction_stage_label($stage), ENT_QUOTES, 'UTF-8') ?></span>
                                         <?php if ($isSpotCash): ?>
                                             <span class="badge text-bg-warning text-dark small"><i class="bi bi-lightning-charge-fill me-1"></i>Spot Cash</span>
                                         <?php endif; ?>
@@ -731,7 +716,7 @@ $progressStages = [
                                             <h5 class="modal-title h6 mb-0 text-white" id="trackingModalLabel<?= $transactionId ?>">
                                                 Transaction Tracking — #KQT-<?= $transactionId ?>
                                             </h5>
-                                            <span class="badge rounded-pill <?= $stageBadgeClass ?> px-2 py-1 small"><?= htmlspecialchars($stageLabels[$stage] ?? $stage, ENT_QUOTES, 'UTF-8') ?></span>
+                                            <span class="badge rounded-pill <?= $stageBadgeClass ?> px-2 py-1 small"><?= htmlspecialchars(property_transaction_stage_label($stage), ENT_QUOTES, 'UTF-8') ?></span>
                                             <?php if ($isSpotCash): ?>
                                                 <span class="badge text-bg-warning text-dark small"><i class="bi bi-lightning-charge-fill me-1"></i>Spot Cash</span>
                                             <?php endif; ?>
@@ -937,7 +922,7 @@ $progressStages = [
                                             <div class="progress-bar <?= $stage === 'completed' ? 'bg-success' : 'bg-primary' ?>" style="width: <?= $progress ?>%"></div>
                                         </div>
                                         <div class="small text-muted mt-2 d-flex justify-content-between align-items-center">
-                                            <span>Current milestone: <strong><?= htmlspecialchars($stageLabels[$stage] ?? $stage, ENT_QUOTES, 'UTF-8') ?></strong></span>
+                                            <span>Current milestone: <strong><?= htmlspecialchars(property_transaction_stage_label($stage), ENT_QUOTES, 'UTF-8') ?></strong></span>
                                             <span>Updated: <?= htmlspecialchars($tracking['updatedAt'], ENT_QUOTES, 'UTF-8') ?></span>
                                         </div>
                                     </div>
@@ -1022,7 +1007,7 @@ $progressStages = [
                                                     <div class="kq-tracking-event-content">
                                                         <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
                                                             <?php
-                                                            $eventTitle = $stageLabels[$event['stage']] ?? 'Status updated';
+                                                            $eventTitle = property_transaction_stage_label((string) $event['stage']);
                                                             if (!empty($event['note']) && (str_contains($event['note'], 'Agent recorded face-to-face payment') || str_contains($event['note'], 'face-to-face payment and paperwork') || str_contains($event['note'], 'Payment and paperwork'))) {
                                                                 if (str_contains($event['note'], '(Status: confirmed)')) {
                                                                     $eventTitle = 'Payment complete';

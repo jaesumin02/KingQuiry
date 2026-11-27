@@ -732,7 +732,7 @@ include 'includes/header.php';
                         <option value="<?= kq_e($option) ?>" <?= $statusFilter === $option ? 'selected' : '' ?>><?= kq_e($option) ?></option>
                     <?php endforeach; ?>
                 </select>
-                <button type="submit" class="btn btn-sm btn-primary">Apply filters</button>
+                <button type="submit" class="btn btn-sm btn-primary">Apply</button>
                 <?php if ($search !== '' || $statusFilter !== ''): ?><a href="admin_payments.php#payment-results" class="btn btn-sm btn-outline-secondary">Clear filters</a><?php endif; ?>
             </form>
         </div>
@@ -766,7 +766,7 @@ include 'includes/header.php';
                             <td class="small">
                                 <?php if ($payment['transactionID'] !== null): ?>
                                     <div class="fw-semibold"><?= kq_e($payment['propertyTitle'] ?? 'Property record unavailable') ?></div>
-                                    <div class="text-muted">#KQT-<?= (int) $payment['transactionID'] ?> · <?= kq_e($stageLabels[$payment['currentStage']] ?? 'Status unavailable') ?></div>
+                                    <div class="text-muted">#KQT-<?= (int) $payment['transactionID'] ?> · <?= kq_e(property_transaction_stage_label((string) $payment['currentStage'])) ?></div>
                                     <?php if ($payment['salePrice'] !== null): ?><div class="text-muted">Recorded sale: <?= kq_format_peso((float) $payment['salePrice']) ?></div><?php endif; ?>
                                 <?php else: ?>
                                     <span class="text-muted">Not linked to a transaction</span>

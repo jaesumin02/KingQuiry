@@ -4,7 +4,7 @@
 Land Properties. It provides a public property catalog and different pages for
 clients, sales agents, and administrators.
 
-- **Last reviewed:** 2026-11-20
+- **Last reviewed:** 2026-11-27
 - **Application type:** Server-rendered PHP website
 - **Database:** MySQL, accessed with PHP `mysqli`
 - **Local development environment:** XAMPP
@@ -22,22 +22,19 @@ required:
 2. Copy the whole project folder to `C:\xampp\htdocs\kingquiry`.
 3. Open the XAMPP Control Panel and start **Apache** and **MySQL**.
 4. Open `http://localhost/phpmyadmin/`, create a database named
-   `kingquiry_db`, select it, and import `database/schema.sql`. It includes
-   property listings across the supported categories with credited
-   representative photos.
-5. Open `http://localhost/kingquiry/`, register the first account, and promote
-   only that account to administrator in phpMyAdmin using the safe query in
-   [Local setup](#local-setup). Sign in again.
+   `kingquiry_db`, select it, and import `database/schema.sql`. It creates the
+   tables, Batangas locations, listings, demo accounts, appointments,
+   inquiries, transaction history, and payment records in one import.
+5. Open `http://localhost/kingquiry/` and sign in with the local demo
+   administrator account described under [Local setup](#local-setup).
 6. After this one-time setup, start Apache and MySQL in XAMPP and open
    `http://localhost/kingquiry/` to use the system.
 
-The fresh schema creates the tables, tracking and analytics fields, client
-profile fields, the payments register, chat storage, authentication rate limits,
-agent inquiry assignments, initial Batangas locations, and property listings
-across the supported categories. It contains no users, messages, appointments,
-inquiries, payments, or sales. Some listing photos are credited representative
-images and may not depict the exact property. If the
-XAMPP folder or database credentials differ, update the settings in
+The import includes demonstration records for local testing, including
+pre-configured accounts and historical transactions. These are sample records,
+not live business data. Listing photos marked representative may not depict
+the exact property. Change or remove the demo accounts before any public
+deployment. If the XAMPP folder or database credentials differ, update the settings in
 `config/db.php` or set the documented `KINGQUIRY_DB_*` environment variables.
 
 In development, the application initializes the schema only when the selected
@@ -173,8 +170,13 @@ form validation and database CRUD operations are not listed as algorithms.
 
 ### Sales agent
 
-- View client appointments and inquiries.
-- Change appointment status to `Pending`, `Approved`, or `Cancelled`.
+- View client inquiries and viewing/transaction requests, claim open requests,
+  and work on requests assigned to the agent. Claims are checked against other
+  assignments so an already-owned request cannot be taken over.
+- Approve or cancel viewing requests and update the transaction through its
+  permitted milestones.
+- Add and manage property listings where allowed. Agent accounts are provisioned
+  and maintained by an administrator.
 
 ### Administrator
 
@@ -203,6 +205,9 @@ form validation and database CRUD operations are not listed as algorithms.
   have no appointments, inquiries, transactions, or payments. Inactive clients
   cannot sign in to the client portal, and linked history is preserved by
   requiring deactivation instead of deletion.
+- Manage Sales Agent accounts from **Sales Agents**: create accounts, update
+  contact details, reset passwords, and deactivate/reactivate access. Existing
+  agent assignments and transaction history are retained.
 - Record and reconcile collections from **Payments**. Each payment is linked to
   a tracked transaction and stores its amount, type, method, reference number,
   payment date, note, and status. Staff can record pending or verified payments,
@@ -246,9 +251,10 @@ form validation and database CRUD operations are not listed as algorithms.
 | `admin_dashboard.php` | Admin overview, dynamic location directory, and property management/listing status |
 | `admin_reports.php` | Annual actual-sales report, inventory, viewing, and inquiry analytics |
 | `admin_clients.php` | Client directory: create and edit client accounts, reset passwords, and activate or deactivate accounts |
+| `admin_agents.php` | Sales Agent accounts: create, edit, reset passwords, and activate or deactivate accounts |
 | `admin_payments.php` | Payment register: record, verify, reject, and remove collections with a six-month verified-collections chart |
 | `admin_sales.php` | Sales and transaction dashboard: revenue, pipeline, stage breakdown, reconciliation, and transaction register |
-| `agent_dashboard.php` | Sales-agent appointment and inquiry list; appointment status updates |
+| `agent_dashboard.php` | Sales Agent request queue, transaction pipeline, request claiming, property listings, and viewing status updates |
 | `client_dashboard.php` | Client appointment tracking and assigned agent contact |
 | `transaction_tracking.php` | Admin/agent transaction-stage updates and client-visible history |
 | `config/db.php` | MySQL connection settings |
@@ -256,21 +262,22 @@ form validation and database CRUD operations are not listed as algorithms.
 | `includes/footer.php` | Shared footer, brand identity, and Bootstrap JavaScript |
 | `includes/property_images.php` | Validated property image upload and storage |
 | `includes/admin_management.php` | Shared client, payment, and sales helpers, including idempotent schema setup |
-| `database/schema.sql` | Complete fresh-install schema, Batangas location directory, and property listings across all supported categories; no user or transaction records |
+| `database/schema.sql` | Single fresh-install import: schema, Batangas locations, property listings, and local demonstration records |
 | `docs/KingQuiry_SAD_Documentation.md` | System-aligned project report, diagrams, user guide, test evidence, and evidence checklist |
-| `docs/screenshots/` | Local public-page and sign-in screenshots captured for the report |
 | `CHANGELOG.md` | Dated record of project changes |
 
 ## Local setup
 
 1. Install and start Apache and MySQL through XAMPP.
 2. Create a MySQL database named `kingquiry_db`.
-3. For a **new/empty database**, select `kingquiry_db` in phpMyAdmin and import
-   `database/schema.sql`. It creates all application tables, seeds the
-   standardized Batangas location directory and property listings across the
-   supported types. Listings with representative photos are identified in the
-   catalog. No accounts, appointment/inquiry records, chat messages, or
-   audit-log entries from any developer's local database are imported.
+3. For a **new or disposable database**, select `kingquiry_db` in phpMyAdmin
+   and import `database/schema.sql`. It creates all application tables and
+   loads the standardized Batangas locations, 24 demonstration listings,
+   accounts, appointments, inquiries, transactions, and payment records.
+   **The import resets seeded application tables; never run it on a database
+   containing records you need to keep.** Sign in as `admin@kingquiry.ph`
+   with the demo password `Password123!`. Change or remove these accounts
+   before deployment.
 4. Configure the database environment variables if needed:
    `KINGQUIRY_DB_HOST`, `KINGQUIRY_DB_PORT`, `KINGQUIRY_DB_USER`,
    `KINGQUIRY_DB_PASSWORD`, and `KINGQUIRY_DB_NAME`. Local defaults are host
@@ -292,36 +299,10 @@ form validation and database CRUD operations are not listed as algorithms.
    Preserve existing data and do not assign legacy free-text locations to a
    standardized municipality unless the location has been verified.
 
-7. Create the first administrator securely: register that account through the
-   site first (registration creates only a `Client`), then in phpMyAdmin select
-   the new account and change its role to `Admin` with a narrowly scoped query:
-
-   ```sql
-   UPDATE users
-   SET role = 'Admin'
-   WHERE email = 'admin@your-domain.example' AND role = 'Client';
-   ```
-
-   Replace the example email with the account you just registered and confirm
-   exactly one row was changed. Sign in again so the new role is loaded.
-   Registration does not create agent accounts: register an account for the
-   agent, then assign its exact email the database's `Agent` role in phpMyAdmin:
-
-   ```sql
-   UPDATE users
-   SET role = 'Agent'
-   WHERE email = 'agent@example.com' AND role = 'Client';
-   ```
-
-   Replace `agent@example.com` with the email used during registration and
-   confirm exactly one row was changed. The `agent@example.com` value is only
-   an example; the fresh database has no pre-created agent accounts. After
-   assigning the role, sign in at `http://localhost/kingquiry/agent_login.php`
-   with that account's email and password.
-   If registration does not save, confirm Apache and MySQL are running, that
-   `database/schema.sql` was imported into `kingquiry_db`, and that the
-   connection settings in `config/db.php` match your MySQL setup. An email
-   address can only be registered once.
+7. The import includes local administrator and Sales Agent accounts for
+   demonstration. Replace the sample accounts with organization-approved
+   accounts before deployment.
+   Self-registered accounts receive the `Client` role.
 8. Sign in with the administrator account, open **Manage locations**, and add
    any verified locations not in the initial Batangas directory. The region
    code, region name, province, and city/municipality become available
@@ -329,6 +310,17 @@ form validation and database CRUD operations are not listed as algorithms.
    remain attached to existing listings. To reproduce custom directory entries
    on another installation, transfer only the approved location rows through a
    reviewed SQL export; do not export personal records into the source repo.
+
+## Status reference
+
+| Record | Status / stage | Meaning |
+| --- | --- | --- |
+| Account | `Active` / `Inactive` | Active users can sign in; inactive users cannot. Admins can manage Client and Sales Agent accounts. |
+| Property | `Available` / `Reserved` / `Sold` | Available listings accept new requests; Reserved listings are on hold; Sold listings are closed. |
+| Viewing | `Pending` / `Approved` / `Cancelled` | Request awaiting staff action, approved schedule, or cancelled request. |
+| Inquiry | `Unread` / `Read` / `Replied` | Staff handling state for a property inquiry. |
+| Payment | `Pending` / `Verified` / `Rejected` | Staff review state; only verified records count as collected payments. |
+| Transaction | `inquiry_received` → `contacting_client` → viewing/reservation → payment/document checks → `completed` or `cancelled` | Open client requests remain visible and claimable by an Agent, and intake stages can be advanced from the tracker. Later changes follow the permitted sequence shown there. Spot Cash may skip document verification; other payment paths require it. |
 
 ## Production deployment requirements
 
@@ -348,11 +340,10 @@ deployment. Before exposing this application publicly:
 - Use a dedicated least-privilege MySQL account. Do not deploy with XAMPP's
   default `root` account, and store database credentials in the hosting
   environment rather than source control.
-- Apply all documented migrations to an existing database after a verified
-  backup, including the notifications, coordinate, agent-assignment, and
-  rate-limit migrations.
-  Production checks required migration-created tables and columns at connection
-  time and never applies schema changes from web requests.
+- Never import the fresh-install `database/schema.sql` into an active database.
+  Back up the database and apply only a reviewed, environment-specific
+  migration. Production checks required tables and columns at connection time
+  and never applies schema changes from web requests.
 - On Apache 2.4, enable `mod_rewrite` and `mod_authz_core` and configure
   `AllowOverride` so the
   repository's `.htaccess` protection is applied. On other web servers, deny
@@ -393,8 +384,8 @@ The code expects these tables and corresponding fields:
 - `chat_conversations`, `chat_messages`, and `chat_admin_presence`: customer
   conversations, their messages, and admin availability
 - `property_transactions` and `property_transaction_events`: the current
-  transaction stage, verified sale price when completed, and append-only
-  timestamped updates
+  transaction stage, assigned Sales Agent, verified sale price when completed,
+  and append-only timestamped updates
 - `payments`: `paymentID`, optional `transactionID`, `clientID`, `amount`,
   `paymentType`, `paymentMethod`, `referenceNo`, `status` (`Pending`,
   `Verified`, or `Rejected`), `paidAt`, `note`, `recordedBy`, and timestamps
@@ -406,14 +397,27 @@ access-controlled backup and transfer it using a secure channel; review and
 sanitize personal data before sharing or committing any export.
 
 For an equivalent application setup on another computer, share the project
-source and import `database/schema.sql` into a fresh database there. This
-creates the application tables, initial location directory, and the schema's
-example property listings, but intentionally not user accounts, appointments,
-inquiries, chats, payments, sales, or logs from a local database. Move live data
+source and import `database/schema.sql` into a new or disposable database
+there. The import includes sample accounts and transaction data for local
+demonstration; it is not a backup of an active installation. Move live data
 only with the owner's approval, a protected database backup, and a deliberate
 privacy review. Also transfer approved property image files from
 `assets/images/` when the listing data refers to them; do not put private
 customer data or unreviewed database dumps in Git.
+
+Existing production databases must apply the reviewed migration for
+`property_transactions.assignedAgentID` and its index/foreign key before
+deploying this version; production startup intentionally does not alter schema.
+After a protected backup and after confirming these objects do not already
+exist, the one-time migration is:
+
+```sql
+ALTER TABLE `property_transactions`
+  ADD COLUMN `assignedAgentID` INT DEFAULT NULL AFTER `inquiryID`,
+  ADD KEY `idx_property_transactions_agent` (`assignedAgentID`, `updatedAt`),
+  ADD CONSTRAINT `fk_property_transactions_agent`
+    FOREIGN KEY (`assignedAgentID`) REFERENCES `users` (`userID`) ON DELETE SET NULL;
+```
 
 The exact SQL types, indexes, constraints, and any additional columns should
 match the database that is used for the project.
@@ -427,7 +431,10 @@ the case in **Transaction Tracking**. The implemented state machine allows:
 
 - `inquiry_received` → `contacting_client`, `viewing_requested`, or `cancelled`
 - `contacting_client` → `viewing_requested` or `cancelled`
-- `viewing_requested` → `viewing_confirmed` or `cancelled`
+- A Client reservation action can start `reservation_requested` → `reservation_confirmed`;
+  a confirmed reservation can proceed to viewing, payment processing, or cancellation.
+- `viewing_requested` → `reviewing_schedule`, `viewing_confirmed`, or `cancelled`
+- `reviewing_schedule` → `viewing_confirmed`, `viewing_completed`, or `cancelled`
 - `viewing_confirmed` → `viewing_completed`, `payment_in_process`, or `cancelled`
 - `viewing_completed` → `payment_in_process`, `document_verification`, or
   `cancelled`
@@ -507,15 +514,13 @@ Run the maintained checks from the repository root:
 
 ```powershell
 php tests/production_baseline_test.php
-php tests/transaction_records_test.php
 ```
 
-The transaction integration test requires a non-production MySQL database
-connection and uses connection-scoped temporary tables for its fixtures. Do not
-run it against production. The fresh-install schema does not contain
-pre-configured demo accounts or business transactions; use approved isolated
-test data for demonstrations. `CHANGELOG.md` records notable implementation
-changes. See
+This test runs the repository's maintained session, transaction-rule,
+recommendation, property-category, and reporting checks. The fresh-install
+schema contains demonstration accounts and transaction records; use approved
+isolated data for demonstrations and replace the default demo credentials
+before deployment. `CHANGELOG.md` records notable implementation changes. See
 [`docs/KingQuiry_SAD_Documentation.md`](docs/KingQuiry_SAD_Documentation.md)
-for the system diagrams, role guide, data model, test evidence, screenshots,
-and items that still require organization approval.
+for the system diagrams, role guide, data model, test evidence, and items that
+still require organization approval.

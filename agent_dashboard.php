@@ -26,7 +26,7 @@ $statusMessage = isset($_GET['property_added'])
         ? 'The viewing request and client tracking were updated.'
         : (isset($_GET['dismissed'])
             ? 'The taken viewing request was removed from your queue.'
-            : (isset($_GET['claimed']) ? 'The inquiry was assigned to your account.' : '')));
+            : (isset($_GET['claimed']) ? 'The client request was assigned to your account.' : '')));
 $statusError = '';
 $initialAgentPanel = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -222,10 +222,11 @@ $txStatsStmt = $conn->prepare(
      FROM property_transactions t
      LEFT JOIN appointments a ON a.appointmentID = t.appointmentID
      LEFT JOIN agent_inquiry_assignments ia ON ia.inquiryID = t.inquiryID
-     WHERE ((a.agentID = ? OR ia.agentID = ?) OR (a.agentID IS NULL AND ia.agentID IS NULL))
+     WHERE ((t.assignedAgentID = ? OR a.agentID = ? OR ia.agentID = ?)
+        OR (t.assignedAgentID IS NULL AND a.agentID IS NULL AND ia.agentID IS NULL))
        AND t.currentStage NOT IN ('inquiry_received', 'contacting_client')"
 );
-$txStatsStmt->bind_param('ii', $currentAgentId, $currentAgentId);
+$txStatsStmt->bind_param('iii', $currentAgentId, $currentAgentId, $currentAgentId);
 $txStatsStmt->execute();
 $txStatsRow = $txStatsStmt->get_result()->fetch_assoc() ?: ['active_transactions' => 0, 'completed_transactions' => 0];
 
@@ -234,8 +235,8 @@ $agentTxStmt = $conn->prepare(
             t.currentStage, t.salePrice, t.paymentMethod, t.createdAt, t.updatedAt,
             p.title, p.location,
             u.fullname AS clientName, u.email AS clientEmail,
-            COALESCE(a.agentID, ia.agentID) AS assignedAgentID,
-            COALESCE(agentUser.fullname, inqAgentUser.fullname, 'Unassigned') AS assignedAgentName
+            COALESCE(t.assignedAgentID, a.agentID, ia.agentID) AS assignedAgentID,
+            COALESCE(transactionAgent.fullname, agentUser.fullname, inqAgentUser.fullname, 'Unassigned') AS assignedAgentName
      FROM property_transactions t
      JOIN properties p ON p.propertyID = t.propertyID
      JOIN users u ON u.userID = t.clientID
@@ -243,28 +244,17 @@ $agentTxStmt = $conn->prepare(
      LEFT JOIN users agentUser ON agentUser.userID = a.agentID
      LEFT JOIN agent_inquiry_assignments ia ON ia.inquiryID = t.inquiryID
      LEFT JOIN users inqAgentUser ON inqAgentUser.userID = ia.agentID
-     WHERE ((a.agentID = ? OR ia.agentID = ?) OR (a.agentID IS NULL AND ia.agentID IS NULL))
-       AND t.currentStage NOT IN ('inquiry_received', 'contacting_client')
-     ORDER BY (a.agentID IS NULL AND ia.agentID IS NULL) DESC, (t.currentStage IN ('completed', 'cancelled')) ASC, t.updatedAt DESC
+     LEFT JOIN users transactionAgent ON transactionAgent.userID = t.assignedAgentID
+     WHERE ((t.assignedAgentID = ? OR a.agentID = ? OR ia.agentID = ?)
+         OR (t.assignedAgentID IS NULL AND a.agentID IS NULL AND ia.agentID IS NULL))
+     ORDER BY (t.assignedAgentID IS NULL AND a.agentID IS NULL AND ia.agentID IS NULL) DESC, (t.currentStage IN ('completed', 'cancelled')) ASC, t.updatedAt DESC
      LIMIT 40"
 );
-$agentTxStmt->bind_param('ii', $currentAgentId, $currentAgentId);
+$agentTxStmt->bind_param('iii', $currentAgentId, $currentAgentId, $currentAgentId);
 $agentTxStmt->execute();
 $agentTransactions = $agentTxStmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
-$agentStageLabels = function_exists('property_transaction_stages') ? property_transaction_stages() : [
-    'reservation_requested' => 'Reservation Requested',
-    'reservation_confirmed' => 'Reservation Confirmed',
-    'viewing_requested' => 'Viewing Requested',
-    'reviewing_schedule' => 'Reviewing Schedule',
-    'viewing_confirmed' => 'Viewing Approved',
-    'viewing_completed' => 'Viewing Completed',
-    'payment_in_process' => 'Payment In Process',
-    'document_verification' => 'Document Verification',
-    'payment_confirmation' => 'Payment Confirmed',
-    'completed' => 'Completed',
-    'cancelled' => 'Cancelled',
-];
+$agentStageLabels = property_transaction_stages();
 
 include 'includes/header.php';
 ?>
@@ -516,15 +506,7 @@ include 'includes/header.php';
                     $txStage = (string) $tx['currentStage'];
                     $isAssignedToMe = ((int) ($tx['assignedAgentID'] ?? 0) === $currentAgentId);
                     $isUnassigned = empty($tx['assignedAgentID']);
-                    $txBadge = match ($txStage) {
-                        'completed' => 'text-bg-success',
-                        'cancelled' => 'text-bg-secondary',
-                        'reservation_requested' => 'text-bg-warning text-dark',
-                        'reservation_confirmed' => 'text-bg-success',
-                        'payment_in_process' => 'text-bg-warning text-dark',
-                        'payment_confirmation' => 'text-bg-info text-dark',
-                        default => 'text-bg-primary',
-                    };
+                    $txBadge = property_transaction_stage_badge_class($txStage);
                 ?>
                     <tr>
                         <td>
@@ -540,7 +522,7 @@ include 'includes/header.php';
                             <div class="small text-muted"><?= htmlspecialchars($tx['clientEmail'], ENT_QUOTES, 'UTF-8') ?></div>
                         </td>
                         <td>
-                            <span class="badge rounded-pill <?= $txBadge ?>"><?= htmlspecialchars($agentStageLabels[$txStage] ?? ucfirst($txStage), ENT_QUOTES, 'UTF-8') ?></span>
+                            <span class="badge rounded-pill <?= $txBadge ?>"><?= htmlspecialchars(property_transaction_stage_label($txStage), ENT_QUOTES, 'UTF-8') ?></span>
                         </td>
                         <td>
                             <?php if ($isAssignedToMe): ?>
@@ -556,7 +538,7 @@ include 'includes/header.php';
                                 <button type="button" class="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1 shadow-sm text-nowrap" onclick="openDirectChat(<?= $txId ?>, '<?= addslashes(htmlspecialchars($tx['title'], ENT_QUOTES, 'UTF-8')) ?>', '<?= addslashes(htmlspecialchars($tx['clientName'], ENT_QUOTES, 'UTF-8')) ?>')">
                                     <span>💬 Chat</span>
                                 </button>
-                                <?php if ($isUnassigned): ?>
+                                <?php if ($isUnassigned && !in_array($txStage, ['completed', 'cancelled'], true)): ?>
                                     <form method="post" action="transaction_tracking.php" class="d-inline">
                                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                                         <input type="hidden" name="transactionID" value="<?= $txId ?>">
@@ -688,12 +670,20 @@ include 'includes/header.php';
             <tbody>
             <?php if ($inquiries && $inquiries->num_rows > 0): ?>
                 <?php while ($inquiry = $inquiries->fetch_assoc()): ?>
+                <?php
+                $inquiryStatusClass = match ($inquiry['status']) {
+                    'Unread' => 'text-bg-warning text-dark',
+                    'Read' => 'text-bg-info text-dark',
+                    'Replied' => 'text-bg-success',
+                    default => 'text-bg-light text-dark',
+                };
+                ?>
                     <tr>
                         <td><?= htmlspecialchars($inquiry['clientName'], ENT_QUOTES, 'UTF-8') ?><br><small class="text-muted"><?= htmlspecialchars($inquiry['clientEmail'], ENT_QUOTES, 'UTF-8') ?></small></td>
                         <td class="fw-semibold"><?= htmlspecialchars($inquiry['title'], ENT_QUOTES, 'UTF-8') ?></td>
                         <td class="text-break"><?= htmlspecialchars($inquiry['message'], ENT_QUOTES, 'UTF-8') ?></td>
                         <td><?= htmlspecialchars($inquiry['createdAt'], ENT_QUOTES, 'UTF-8') ?></td>
-                        <td><span class="badge rounded-pill text-bg-light"><?= htmlspecialchars($inquiry['status'], ENT_QUOTES, 'UTF-8') ?></span></td>
+                        <td><span class="badge rounded-pill <?= $inquiryStatusClass ?>"><?= htmlspecialchars($inquiry['status'], ENT_QUOTES, 'UTF-8') ?></span></td>
                         <td>
                             <?php if ((int) ($inquiry['agentID'] ?? 0) === $currentAgentId): ?>
                                 <span class="badge text-bg-success">Assigned to you</span>
