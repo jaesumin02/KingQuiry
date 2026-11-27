@@ -482,7 +482,7 @@ include 'includes/header.php';
                 <input id="client-search" type="search" name="q" class="form-control form-control-sm" value="<?= kq_e($search) ?>" placeholder="Search name, email, or phone">
                 <label class="visually-hidden" for="client-filter-status">Filter by status</label>
                 <select id="client-filter-status" name="status" class="form-select form-select-sm">
-                    <option value="">All statuses (<?= (int) $clientStats['totalClients'] ?>)</option>
+                    <option value="">All status (<?= (int) $clientStats['totalClients'] ?>)</option>
                     <option value="Active" <?= $statusFilter === 'Active' ? 'selected' : '' ?>>Active (<?= (int) $clientStats['activeClients'] ?>)</option>
                     <option value="Inactive" <?= $statusFilter === 'Inactive' ? 'selected' : '' ?>>Inactive (<?= (int) $clientStats['inactiveClients'] ?>)</option>
                 </select>
