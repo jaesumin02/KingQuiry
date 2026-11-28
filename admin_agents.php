@@ -100,10 +100,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action !== '') {
                 }
                 $stmt = $conn->prepare(
                     "UPDATE users
-                     SET fullname = ?, email = ?, phone = ?, address = ?, accountStatus = ?
+                     SET phoneVerifiedAt = IF(phone <=> NULLIF(?, ''), phoneVerifiedAt, NULL),
+                         fullname = ?, email = ?, phone = ?, address = ?, accountStatus = ?
                      WHERE userID = ? AND role IN ('Agent', 'Sales Agent')"
                 );
-                $stmt->bind_param('sssssi', $fullname, $email, $phone, $address, $accountStatus, $agentId);
+                $stmt->bind_param('ssssssi', $phone, $fullname, $email, $phone, $address, $accountStatus, $agentId);
                 $stmt->execute();
                 if ($stmt->affected_rows === 0) {
                     $checkStmt = $conn->prepare(

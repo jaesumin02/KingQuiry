@@ -3,6 +3,21 @@
 Notable project changes are recorded here in reverse chronological order.
 Dates use `YYYY-MM-DD`.
 
+## 2026-11-28 — Authentication Recovery, Navigation, Property Images, and Schema Consolidation
+
+- Added one shared **Sign in** page that routes users to the dashboard for their account role. Admins and Agents must verify by email OTP, with **Try another way** SMS fallback to their verified phone when Semaphore is configured; Clients sign in with their password only.
+- Added a **Find your account** recovery flow for email or Philippine mobile numbers, with expiring email/SMS codes and an account chooser for verified phone numbers shared by multiple accounts. Account details appear only after code verification; failed delivery offers a generic recovery error without revealing whether an account matched.
+- Added configurable PHPMailer SMTP delivery for sign-in and recovery messages. Local demo OTPs remain available in the private development log when real mail delivery is disabled; production authentication does not bypass failed delivery.
+- Highlighted **Forgot password?** after an invalid sign-in while keeping the credential error generic, and added focused tests for recovery-identifier normalization and SMTP configuration validation.
+- Removed the top **Create account** button from navigation across all pages; the sign-up link remains below the sign-in form. Simplified the staff verification screen to keep only code instructions, delivery guidance, and the available SMS option.
+- Required a Philippine mobile number and successful SMS verification before creating new accounts. Existing accounts must verify their own number in Manage Account; demo seed numbers remain unverified and are never treated as real recovery contacts.
+- Added signed-in phone verification and recovery settings, and documented the required mail/Semaphore configuration without exposing credentials.
+- Unified sign-in and account-creation styling with the public pages; highlighted active navigation in orange and replaced three-line menu controls with visible crown SVGs across public and role-based navigation.
+- Removed Map Explorer from the shared top navigation while keeping the map page and property selection flow available.
+- Restored named property photos by updating legacy database image references; the fresh-install seed uses the category-named image assets. Property document and location/map fields are included in the schema.
+- Made the Client menu open account-scoped notifications and show unread counts; notification retrieval and actions remain restricted to the signed-in user's records.
+- Consolidated the current fresh-install table and column definitions in [database/schema.sql](database/schema.sql), including authentication, recovery, phone-verification, and property-document structures. Kept the one-time scripts in `database/migrations/` for upgrading existing databases; do not import the reset-style fresh-install schema over live data.
+
 ## 2026-11-27 — One-File Demo Database and Documentation Cleanup
 
 - Combined the full demonstration dataset with [database/schema.sql](database/schema.sql) so a new local database can be initialized with one import. The import is for new or disposable databases and resets demonstration records.

@@ -15,7 +15,7 @@ if (!$currentUser || empty($currentUser['userID'])) {
         echo json_encode(['success' => false, 'error' => 'You must be signed in to manage your account.']);
         exit();
     }
-    header('Location: client_login.php');
+    header('Location: login.php');
     exit();
 }
 

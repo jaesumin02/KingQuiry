@@ -11,7 +11,25 @@ $currentPageName = basename(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PAT
 if ($currentPageName === '' || $currentPageName === 'kingquiry') {
     $currentPageName = 'index.php';
 }
-$isAuthPage = in_array($currentPageName, ['register.php', 'client_login.php', 'agent_login.php', 'admin_login.php', 'login.php'], true);
+$isAuthPage = in_array($currentPageName, ['register.php', 'client_login.php', 'agent_login.php', 'admin_login.php', 'login.php', 'forgot_password.php', 'reset_password.php'], true);
+$headerLoginRoutes = [
+    'client_login.php' => 'login.php',
+    'agent_login.php' => 'login.php',
+    'admin_login.php' => 'login.php',
+    'login.php' => 'login.php',
+];
+$headerPortalRoutes = [
+    'client' => 'login.php',
+    'agent' => 'login.php',
+    'admin' => 'login.php',
+];
+$isSignInPage = isset($headerLoginRoutes[$currentPageName]);
+$headerSignInRoute = $headerLoginRoutes[$currentPageName] ?? 'login.php';
+if ($currentPageName === 'forgot_password.php' && is_string($portal ?? null)) {
+    $headerSignInRoute = $headerPortalRoutes[$portal] ?? $headerSignInRoute;
+} elseif ($currentPageName === 'reset_password.php' && is_string($loginPage ?? null)) {
+    $headerSignInRoute = in_array($loginPage, $headerPortalRoutes, true) ? $loginPage : $headerSignInRoute;
+}
 $needsLeaflet = in_array($currentPageName, ['property_detail.php', 'property_map.php', 'agent_dashboard.php', 'admin_dashboard.php'], true);
 $adminPage = ($currentRole === 'Admin' && function_exists('kq_admin_pages')) ? (kq_admin_pages()[$currentPageName] ?? null) : null;
 $isAdminControlRoom = $adminPage !== null;
@@ -103,7 +121,7 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
             --kq-muted: #687789;
             --kq-primary: #174a70;
             --kq-primary-dark: #123a59;
-            --kq-accent: #d8ad63;
+            --kq-accent: #f39c12;
             --kq-line: #e4eaf0;
             --kq-surface: #fff;
             --kq-canvas: #f5f7fa;
@@ -199,15 +217,15 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
         }
         .navbar .nav-link:hover, .navbar .nav-link:focus {
             color: #fff !important;
-            border-color: rgba(255,255,255,.3);
-            background: rgba(255,255,255,.08);
+            border-color: rgba(243,156,18,.7);
+            background: rgba(243,156,18,.14);
         }
         .navbar .nav-link.active {
-            color: #fff !important;
+            color: #12283e !important;
             font-weight: 700;
-            border-color: rgba(255,255,255,.45);
-            background: rgba(255,255,255,.16);
-            box-shadow: inset 0 -2px 0 var(--kq-gold, #e0a96d);
+            border-color: #f39c12;
+            background: #f39c12;
+            box-shadow: inset 0 -3px 0 #bd6b08;
         }
         .navbar .nav-link.btn-primary {
             border-color: var(--kq-primary);
@@ -217,6 +235,44 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
         .navbar .nav-link.btn-primary:focus {
             border-color: var(--kq-primary-dark);
             background: var(--kq-primary-dark);
+        }
+        .navbar .nav-link.kq-auth-nav-signin,
+        .navbar .nav-link.kq-auth-nav-create {
+            min-width: 7rem;
+            justify-content: center;
+            border: 1px solid rgba(255,255,255,.32) !important;
+            border-radius: .65rem;
+            font-weight: 750;
+            text-align: center;
+            text-decoration: none;
+        }
+        .navbar .nav-link.kq-auth-nav-signin {
+            background: rgba(255,255,255,.06);
+            color: #fff !important;
+        }
+        .navbar .nav-link.kq-auth-nav-signin:hover,
+        .navbar .nav-link.kq-auth-nav-signin:focus-visible {
+            background: rgba(255,255,255,.14);
+            border-color: rgba(255,255,255,.55) !important;
+            color: #fff !important;
+        }
+        .navbar .nav-link.kq-auth-nav-create {
+            background: #1b5b84;
+            border-color: #347da9 !important;
+            color: #fff !important;
+        }
+        .navbar .nav-link.kq-auth-nav-create:hover,
+        .navbar .nav-link.kq-auth-nav-create:focus-visible {
+            background: #236d9b;
+            border-color: #60a5cf !important;
+            color: #fff !important;
+        }
+        .navbar .nav-link.kq-auth-nav-signin.active,
+        .navbar .nav-link.kq-auth-nav-create.active {
+            border-color: #f39c12 !important;
+            background: #f39c12 !important;
+            color: #12283e !important;
+            box-shadow: inset 0 -3px 0 #bd6b08;
         }
         main { flex: 1; }
         main.container { max-width: var(--kq-content-width); }
@@ -580,10 +636,11 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                 color: #fff !important;
             }
             .navbar .nav-link.active {
-                background: rgba(255, 255, 255, 0.12) !important;
-                border-color: rgba(255, 255, 255, 0.2) !important;
-                border-left: 3px solid var(--kq-gold, #e0a96d) !important;
+                background: #f39c12 !important;
+                border-color: #f39c12 !important;
+                border-left: 3px solid #bd6b08 !important;
                 border-radius: 0 .55rem .55rem 0 !important;
+                color: #12283e !important;
                 box-shadow: none !important;
             }
         }
@@ -683,16 +740,13 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                     <time class="kq-live-clock-time" id="kq-live-clock-time" datetime="<?= htmlspecialchars($clockNow->format(DateTimeInterface::ATOM), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($clockNow->format('h:i:s A'), ENT_QUOTES, 'UTF-8') ?></time>
                 </div>
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                    <i class="bi bi-crown-fill kq-navbar-crown" aria-hidden="true"></i>
+                    <svg class="kq-navbar-crown" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19.5h18l-1.65-9.2-4.45 3.05L12 5.2l-2.9 8.15-4.45-3.05L3 19.5Z"/><path d="M5.2 21.5h13.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.5"/></svg>
                 </button>
             </div>
             <div class="collapse navbar-collapse justify-content-end order-xxl-2" id="navbarNav">
                 <ul class="navbar-nav">
                     <li class="nav-item">
                         <a class="nav-link<?= $currentPageName === 'index.php' ? ' active' : '' ?>" href="index.php"<?= $currentPageName === 'index.php' ? ' aria-current="page"' : '' ?>>Home</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link<?= $currentPageName === 'property_map.php' ? ' active' : '' ?>" href="property_map.php"<?= $currentPageName === 'property_map.php' ? ' aria-current="page"' : '' ?>>Map Explorer</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link<?= $currentPageName === 'resources.php' ? ' active' : '' ?>" href="resources.php"<?= $currentPageName === 'resources.php' ? ' aria-current="page"' : '' ?>>Resources &amp; Guides</a>
@@ -851,8 +905,7 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                             </ul>
                         </li>
                     <?php else: ?>
-                        <li class="nav-item"><a class="nav-link" href="client_login.php">Sign in</a></li>
-                        <li class="nav-item"><a class="nav-link btn btn-primary text-white ms-2 px-3" href="register.php">Create account</a></li>
+                        <li class="nav-item"><a class="nav-link kq-auth-nav-signin<?= $isSignInPage ? ' active' : '' ?>" href="<?= htmlspecialchars($headerSignInRoute, ENT_QUOTES, 'UTF-8') ?>"<?= $isSignInPage ? ' aria-current="page"' : '' ?>>Sign in</a></li>
                         <li class="nav-item ms-lg-2 kq-nav-actions-start">
                             <button type="button" class="btn fw-bold px-3 d-inline-flex align-items-center gap-2 kq-contact-btn" data-bs-toggle="modal" data-bs-target="#contactUsModal">
                                 <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>

@@ -102,6 +102,8 @@ function ensure_required_database_tables(mysqli $connection, bool $allowSchemaCh
         'users',
         'login_2fa_challenges',
         'password_reset_tokens',
+        'password_reset_otps',
+        'phone_verification_otps',
         'property_locations',
         'properties',
         'property_images',
@@ -262,6 +264,28 @@ function ensure_required_database_tables(mysqli $connection, bool $allowSchemaCh
                 CONSTRAINT `fk_password_reset_user` FOREIGN KEY (`userID`) REFERENCES `users` (`userID`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
+            'password_reset_otps' => "CREATE TABLE IF NOT EXISTS `password_reset_otps` (
+                `userID` INT NOT NULL,
+                `codeHash` VARCHAR(255) NOT NULL,
+                `attempts` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+                `expiresAt` DATETIME NOT NULL,
+                `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`userID`),
+                KEY `idx_password_reset_otp_expiry` (`expiresAt`),
+                CONSTRAINT `fk_password_reset_otp_user` FOREIGN KEY (`userID`) REFERENCES `users` (`userID`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+            'phone_verification_otps' => "CREATE TABLE IF NOT EXISTS `phone_verification_otps` (
+                `userID` INT NOT NULL,
+                `codeHash` VARCHAR(255) NOT NULL,
+                `attempts` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+                `expiresAt` DATETIME NOT NULL,
+                `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`userID`),
+                KEY `idx_phone_verification_otp_expiry` (`expiresAt`),
+                CONSTRAINT `fk_phone_verification_otp_user` FOREIGN KEY (`userID`) REFERENCES `users` (`userID`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
             'property_images' => "CREATE TABLE IF NOT EXISTS `property_images` (
                 `imageID` INT NOT NULL AUTO_INCREMENT,
                 `propertyID` INT NOT NULL,
@@ -297,6 +321,8 @@ function ensure_required_database_tables(mysqli $connection, bool $allowSchemaCh
             'user_notifications' => ['notificationID', 'userID', 'title', 'message', 'link', 'type', 'isRead', 'createdAt'],
             'login_2fa_challenges' => ['userID', 'codeHash', 'attempts', 'expiresAt', 'createdAt'],
             'password_reset_tokens' => ['tokenHash', 'userID', 'expiresAt', 'createdAt'],
+            'password_reset_otps' => ['userID', 'codeHash', 'attempts', 'expiresAt', 'createdAt'],
+            'phone_verification_otps' => ['userID', 'codeHash', 'attempts', 'expiresAt', 'createdAt'],
         ]);
     }
 
@@ -347,6 +373,7 @@ function ensure_user_management_columns(mysqli $connection, bool $allowSchemaCha
     try {
         $cols = [
             'phone' => 'VARCHAR(30) DEFAULT NULL',
+            'phoneVerifiedAt' => 'DATETIME DEFAULT NULL',
             'address' => 'VARCHAR(255) DEFAULT NULL',
             'accountStatus' => "ENUM('Active', 'Inactive') NOT NULL DEFAULT 'Active'",
             'twoFactorEnabled' => 'TINYINT(1) NOT NULL DEFAULT 0',

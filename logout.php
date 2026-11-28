@@ -42,6 +42,6 @@ if (ini_get('session.use_cookies')) {
     ]);
 }
 
-header('Location: client_login.php');
+header('Location: login.php');
 exit();
 ?>

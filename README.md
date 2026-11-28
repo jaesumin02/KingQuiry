@@ -10,6 +10,8 @@ clients, sales agents, and administrators.
 - **Local development environment:** XAMPP
 - **Runtime requirements:** PHP 8.0+ with `mysqli` and `fileinfo`;
   MySQL 8.0+ or a compatible MariaDB release
+- **SMTP delivery:** Composer dependencies and valid provider SMTP credentials
+  are required when choosing the SMTP transport.
 
 ## Quick setup on another Windows/XAMPP computer
 
@@ -20,14 +22,15 @@ required:
 1. Install XAMPP with PHP 8+, MySQL/MariaDB, and the PHP `mysqli` and
    `fileinfo` extensions.
 2. Copy the whole project folder to `C:\xampp\htdocs\kingquiry`.
-3. Open the XAMPP Control Panel and start **Apache** and **MySQL**.
-4. Open `http://localhost/phpmyadmin/`, create a database named
+3. Install Composer dependencies from the project folder with `composer install`.
+4. Open the XAMPP Control Panel and start **Apache** and **MySQL**.
+5. Open `http://localhost/phpmyadmin/`, create a database named
    `kingquiry_db`, select it, and import `database/schema.sql`. It creates the
    tables, Batangas locations, listings, demo accounts, appointments,
    inquiries, transaction history, and payment records in one import.
-5. Open `http://localhost/kingquiry/` and sign in with the local demo
+6. Open `http://localhost/kingquiry/` and sign in with the local demo
    administrator account described under [Local setup](#local-setup).
-6. After this one-time setup, start Apache and MySQL in XAMPP and open
+7. After this one-time setup, start Apache and MySQL in XAMPP and open
    `http://localhost/kingquiry/` to use the system.
 
 The import includes demonstration records for local testing, including
@@ -36,10 +39,33 @@ not live business data. Category sample photos may not depict the exact
 property. Change or remove the demo accounts before any public
 deployment. If the XAMPP folder or database credentials differ, update the settings in
 `config/db.php` or set the documented `KINGQUIRY_DB_*` environment variables.
-Set `KINGQUIRY_APP_URL` in `.env` to the public base URL for password-reset
-links. In development, verification codes and password-reset links are written
-to `logs/email_notifications.log`. Production delivery requires a working PHP
-mail transport, a valid `KINGQUIRY_MAIL_FROM`, and an HTTPS application URL.
+In local development with mail delivery disabled, verification codes are written
+to `logs/email_notifications.log`; this is the supported way to test staff OTPs
+when demo email addresses do not have real inboxes. To send email during local development,
+configure SMTP in the private `.env` (`KINGQUIRY_MAIL_TRANSPORT=smtp`,
+`KINGQUIRY_SMTP_HOST`, `KINGQUIRY_SMTP_PORT`, `KINGQUIRY_SMTP_ENCRYPTION`,
+`KINGQUIRY_SMTP_USERNAME`, `KINGQUIRY_SMTP_PASSWORD`, `KINGQUIRY_MAIL_FROM`,
+and optionally `KINGQUIRY_MAIL_FROM_NAME`)
+and enable `KINGQUIRY_DEV_MAIL_ENABLED=true`. For Gmail/Google Workspace, use
+an app password rather than your normal account password. PHP `mail()` remains
+available by setting `KINGQUIRY_MAIL_TRANSPORT=mail` and configuring its server
+transport. Copy provider app passwords exactly as issued (without display-only
+spaces). Production delivery requires a working configured transport and a
+valid verified sender address. Recovery accepts an email address or a verified
+Philippine mobile number; account details are shown only after the recovery code
+is verified. SMS recovery is sent to the
+verified phone number through Semaphore; it requires an active Semaphore
+account with credits and `KINGQUIRY_SEMAPHORE_API_KEY` in the private `.env`.
+New account registration requires an SMS verification code before the account
+is created. Existing account holders must add and verify their own phone number
+in Manage Account before it can be used for recovery. Demo seed phone numbers
+are sample data and are intentionally unverified; they cannot receive recovery
+codes. The code does not send SMS when that key is missing or the account phone
+has not been verified.
+Admin and Agent accounts in production must use reachable, organization-
+controlled email addresses. If delivery fails, sign-in intentionally remains
+blocked until the administrator fixes the address or mail service; there is no
+OTP bypass.
 
 In development, the application initializes the schema only when the selected
 database is empty and can attempt idempotent setup for missing required tables
@@ -47,11 +73,18 @@ and columns. Production mode disables request-time database/schema changes and
 requires the expected schema to be present. Back up and review any existing
 database before applying a migration; `database/schema.sql` is for a fresh
 installation, not a versioned migration for a live database.
-For an existing production database, back it up and apply both
-[`database/migrations/2026-11-28-auth-and-property-documents.sql`](database/migrations/2026-11-28-auth-and-property-documents.sql)
-and
-[`database/migrations/2026-11-28-property-image-filenames.sql`](database/migrations/2026-11-28-property-image-filenames.sql)
-once before deploying these changes.
+The fresh-install schema is the consolidated source for the current tables and
+columns, including the authentication, recovery, phone-verification, and
+property-document additions. The separate migration scripts are intentionally
+kept for existing installations: their one-time `ALTER TABLE` and legacy image
+path updates must not be replayed as part of a fresh schema import.
+For an existing production database, back it up and apply these migrations
+once before deploying:
+
+1. [`database/migrations/2026-11-28-auth-and-property-documents.sql`](database/migrations/2026-11-28-auth-and-property-documents.sql)
+2. [`database/migrations/2026-11-28-property-image-filenames.sql`](database/migrations/2026-11-28-property-image-filenames.sql)
+3. [`database/migrations/2026-11-28-password-reset-otp.sql`](database/migrations/2026-11-28-password-reset-otp.sql)
+4. [`database/migrations/2026-11-28-phone-verification.sql`](database/migrations/2026-11-28-phone-verification.sql)
 
 The complete system-analysis report, diagrams, user guide, test evidence, and
 remaining stakeholder-evidence checklist are in
@@ -109,12 +142,13 @@ form validation and database CRUD operations are not listed as algorithms.
 ### Public catalog
 
 - Browse property listings and filter by keyword, category, or location.
-- Open the Map Explorer, select a property pin or listing, and follow its link
+- Select a property pin or listing on the property map page and follow its link
   to the property details.
-- Use the simplified shared navigation on desktop, or its three-line menu on
-  narrower screens, where the three-line menu control is shown as a crown. The
+- Use the simplified shared navigation on desktop, or its crown menu control on
+  narrower screens. The
   Home link beside the logo opens Home; Agents is under About Us > Our Team.
-  Public links and account actions remain available without crowding the row.
+  The current page is highlighted in orange, and Map Explorer is not a top-level
+  navigation link.
 - Signed-in users have a Dashboard link across shared pages; Contact Us and
   utility controls are separated toward the right on desktop.
 - Switch between light and dark themes from the shared menu; the preference is
@@ -150,9 +184,20 @@ form validation and database CRUD operations are not listed as algorithms.
 - Log in with an email address or the part of the email address before `@`.
 - Passwords entered during registration are stored using PHP's
   `password_hash()` and checked with `password_verify()`.
-- Administrator and sales-agent sign-ins require a one-time email code. Clients
-  may enable the same two-factor check from Manage Account.
-- All portals provide an email password-reset link that expires after 30 minutes.
+- Administrators and sales agents use the shared **Sign in** page and must
+  complete a one-time email code check before reaching their role dashboard.
+  If email delivery fails, **Try another way** can text a code to the staff
+  account's verified phone when Semaphore is configured. Clients sign in with
+  their email and password without an extra verification step.
+- All portals provide email password recovery using a six-digit OTP that
+  expires after 10 minutes. The code is single-use and limited to five attempts;
+  a live countdown is shown while it is valid. Users may try SMS recovery only
+  when the account has a phone number that was verified while signed in.
+- Signed-in users can verify a Philippine mobile number from Manage Account.
+  Phone recovery and staff sign-in SMS fallback use the Semaphore OTP API when
+  `KINGQUIRY_SEMAPHORE_API_KEY` is configured. Keep the key in the private
+  `.env`; do not commit it. An unverified or missing phone number cannot be
+  used for SMS recovery or staff sign-in; use email or contact support instead.
 - The signed-in user's role determines the dashboard they are sent to:
   administrator, sales agent, or client.
 - A signed-in user who opens the login page is redirected to their role-based
@@ -173,6 +218,8 @@ form validation and database CRUD operations are not listed as algorithms.
 - Report an offline Cash, Bank Transfer, or Check payment for staff verification;
   the dashboard does not process or verify transfers.
 - Track appointment status from the catalog or the client dashboard.
+- Open Notifications from the shared header or Client menu. Each client sees
+  only their own request and transaction updates.
 - Follow a dated property-request/sale timeline from inquiry or viewing request
   through contact, confirmed viewing, negotiation, reservation, document review,
   payment confirmation, and staff-confirmed successful completion.
@@ -370,8 +417,10 @@ deployment. Before exposing this application publicly:
 - Set up encrypted, off-site scheduled backups and test restoration. The
   browser-accessible SQL export is not a substitute for protected operational
   backups.
-- Configure and test an approved outbound mail transport and set
-  `KINGQUIRY_MAIL_FROM` to a verified sender address. Without it, in-app
+- Configure and test an approved SMTP transport (or the host's PHP mail
+  transport), set `KINGQUIRY_MAIL_FROM` to a verified sender address, and keep
+  SMTP credentials in the private `.env`. With SMTP, install the locked Composer
+  dependency using `composer install`. Without a working transport, in-app
   notifications still work, but email is not sent; production does not write
   message content or recipient addresses into a local email log.
 - Configure error logs, monitoring, alerting, retention, privacy notices, and

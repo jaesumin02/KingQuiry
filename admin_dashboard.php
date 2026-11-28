@@ -10,7 +10,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 if (normalized_user_role($_SESSION['user'] ?? null) !== 'Admin') {
-    header('Location: admin_login.php');
+    header('Location: login.php');
     exit();
 }
 

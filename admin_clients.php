@@ -135,10 +135,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['client_action'])) {
                 $role = 'Client';
                 $stmt = $conn->prepare(
                     'UPDATE users
-                     SET fullname = ?, email = ?, phone = ?, address = ?, accountStatus = ?
+                     SET phoneVerifiedAt = IF(phone <=> NULLIF(?, \'\'), phoneVerifiedAt, NULL),
+                         fullname = ?, email = ?, phone = ?, address = ?, accountStatus = ?
                      WHERE userID = ? AND role = ?'
                 );
-                $stmt->bind_param('sssssis', $fullname, $email, $phone, $address, $accountStatus, $clientId, $role);
+                $stmt->bind_param('ssssssis', $phone, $fullname, $email, $phone, $address, $accountStatus, $clientId, $role);
                 $stmt->execute();
                 if ($stmt->affected_rows === 0) {
                     $checkStmt = $conn->prepare("SELECT userID FROM users WHERE userID = ? AND role = 'Client' LIMIT 1");

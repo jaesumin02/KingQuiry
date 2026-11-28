@@ -27,6 +27,102 @@ function ensure_notifications_table(mysqli $conn): void
     );
 }
 
+function kq_smtp_settings_from_environment(): ?array
+{
+    $hostValue = getenv('KINGQUIRY_SMTP_HOST');
+    $usernameValue = getenv('KINGQUIRY_SMTP_USERNAME');
+    $passwordValue = getenv('KINGQUIRY_SMTP_PASSWORD');
+    $encryptionValue = getenv('KINGQUIRY_SMTP_ENCRYPTION');
+    $portValue = getenv('KINGQUIRY_SMTP_PORT');
+    $host = trim($hostValue === false ? '' : $hostValue);
+    $username = trim($usernameValue === false ? '' : $usernameValue);
+    $password = $passwordValue === false ? '' : $passwordValue;
+    $encryption = strtolower(trim(
+        $encryptionValue === false || $encryptionValue === '' ? 'tls' : $encryptionValue
+    ));
+    $port = filter_var(
+        $portValue === false || $portValue === '' ? '587' : $portValue,
+        FILTER_VALIDATE_INT,
+        [
+        'options' => ['min_range' => 1, 'max_range' => 65535],
+        ]
+    );
+
+    if (
+        $host === ''
+        || $username === ''
+        || $password === ''
+        || $port === false
+        || !in_array($encryption, ['tls', 'ssl'], true)
+    ) {
+        return null;
+    }
+
+    return [
+        'host' => $host,
+        'username' => $username,
+        'password' => $password,
+        'encryption' => $encryption,
+        'port' => $port,
+    ];
+}
+
+function kq_send_smtp_email(
+    string $to,
+    string $recipientName,
+    string $subject,
+    string $message,
+    string $fromAddress,
+    string $fromName
+): bool {
+    $settings = kq_smtp_settings_from_environment();
+
+    if (
+        $settings === null
+        || filter_var($fromAddress, FILTER_VALIDATE_EMAIL) === false
+    ) {
+        error_log('KingQuiry SMTP is selected but its host, credentials, sender, port, or TLS settings are incomplete.');
+        return false;
+    }
+
+    $autoloadPath = dirname(__DIR__) . '/vendor/autoload.php';
+    if (!is_file($autoloadPath)) {
+        error_log('KingQuiry SMTP requires Composer dependencies. Run composer install before enabling SMTP delivery.');
+        return false;
+    }
+    require_once $autoloadPath;
+    if (!class_exists(\PHPMailer\PHPMailer\PHPMailer::class)) {
+        error_log('KingQuiry SMTP could not load PHPMailer from Composer dependencies.');
+        return false;
+    }
+
+    try {
+        $mailer = new \PHPMailer\PHPMailer\PHPMailer(true);
+        $mailer->isSMTP();
+        $mailer->Host = $settings['host'];
+        $mailer->SMTPAuth = true;
+        $mailer->Username = $settings['username'];
+        $mailer->Password = $settings['password'];
+        $mailer->SMTPSecure = $settings['encryption'] === 'ssl'
+            ? \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS
+            : \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
+        $mailer->Port = $settings['port'];
+        $mailer->Timeout = 15;
+        $mailer->SMTPDebug = 0;
+        $mailer->CharSet = \PHPMailer\PHPMailer\PHPMailer::CHARSET_UTF8;
+        $mailer->setFrom($fromAddress, $fromName);
+        $mailer->addAddress($to, $recipientName);
+        $mailer->Subject = $subject;
+        $mailer->Body = $message;
+        $mailer->isHTML(false);
+        $mailer->send();
+        return true;
+    } catch (\PHPMailer\PHPMailer\Exception $exception) {
+        error_log('KingQuiry SMTP delivery failed. Check the SMTP host, credentials, TLS settings, and provider logs.');
+        return false;
+    }
+}
+
 function send_property_email_log(mysqli $conn, int $userId, string $subject, string $message): bool
 {
     $userStmt = $conn->prepare('SELECT email, fullname FROM users WHERE userID = ? LIMIT 1');
@@ -39,26 +135,51 @@ function send_property_email_log(mysqli $conn, int $userId, string $subject, str
     }
 
     $to = (string) $user['email'];
+    $isProduction = strtolower((string) (getenv('KINGQUIRY_ENV') ?: 'development')) === 'production';
+    $devMailEnabled = filter_var(
+        getenv('KINGQUIRY_DEV_MAIL_ENABLED') ?: 'false',
+        FILTER_VALIDATE_BOOLEAN
+    );
+    $fromAddress = trim((string) (getenv('KINGQUIRY_MAIL_FROM') ?: ''));
+    $fromName = trim((string) (getenv('KINGQUIRY_MAIL_FROM_NAME') ?: 'KingQuiry'));
 
-    if (strtolower((string) (getenv('KINGQUIRY_ENV') ?: 'development')) === 'production') {
-        $fromAddress = getenv('KINGQUIRY_MAIL_FROM');
-        if (
-            !function_exists('mail')
-            || filter_var($to, FILTER_VALIDATE_EMAIL) === false
-            || !is_string($fromAddress)
-            || filter_var($fromAddress, FILTER_VALIDATE_EMAIL) === false
-        ) {
-            error_log('KingQuiry outbound email is unavailable or has an invalid sender/recipient; the in-app notification was saved only.');
+    if ($isProduction || $devMailEnabled) {
+        if (filter_var($to, FILTER_VALIDATE_EMAIL) === false) {
+            error_log('KingQuiry outbound email recipient is invalid.');
             return false;
         }
 
-        $headers = "From: KingQuiry <{$fromAddress}>\r\n"
+        $transport = strtolower(trim((string) (
+            getenv('KINGQUIRY_MAIL_TRANSPORT')
+            ?: (getenv('KINGQUIRY_SMTP_HOST') ? 'smtp' : 'mail')
+        )));
+        if ($transport === 'smtp') {
+            return kq_send_smtp_email(
+                $to,
+                (string) ($user['fullname'] ?? ''),
+                $subject,
+                $message,
+                $fromAddress,
+                $fromName
+            );
+        }
+        if ($transport !== 'mail') {
+            error_log('KingQuiry mail transport must be set to smtp or mail.');
+            return false;
+        }
+
+        if (!function_exists('mail') || filter_var($fromAddress, FILTER_VALIDATE_EMAIL) === false) {
+            error_log('KingQuiry PHP mail transport is unavailable or its sender address is invalid.');
+            return false;
+        }
+
+        $headers = "From: {$fromName} <{$fromAddress}>\r\n"
             . "Reply-To: {$fromAddress}\r\n"
             . "MIME-Version: 1.0\r\n"
             . "Content-Type: text/plain; charset=UTF-8\r\n";
         $sent = mail($to, $subject, $message, $headers);
         if (!$sent) {
-            error_log('KingQuiry outbound email could not be accepted by the configured mail transport.');
+            error_log('KingQuiry outbound email could not be accepted by the configured PHP mail transport.');
         }
         return $sent;
     }

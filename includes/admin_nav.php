@@ -5,7 +5,7 @@
     $items = kq_admin_sidebar_items($currentPage);
     ?>
     <button class="kq-menu-toggle" type="button" data-portal-menu-toggle data-menu-label="Admin menu" aria-label="Open Admin menu" aria-controls="admin-navigation" aria-expanded="false">
-        <span class="kq-menu-toggle-icon" aria-hidden="true"><span></span><span></span><span></span></span>
+        <svg class="kq-menu-toggle-crown" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19.5h18l-1.65-9.2-4.45 3.05L12 5.2l-2.9 8.15-4.45-3.05L3 19.5Z"/><path d="M5.2 21.5h13.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.5"/></svg>
         <span>Admin menu</span>
     </button>
     <div class="kq-admin-sidebar-heading">ADMIN MENU</div>

@@ -1,4 +1,7 @@
 <?php
+require_once __DIR__ . '/sms.php';
+require_once __DIR__ . '/rate_limit.php';
+
 function kq_request_uses_https(): bool
 {
     $secureOverride = getenv('KINGQUIRY_COOKIE_SECURE');
@@ -206,21 +209,7 @@ function user_has_role(?array $user, string ...$roles): bool
 function require_role(string ...$roles): void
 {
     if (!user_has_role($_SESSION['user'] ?? null, ...$roles)) {
-        $preferredRole = 'Client';
-
-        foreach ($roles as $role) {
-            $normalizedRole = normalize_role_name($role);
-            if ($normalizedRole === 'Admin' || $normalizedRole === 'Sales Agent' || $normalizedRole === 'Client') {
-                $preferredRole = $normalizedRole;
-                break;
-            }
-        }
-
-        $portal = $preferredRole === 'Admin'
-            ? 'admin_login.php'
-            : ($preferredRole === 'Sales Agent' ? 'agent_login.php' : 'client_login.php');
-
-        header('Location: ' . $portal);
+        header('Location: login.php');
         exit();
     }
 }
@@ -291,9 +280,54 @@ function kq_log_auth_event(mysqli $conn, int $userId, string $event): void
 function kq_user_requires_two_factor(array $user): bool
 {
     $role = normalized_user_role($user);
-    return $role === 'Admin'
-        || $role === 'Sales Agent'
-        || ($role === 'Client' && (int) ($user['twoFactorEnabled'] ?? 0) === 1);
+    return $role === 'Admin' || $role === 'Sales Agent';
+}
+
+function kq_login_sms_phone(array $user): ?string
+{
+    if (empty($user['phoneVerifiedAt']) || !is_string($user['phone'] ?? null)) {
+        return null;
+    }
+
+    return kq_normalize_ph_mobile((string) $user['phone']);
+}
+
+function kq_login_sms_fallback_available(array $user): bool
+{
+    return kq_user_requires_two_factor($user)
+        && kq_login_sms_phone($user) !== null
+        && kq_semaphore_is_configured();
+}
+
+function kq_parse_recovery_identifier(string $identifier): ?array
+{
+    $identifier = trim($identifier);
+    if ($identifier === '' || strlen($identifier) > 100) {
+        return null;
+    }
+
+    $email = strtolower($identifier);
+    if (filter_var($email, FILTER_VALIDATE_EMAIL) !== false) {
+        return ['type' => 'email', 'value' => $email];
+    }
+
+    $phone = kq_normalize_ph_mobile($identifier);
+    return $phone !== null
+        ? ['type' => 'phone', 'value' => $phone]
+        : null;
+}
+
+function kq_dashboard_destination(?array $user): string
+{
+    $role = normalized_user_role($user);
+    if ($role === 'Admin') {
+        return 'admin_dashboard.php';
+    }
+    if ($role === 'Sales Agent') {
+        return 'agent_dashboard.php';
+    }
+
+    return 'client_dashboard.php';
 }
 
 function kq_send_login_two_factor_code(mysqli $conn, array $user): bool
@@ -303,6 +337,8 @@ function kq_send_login_two_factor_code(mysqli $conn, array $user): bool
     if ($userId <= 0 || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
         return false;
     }
+    $smsAvailable = kq_login_sms_fallback_available($user);
+    $smsPhone = $smsAvailable ? kq_login_sms_phone($user) : null;
 
     $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
     $codeHash = password_hash($code, PASSWORD_DEFAULT);
@@ -323,22 +359,136 @@ function kq_send_login_two_factor_code(mysqli $conn, array $user): bool
         'Your KingQuiry sign-in code',
         "Your KingQuiry verification code is {$code}. It expires in 10 minutes. If you did not attempt to sign in, you can ignore this message."
     );
-    if (!$sent) {
+    if (!$sent && !$smsAvailable) {
         $deleteStmt = $conn->prepare('DELETE FROM login_2fa_challenges WHERE userID = ?');
         $deleteStmt->bind_param('i', $userId);
         $deleteStmt->execute();
         $deleteStmt->close();
         return false;
     }
+    if (!$sent) {
+        error_log('KingQuiry login email delivery failed; allowing the pending staff challenge to use its verified SMS fallback.');
+    }
 
     kq_regenerate_session_id_or_fail('Unable to secure the pending KingQuiry sign-in.');
     unset($_SESSION['user']);
     $_SESSION['pending_2fa_user_id'] = $userId;
     $_SESSION['pending_2fa_expires_at'] = time() + 600;
+    $_SESSION['pending_2fa_channel'] = 'email';
+    $_SESSION['pending_2fa_email_delivery_failed'] = !$sent;
+    $_SESSION['pending_2fa_sms_available'] = $smsAvailable;
+    $_SESSION['pending_2fa_phone_mask'] = $smsAvailable && $smsPhone !== null
+        ? '+63 *** *** ' . substr($smsPhone, -4)
+        : '';
     $_SESSION['pending_2fa_identifier'] = strtolower(trim((string) ($_POST['identifier'] ?? $_POST['email'] ?? '')));
     $_SESSION['pending_2fa_ip'] = is_string($_SERVER['REMOTE_ADDR'] ?? null) ? $_SERVER['REMOTE_ADDR'] : '';
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
     return true;
+}
+
+function kq_send_login_two_factor_sms(mysqli $conn): string
+{
+    $userId = filter_var($_SESSION['pending_2fa_user_id'] ?? null, FILTER_VALIDATE_INT);
+    $sessionExpiresAt = (int) ($_SESSION['pending_2fa_expires_at'] ?? 0);
+    if ($userId === false || $userId <= 0 || $sessionExpiresAt < time()) {
+        kq_clear_pending_two_factor($conn);
+        return 'Your sign-in challenge expired. Sign in again to request a new code.';
+    }
+
+    $userStmt = $conn->prepare(
+        'SELECT role, phone, phoneVerifiedAt, accountStatus
+         FROM users WHERE userID = ? LIMIT 1'
+    );
+    $userStmt->bind_param('i', $userId);
+    $userStmt->execute();
+    $user = $userStmt->get_result()->fetch_assoc();
+    $userStmt->close();
+    if (!$user || ($user['accountStatus'] ?? 'Active') !== 'Active' || !kq_user_requires_two_factor($user)) {
+        kq_clear_pending_two_factor($conn);
+        return 'This staff account is unavailable. Please contact the KingQuiry administrator.';
+    }
+
+    $phone = kq_login_sms_phone($user);
+    if ($phone === null) {
+        $_SESSION['pending_2fa_sms_available'] = false;
+        $_SESSION['pending_2fa_phone_mask'] = '';
+        return 'SMS sign-in requires a verified Philippine mobile number on this staff account. Sign in with email or ask the administrator for help.';
+    }
+    if (!kq_semaphore_is_configured()) {
+        $_SESSION['pending_2fa_sms_available'] = false;
+        $_SESSION['pending_2fa_phone_mask'] = '';
+        return 'SMS sign-in is not configured yet. Use the email code or ask the administrator to configure Semaphore.';
+    }
+
+    $ipAddress = is_string($_SERVER['REMOTE_ADDR'] ?? null) ? $_SERVER['REMOTE_ADDR'] : 'unknown';
+    $ipBucket = kq_rate_limit_consume($conn, 'login-2fa-sms-ip', $ipAddress, 10, 3600);
+    $userBucket = kq_rate_limit_consume($conn, 'login-2fa-sms-user', (string) $userId, 5, 3600);
+    if (!$ipBucket['allowed'] || !$userBucket['allowed']) {
+        $retryAfter = max((int) $ipBucket['retry_after'], (int) $userBucket['retry_after']);
+        return 'Too many SMS code requests. Please wait ' . max(1, (int) ceil($retryAfter / 60)) . ' minute(s) before trying again.';
+    }
+
+    $challengeStmt = $conn->prepare(
+        'SELECT codeHash, expiresAt
+         FROM login_2fa_challenges
+         WHERE userID = ? AND expiresAt > CURRENT_TIMESTAMP AND attempts < 5
+         LIMIT 1'
+    );
+    $challengeStmt->bind_param('i', $userId);
+    $challengeStmt->execute();
+    $challenge = $challengeStmt->get_result()->fetch_assoc();
+    $challengeStmt->close();
+    if (!$challenge) {
+        kq_clear_pending_two_factor($conn);
+        return 'Your sign-in code expired or was used too many times. Sign in again to request a new code.';
+    }
+
+    $oldCodeHash = (string) $challenge['codeHash'];
+    $oldExpiresAt = (string) $challenge['expiresAt'];
+    $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    $codeHash = password_hash($code, PASSWORD_DEFAULT);
+    $updateStmt = $conn->prepare(
+        'UPDATE login_2fa_challenges
+         SET codeHash = ?, expiresAt = DATE_ADD(CURRENT_TIMESTAMP, INTERVAL 10 MINUTE),
+             createdAt = CURRENT_TIMESTAMP
+         WHERE userID = ? AND codeHash = ? AND expiresAt > CURRENT_TIMESTAMP AND attempts < 5'
+    );
+    $updateStmt->bind_param('sis', $codeHash, $userId, $oldCodeHash);
+    $updateStmt->execute();
+    $updated = $updateStmt->affected_rows === 1;
+    $updateStmt->close();
+    if (!$updated) {
+        return 'Your sign-in code changed or expired. Sign in again to request a new code.';
+    }
+
+    if (!kq_send_semaphore_otp($phone, $code)) {
+        $restoreStmt = $conn->prepare(
+            'UPDATE login_2fa_challenges
+             SET codeHash = ?, expiresAt = ?
+             WHERE userID = ? AND codeHash = ?'
+        );
+        $restoreStmt->bind_param('ssis', $oldCodeHash, $oldExpiresAt, $userId, $codeHash);
+        $restoreStmt->execute();
+        $restored = $restoreStmt->affected_rows === 1;
+        $restoreStmt->close();
+        if (!$restored) {
+            error_log('KingQuiry SMS login challenge could not be restored after delivery failure.');
+            kq_clear_pending_two_factor($conn);
+            return 'SMS delivery failed and the previous code is no longer available. Sign in again or contact the administrator.';
+        }
+
+        return !empty($_SESSION['pending_2fa_email_delivery_failed'])
+            ? 'We could not deliver the SMS code, and email delivery also failed. Contact the administrator to check the verified phone and SMS service.'
+            : 'We could not send the SMS code. Your previous email code remains valid; check the phone number and SMS service, then try again.';
+    }
+
+    $_SESSION['pending_2fa_channel'] = 'sms';
+    $_SESSION['pending_2fa_email_delivery_failed'] = false;
+    $_SESSION['pending_2fa_sms_available'] = true;
+    $_SESSION['pending_2fa_phone_mask'] = '+63 *** *** ' . substr($phone, -4);
+    $_SESSION['pending_2fa_expires_at'] = time() + 600;
+    $_SESSION['pending_2fa_notice'] = 'A sign-in code was texted to the verified phone ending in ' . substr($phone, -4) . '. It expires in 10 minutes.';
+    return '';
 }
 
 function kq_clear_pending_two_factor(mysqli $conn): void
@@ -354,9 +504,35 @@ function kq_clear_pending_two_factor(mysqli $conn): void
     unset(
         $_SESSION['pending_2fa_user_id'],
         $_SESSION['pending_2fa_expires_at'],
+        $_SESSION['pending_2fa_channel'],
+        $_SESSION['pending_2fa_email_delivery_failed'],
+        $_SESSION['pending_2fa_sms_available'],
+        $_SESSION['pending_2fa_phone_mask'],
         $_SESSION['pending_2fa_identifier'],
-        $_SESSION['pending_2fa_ip']
+        $_SESSION['pending_2fa_ip'],
+        $_SESSION['pending_2fa_notice']
     );
+}
+
+function kq_clear_pending_client_two_factor(mysqli $conn): bool
+{
+    $userId = filter_var($_SESSION['pending_2fa_user_id'] ?? null, FILTER_VALIDATE_INT);
+    if ($userId === false || $userId <= 0) {
+        return false;
+    }
+
+    $stmt = $conn->prepare('SELECT role FROM users WHERE userID = ? LIMIT 1');
+    $stmt->bind_param('i', $userId);
+    $stmt->execute();
+    $user = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    if (!$user || normalized_user_role($user) !== 'Client') {
+        return false;
+    }
+
+    kq_clear_pending_two_factor($conn);
+    return true;
 }
 
 function kq_complete_user_login(mysqli $conn, array $user): void
@@ -367,11 +543,7 @@ function kq_complete_user_login(mysqli $conn, array $user): void
         update_user_presence($conn, (int) $user['userID'], true, 'online');
     }
 
-    $normalizedRole = normalized_user_role($user);
-    $destination = $normalizedRole === 'Admin'
-        ? 'admin_dashboard.php'
-        : ($normalizedRole === 'Sales Agent' ? 'agent_dashboard.php' : 'index.php');
-    header('Location: ' . $destination);
+    header('Location: ' . kq_dashboard_destination($user));
     exit();
 }
 
@@ -419,7 +591,7 @@ function kq_verify_login_two_factor(mysqli $conn): string
     }
 
     $userStmt = $conn->prepare(
-        'SELECT userID, fullname, email, role, accountStatus, twoFactorEnabled
+        'SELECT userID, fullname, email, role, accountStatus
          FROM users WHERE userID = ? LIMIT 1'
     );
     $userStmt->bind_param('i', $userId);
@@ -463,15 +635,23 @@ function kq_process_user_login(mysqli $conn): string
         return 'Your session expired. Refresh the page and try again.';
     }
 
+    $legacyClientChallengeCleared = kq_clear_pending_client_two_factor($conn);
     if (isset($_POST['cancel_2fa'])) {
         kq_clear_pending_two_factor($conn);
         return '';
     }
+    if (isset($_POST['send_2fa_sms'])) {
+        return kq_send_login_two_factor_sms($conn);
+    }
     if (isset($_POST['verify_2fa'])) {
+        if ($legacyClientChallengeCleared) {
+            return 'Client accounts no longer require a sign-in code. Please sign in again.';
+        }
         return kq_verify_login_two_factor($conn);
     }
     if (!empty($_SESSION['pending_2fa_user_id'])) {
-        return 'Enter the verification code sent to your email to finish signing in.';
+        $channel = ($_SESSION['pending_2fa_channel'] ?? 'email') === 'sms' ? 'phone' : 'email';
+        return 'Enter the verification code sent to your selected ' . $channel . ' method to finish signing in.';
     }
 
     if (function_exists('verify_login_human_challenge') && !verify_login_human_challenge($_POST)) {
@@ -506,7 +686,14 @@ function kq_process_user_login(mysqli $conn): string
                 if (kq_user_requires_two_factor($user)) {
                     if (!kq_send_login_two_factor_code($conn, $user)) {
                         error_log('KingQuiry login verification code could not be delivered.');
-                        return 'Unable to send a verification code. Please try again later or contact support.';
+                        $environment = strtolower((string) (getenv('KINGQUIRY_ENV') ?: 'development'));
+                        if ($environment === 'production') {
+                            return 'We could not deliver the staff sign-in code. Sign-in remains blocked; contact the administrator to confirm the staff email and restore email delivery.';
+                        }
+                        if (filter_var(getenv('KINGQUIRY_DEV_MAIL_ENABLED') ?: 'false', FILTER_VALIDATE_BOOLEAN)) {
+                            return 'We could not deliver the staff sign-in code. Check the SMTP settings in the private .env and your email provider account; sign-in remains blocked until delivery succeeds.';
+                        }
+                        return 'The local sign-in code could not be recorded. Check logs/email_notifications.log permissions or configure local mail delivery, then try again.';
                     }
                     return '';
                 }

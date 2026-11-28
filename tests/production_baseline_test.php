@@ -4,6 +4,8 @@ putenv('KINGQUIRY_COOKIE_SECURE=false');
 
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/rate_limit.php';
+require_once __DIR__ . '/../includes/sms.php';
+require_once __DIR__ . '/../includes/notifications.php';
 require_once __DIR__ . '/../includes/transaction_tracking.php';
 require_once __DIR__ . '/../includes/appointment_management.php';
 require_once __DIR__ . '/../includes/admin_analytics.php';
@@ -42,8 +44,124 @@ expect_true(session_id() !== $sessionIdBeforeLogin, 'Login must rotate the sessi
 expect_true(!isset($_SESSION['user']['passwordHash']), 'Password hashes must not be stored in the session.');
 expect_true(kq_user_requires_two_factor(['role' => 'Admin']), 'Administrator accounts must require email two-factor authentication.');
 expect_true(kq_user_requires_two_factor(['role' => 'Agent']), 'Sales-agent accounts must require email two-factor authentication.');
-expect_true(kq_user_requires_two_factor(['role' => 'Client', 'twoFactorEnabled' => 1]), 'Clients who enable two-factor authentication must receive the sign-in challenge.');
-expect_true(!kq_user_requires_two_factor(['role' => 'Client', 'twoFactorEnabled' => 0]), 'Client two-factor authentication must remain optional.');
+expect_true(!kq_user_requires_two_factor(['role' => 'Client', 'twoFactorEnabled' => 1]), 'Clients must not receive the staff sign-in verification challenge.');
+expect_true(!kq_user_requires_two_factor(['role' => 'Client', 'twoFactorEnabled' => 0]), 'Client sign-in must not require email verification.');
+expect_true(kq_dashboard_destination(['role' => 'Admin']) === 'admin_dashboard.php', 'Admin sign-in must route to the Admin dashboard.');
+expect_true(kq_dashboard_destination(['role' => 'Agent']) === 'agent_dashboard.php', 'Agent sign-in must route to the Agent dashboard.');
+expect_true(kq_dashboard_destination(['role' => 'Client']) === 'client_dashboard.php', 'Client sign-in must route to the Client dashboard.');
+expect_true(
+    kq_normalize_ph_mobile('0917 123 4567') === '639171234567'
+        && kq_normalize_ph_mobile('+63 (917) 123-4567') === '639171234567',
+    'Philippine mobile numbers must normalize to the format required by Semaphore.'
+);
+expect_true(
+    kq_normalize_ph_mobile('12345') === null,
+    'Invalid mobile numbers must not be used for recovery OTP delivery.'
+);
+expect_true(
+    kq_parse_recovery_identifier('  Demo.User@Example.com ') === [
+        'type' => 'email',
+        'value' => 'demo.user@example.com',
+    ]
+        && kq_parse_recovery_identifier('+63 917 123 4567') === [
+            'type' => 'phone',
+            'value' => '639171234567',
+        ]
+        && kq_parse_recovery_identifier('not-an-email-or-phone') === null,
+    'Account recovery must normalize email/mobile identifiers and reject invalid values.'
+);
+putenv('KINGQUIRY_SMTP_HOST=smtp.example.invalid');
+putenv('KINGQUIRY_SMTP_PORT=587');
+putenv('KINGQUIRY_SMTP_ENCRYPTION=tls');
+putenv('KINGQUIRY_SMTP_USERNAME=sender@example.invalid');
+putenv('KINGQUIRY_SMTP_PASSWORD=0');
+$smtpSettings = kq_smtp_settings_from_environment();
+expect_true(
+    is_array($smtpSettings)
+        && $smtpSettings['host'] === 'smtp.example.invalid'
+        && $smtpSettings['port'] === 587
+        && $smtpSettings['encryption'] === 'tls'
+        && $smtpSettings['password'] === '0',
+    'SMTP settings must be assembled from valid environment configuration.'
+);
+putenv('KINGQUIRY_SMTP_PORT=70000');
+expect_true(
+    kq_smtp_settings_from_environment() === null,
+    'SMTP configuration must reject an out-of-range port.'
+);
+putenv('KINGQUIRY_SMTP_PORT=0');
+expect_true(
+    kq_smtp_settings_from_environment() === null,
+    'An SMTP port of zero must not silently fall back to the default port.'
+);
+foreach ([
+    'KINGQUIRY_SMTP_HOST',
+    'KINGQUIRY_SMTP_PORT',
+    'KINGQUIRY_SMTP_ENCRYPTION',
+    'KINGQUIRY_SMTP_USERNAME',
+    'KINGQUIRY_SMTP_PASSWORD',
+] as $smtpVariable) {
+    putenv($smtpVariable);
+}
+putenv('KINGQUIRY_SEMAPHORE_API_KEY=test-semaphore-key');
+$staffWithVerifiedPhone = [
+    'role' => 'Agent',
+    'phone' => '0917 123 4567',
+    'phoneVerifiedAt' => '2026-11-28 12:00:00',
+];
+expect_true(
+    kq_login_sms_phone($staffWithVerifiedPhone) === '639171234567'
+        && kq_login_sms_fallback_available($staffWithVerifiedPhone),
+    'Staff with a verified Philippine mobile number and configured SMS must have a phone fallback.'
+);
+expect_true(
+    !kq_login_sms_fallback_available([
+        'role' => 'Agent',
+        'phone' => '0917 123 4567',
+        'phoneVerifiedAt' => null,
+    ])
+        && !kq_login_sms_fallback_available([
+            'role' => 'Client',
+            'phone' => '0917 123 4567',
+            'phoneVerifiedAt' => '2026-11-28 12:00:00',
+        ]),
+    'SMS login fallback must be limited to staff with verified phone numbers.'
+);
+$_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+$_SESSION['pending_2fa_channel'] = 'email';
+$_SESSION['pending_2fa_sms_available'] = true;
+$_SESSION['pending_2fa_phone_mask'] = '+63 *** *** 4567';
+putenv('KINGQUIRY_DEV_MAIL_ENABLED=false');
+ob_start();
+include __DIR__ . '/../includes/login_2fa_form.php';
+$loginTwoFactorHtml = (string) ob_get_clean();
+expect_true(
+    strpos($loginTwoFactorHtml, 'Try another way: send code to phone') !== false
+        && strpos($loginTwoFactorHtml, 'ending in 4567') !== false
+        && strpos($loginTwoFactorHtml, 'Demo mode: check') !== false
+        && strpos($loginTwoFactorHtml, 'Staff sign-in verification is required') === false,
+    'The concise staff verification form must show the local code location and verified-phone fallback without exposing the full number.'
+);
+putenv('KINGQUIRY_DEV_MAIL_ENABLED=true');
+ob_start();
+include __DIR__ . '/../includes/login_2fa_form.php';
+$configuredLoginTwoFactorHtml = (string) ob_get_clean();
+expect_true(
+    strpos($configuredLoginTwoFactorHtml, 'Demo mode: check') === false,
+    'The staff verification form must not suggest checking a local log when real email delivery is enabled.'
+);
+putenv('KINGQUIRY_DEV_MAIL_ENABLED');
+unset(
+    $_SESSION['csrf_token'],
+    $_SESSION['pending_2fa_channel'],
+    $_SESSION['pending_2fa_sms_available'],
+    $_SESSION['pending_2fa_phone_mask']
+);
+putenv('KINGQUIRY_SEMAPHORE_API_KEY');
+expect_true(
+    !kq_login_sms_fallback_available($staffWithVerifiedPhone),
+    'A verified phone must not offer SMS sign-in when Semaphore is not configured.'
+);
 putenv('KINGQUIRY_RATE_LIMIT_SECRET=first-test-secret-with-at-least-32-bytes');
 $firstRateLimitKey = kq_rate_limit_key_hash('login-ip', '192.0.2.1');
 putenv('KINGQUIRY_RATE_LIMIT_SECRET=second-test-secret-with-at-least-32-bytes');

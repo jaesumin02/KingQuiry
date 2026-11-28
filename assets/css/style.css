@@ -12,7 +12,7 @@ body.admin-control-room {
     --admin-canvas: #15252b;
     --admin-banner: rgba(27, 46, 53, 0.9);
     --admin-shell-border: rgba(255, 255, 255, 0.08);
-    --admin-gold: #d9a74a;
+    --admin-gold: #f39c12;
     --admin-title: #ffffff;
     --admin-subtitle: #b8c7ce;
     --admin-pill: #1e323a;
@@ -48,9 +48,11 @@ body.admin-control-room {
 }
 
 .kq-navbar-crown {
-    color: #d8ad63;
-    font-size: 1.35rem;
-    line-height: 1;
+    display: block;
+    width: 1.4rem;
+    height: 1.4rem;
+    color: #f39c12;
+    fill: currentColor;
 }
 
 .navbar-collapse.show,
@@ -144,8 +146,15 @@ body.admin-control-room {
 }
 
 .kq-menu-toggle > span:last-child { display: none; }
+.kq-menu-toggle-crown {
+    display: block;
+    width: 1.45rem;
+    height: 1.45rem;
+    color: #f39c12;
+    fill: currentColor;
+}
 .kq-menu-toggle:focus-visible {
-    outline: 2px solid #c59b38;
+    outline: 2px solid #f39c12;
     outline-offset: 2px;
 }
 
@@ -153,22 +162,6 @@ body.admin-control-room {
     background: #273b44;
     filter: brightness(1.1);
     box-shadow: 6px 10px 24px rgba(0, 0, 0, 0.3);
-}
-
-.kq-menu-toggle-icon {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    width: 18px;
-}
-
-.kq-menu-toggle-icon span {
-    display: block;
-    width: 100%;
-    height: 2px;
-    border-radius: 2px;
-    background: #ffffff;
-    transition: transform 200ms ease, opacity 200ms ease;
 }
 
 .admin-control-room .kq-menu-toggle {
@@ -310,24 +303,24 @@ body.admin-control-room {
     --bs-btn-color: #ffffff;
     --bs-btn-hover-color: #ffffff;
     --bs-btn-active-color: #ffffff;
-    --bs-btn-border-color: #c59b38;
-    --bs-btn-hover-border-color: #d8af4b;
-    --bs-btn-active-border-color: #c59b38;
-    --bs-btn-hover-bg: #245b82;
-    --bs-btn-active-bg: #1b4d6e;
-    color: #ffffff !important;
-    border-color: #c59b38 !important;
-    background: #1b4d6e !important;
-    box-shadow: inset 3px 0 0 #c59b38, 0 2px 8px rgba(0, 0, 0, 0.25) !important;
+    --bs-btn-border-color: #f39c12;
+    --bs-btn-hover-border-color: #ffb13b;
+    --bs-btn-active-border-color: #f39c12;
+    --bs-btn-hover-bg: #e58e0b;
+    --bs-btn-active-bg: #f39c12;
+    color: #12283e !important;
+    border-color: #f39c12 !important;
+    background: #f39c12 !important;
+    box-shadow: inset 3px 0 0 #bd6b08, 0 2px 8px rgba(0, 0, 0, 0.25) !important;
 }
 
 .admin-control-room .admin-nav .admin-nav-tab.btn-primary:hover,
 .admin-control-room .admin-nav .admin-nav-tab.btn-primary:focus,
 .admin-control-room .admin-nav .admin-nav-tab.active:hover,
 .admin-control-room .admin-nav .admin-nav-tab.active:focus {
-    color: #ffffff !important;
-    border-color: #d8af4b !important;
-    background: #245b82 !important;
+    color: #12283e !important;
+    border-color: #ffb13b !important;
+    background: #e58e0b !important;
 }
 
 .admin-control-room .admin-nav .admin-nav-tab:hover { transform: none; }
@@ -617,10 +610,10 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
 .kq-portal-sidebar .kq-portal-nav a[aria-current="location"],
 .kq-portal-sidebar .kq-portal-nav button[aria-expanded="true"],
 .kq-portal-sidebar .kq-portal-nav a.active {
-    border-color: #d9a74a !important;
-    background: #1b4d6e !important;
-    color: #ffffff !important;
-    box-shadow: inset 0 -2px 0 #d9a74a, 0 0 0 1px rgba(217, 167, 74, 0.35) !important;
+    border-color: #f39c12 !important;
+    background: #f39c12 !important;
+    color: #12283e !important;
+    box-shadow: inset 0 -2px 0 #bd6b08, 0 0 0 1px rgba(243, 156, 18, 0.35) !important;
 }
 
 .kq-portal-nav a:focus-visible,
@@ -1756,12 +1749,20 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
 }
 
 [data-bs-theme="dark"] .kq-auth-panel h2,
+[data-bs-theme="dark"] .kq-auth-panel h1,
 [data-bs-theme="dark"] .kq-auth-panel .subcopy,
+[data-bs-theme="dark"] .kq-recovery-copy,
 [data-bs-theme="dark"] .kq-brand,
 [data-bs-theme="dark"] .kq-form-group label,
 [data-bs-theme="dark"] .kq-auth-register,
 [data-bs-theme="dark"] .kq-auth-register a,
 [data-bs-theme="dark"] .kq-link,
+[data-bs-theme="dark"] .kq-auth-help-link,
+[data-bs-theme="dark"] .kq-recovery-back,
+[data-bs-theme="dark"] .kq-recovery-note,
+[data-bs-theme="dark"] .kq-recovery-eyebrow,
+[data-bs-theme="dark"] .kq-otp-expiry,
+[data-bs-theme="dark"] .kq-recovery-text-button,
 [data-bs-theme="dark"] .kq-human-check-control label {
     color: #e2e8f0 !important;
 }
@@ -1775,6 +1776,21 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
 [data-bs-theme="dark"] .kq-human-check-control {
     background: #162838 !important;
     border-color: #24415c !important;
+}
+
+[data-bs-theme="dark"] .kq-otp-expiry {
+    background: #162838;
+    border-color: #24415c;
+}
+
+[data-bs-theme="dark"] .kq-auth-help-link.is-recommended {
+    border-color: #7a5b25;
+    background: #302719;
+    color: #f5d58b !important;
+}
+
+[data-bs-theme="dark"] .kq-otp-expiry strong {
+    color: #e7bf75;
 }
 
 [data-bs-theme="dark"] .kq-map-fallback {
@@ -2031,12 +2047,12 @@ html[data-bs-theme="light"] .admin-control-room .kq-admin-shell > section > .kq-
 }
 
 body.kq-auth-body {
-    background: #0f100d !important;
+    background: var(--kq-canvas, #f4f7fb) !important;
 }
 
 .kq-auth-body .navbar {
-    background: rgba(10, 18, 25, 0.96) !important;
-    border-bottom: 1px solid rgba(212, 175, 110, 0.25);
+    background: #102a43 !important;
+    border-bottom: 1px solid rgba(243, 156, 18, 0.3);
     box-shadow: none !important;
 }
 
@@ -2204,6 +2220,216 @@ body.kq-auth-body {
     margin: 0.1rem 0 1rem;
 }
 
+.kq-auth-help-links {
+    display: grid;
+    gap: 0.2rem;
+    margin: 0.15rem 0 1rem;
+}
+
+.kq-auth-help-link {
+    display: inline-flex;
+    width: fit-content;
+    max-width: 100%;
+    min-height: 2rem;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #3a536f;
+    font: inherit;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.kq-auth-help-icon {
+    flex: 0 0 1rem;
+    color: #a77a31;
+}
+
+.kq-auth-help-link.is-recommended {
+    width: fit-content;
+    padding: 0.4rem 0.65rem;
+    border: 1px solid #efd49a;
+    border-radius: 0.55rem;
+    background: #fff8e8;
+    color: #704b0b;
+    font-weight: 700;
+}
+
+.kq-auth-help-link.is-recommended .kq-auth-help-icon {
+    color: #a86600;
+}
+
+.kq-auth-help-link:hover,
+.kq-auth-help-link:focus-visible {
+    color: #123b5a;
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+}
+
+.kq-auth-help-link:focus-visible {
+    border-radius: 0.2rem;
+    outline: 2px solid #174a70;
+    outline-offset: 3px;
+}
+
+.kq-recovery-page {
+    min-height: auto;
+    padding-block: clamp(1rem, 4vh, 2.5rem);
+}
+
+.kq-recovery-panel {
+    gap: 0;
+}
+
+.kq-recovery-panel .kq-brand {
+    margin-bottom: 0.35rem;
+}
+
+.kq-recovery-panel .kq-logo-auth {
+    width: 148px;
+    height: 94px;
+}
+
+.kq-recovery-eyebrow {
+    margin-bottom: 0.35rem;
+    color: #75869a;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.11em;
+    text-align: center;
+    text-transform: uppercase;
+}
+
+.kq-recovery-panel h1 {
+    margin: 0 0 0.45rem;
+    color: #122538;
+    font-size: clamp(1.65rem, 5vw, 2rem);
+    font-weight: 800;
+    letter-spacing: -0.045em;
+    line-height: 1.15;
+    text-align: center;
+}
+
+.kq-recovery-copy {
+    margin: 0 0 1.25rem;
+    color: #4b5d70;
+    font-size: 0.94rem;
+    line-height: 1.55;
+    text-align: center;
+}
+
+.kq-recovery-alert {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+    padding: 0.75rem 0.85rem;
+    border-radius: 0.75rem;
+    font-size: 0.86rem;
+    line-height: 1.45;
+}
+
+.kq-otp-expiry {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    padding: 0.75rem 0.9rem;
+    border: 1px solid #e1e8ef;
+    border-radius: 0.75rem;
+    background: #f7f9fb;
+    color: #4b5d70;
+    font-size: 0.9rem;
+}
+
+.kq-otp-expiry strong {
+    color: #a77a31;
+    font-variant-numeric: tabular-nums;
+    font-size: 1rem;
+}
+
+.kq-otp-expiry strong.is-expired {
+    color: #b42318;
+}
+
+.kq-recovery-otp-input {
+    font-size: 1.35rem !important;
+    font-weight: 800;
+    letter-spacing: 0.4em;
+    text-align: center;
+}
+
+.kq-recovery-secondary-form {
+    margin-top: 0.5rem;
+    text-align: center;
+}
+
+.kq-recovery-text-button {
+    min-height: 2rem;
+    padding: 0.25rem 0.4rem;
+    border: 0;
+    background: transparent;
+    color: #3a536f;
+    font: inherit;
+    font-size: 0.88rem;
+    font-weight: 650;
+    cursor: pointer;
+}
+
+.kq-recovery-text-button:hover,
+.kq-recovery-text-button:focus-visible {
+    color: #123b5a;
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+}
+
+.kq-recovery-form {
+    display: grid;
+    gap: 0.6rem;
+}
+
+.kq-recovery-form .kq-form-group {
+    margin-bottom: 0.4rem;
+}
+
+.kq-recovery-back {
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    align-self: center;
+    margin-top: 0.9rem;
+    color: #3a536f;
+    font-size: 0.9rem;
+    font-weight: 650;
+    text-align: center;
+    text-decoration: none;
+}
+
+.kq-recovery-back:hover {
+    color: #123b5a;
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+}
+
+.kq-recovery-note {
+    margin: 0.75rem 0 0;
+    color: #75869a;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    text-align: center;
+}
+
+.kq-recovery-button-icon {
+    flex: 0 0 auto;
+}
+
 .kq-check {
     display: inline-flex;
     align-items: center;
@@ -2248,6 +2474,19 @@ body.kq-auth-body {
 
 .kq-auth-submit:hover,
 .kq-auth-submit:focus { filter: brightness(1.08); }
+
+.kq-auth-submit:disabled {
+    box-shadow: none;
+    cursor: not-allowed;
+    filter: none;
+    opacity: 0.6;
+}
+
+.kq-auth-submit:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+    filter: none;
+}
 
 .kq-auth-register {
     margin-top: 1rem;

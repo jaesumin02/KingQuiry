@@ -170,7 +170,7 @@ if (
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (normalized_user_role($_SESSION['user'] ?? null) !== 'Client') {
-        header("Location: client_login.php");
+        header("Location: login.php");
         exit();
     } elseif (!has_valid_csrf_token()) {
         $errorMsg = 'Your session expired. Refresh the page and try again.';
@@ -876,7 +876,7 @@ include 'includes/header.php';
                     </form>
                 <?php else: ?>
                     <p class="text-muted small">Sign in with a client account to reserve this property before scheduling a viewing.</p>
-                    <a href="client_login.php" class="btn btn-warning text-dark fw-semibold w-100">Sign in to reserve</a>
+                    <a href="login.php" class="btn btn-warning text-dark fw-semibold w-100">Sign in to reserve</a>
                 <?php endif; ?>
             </div>
 
@@ -950,7 +950,7 @@ include 'includes/header.php';
                     </div>
                 <?php else: ?>
                     <p class="text-muted small">Sign in with a client account, reserve the property first, and then schedule a viewing.</p>
-                    <a href="client_login.php" class="btn btn-outline-primary w-100">Sign in to continue</a>
+                    <a href="login.php" class="btn btn-outline-primary w-100">Sign in to continue</a>
                 <?php endif; ?>
             </div>
 
@@ -980,7 +980,7 @@ include 'includes/header.php';
                     </form>
                 <?php else: ?>
                     <p class="text-muted small">Sign in with a client account to send a question about this listing.</p>
-                    <a href="client_login.php" class="btn btn-outline-primary w-100">Sign in to continue</a>
+                    <a href="login.php" class="btn btn-outline-primary w-100">Sign in to continue</a>
                 <?php endif; ?>
             </div>
         <?php endif; ?>

@@ -215,7 +215,7 @@ $csrfToken = function_exists('csrf_token') ? csrf_token() : ((string) ($_SESSION
             if (guestModal) {
                 bootstrap.Modal.getOrCreateInstance(guestModal).show();
             } else {
-                window.location.href = 'client_login.php';
+                window.location.href = 'login.php';
             }
             return;
         }
@@ -302,7 +302,7 @@ $csrfToken = function_exists('csrf_token') ? csrf_token() : ((string) ($_SESSION
                 document.getElementById('kqChatLoadingSpinner').classList.add('d-none');
                 const emptyEl = document.getElementById('kqChatEmptyState');
                 if (emptyEl) {
-                    emptyEl.innerHTML = '<div class="text-danger fw-bold mb-1">Session expired</div><div class="small text-muted mb-2">You must be signed in to view and send messages.</div><a href="client_login.php" class="btn btn-sm btn-primary rounded-pill px-3">Sign in</a>';
+                    emptyEl.innerHTML = '<div class="text-danger fw-bold mb-1">Session expired</div><div class="small text-muted mb-2">You must be signed in to view and send messages.</div><a href="login.php" class="btn btn-sm btn-primary rounded-pill px-3">Sign in</a>';
                     emptyEl.classList.remove('d-none');
                 }
                 return;
@@ -491,7 +491,7 @@ $csrfToken = function_exists('csrf_token') ? csrf_token() : ((string) ($_SESSION
             const data = await kqSafeJson(resp);
             if (resp.status === 401 || (data && data.code === 'session_expired')) {
                 alert('Your session has expired. Please sign in again.');
-                window.location.href = 'client_login.php';
+                window.location.href = 'login.php';
                 return false;
             }
 

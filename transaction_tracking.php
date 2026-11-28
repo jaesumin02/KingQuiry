@@ -9,7 +9,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 $role = normalized_user_role($_SESSION['user'] ?? null);
 if (!user_has_role($_SESSION['user'] ?? null, 'Admin', 'Sales Agent')) {
-    header('Location: client_login.php');
+    header('Location: login.php');
     exit();
 }
 

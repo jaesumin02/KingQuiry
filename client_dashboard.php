@@ -11,7 +11,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 if (normalized_user_role($_SESSION['user'] ?? null) !== 'Client') {
-    header('Location: client_login.php');
+    header('Location: login.php');
     exit();
 }
 
@@ -323,10 +323,10 @@ include 'includes/header.php';
     }
     .kq-portal-sidebar .kq-portal-nav a[aria-current="location"],
     .kq-portal-sidebar .kq-portal-nav a.active {
-        border-color: #d9a74a !important;
-        background: #1b4d6e !important;
-        color: #ffffff !important;
-        box-shadow: inset 0 -2px 0 #d9a74a, 0 0 0 1px rgba(217, 167, 74, 0.35) !important;
+        border-color: #f39c12 !important;
+        background: #f39c12 !important;
+        color: #12283e !important;
+        box-shadow: inset 0 -2px 0 #bd6b08, 0 0 0 1px rgba(243, 156, 18, 0.35) !important;
     }
 
     /* ══════════ TRANSACTION UPDATES & TIMELINE (LIGHT & DARK THEMES) ══════════ */
@@ -526,7 +526,7 @@ $progressStages = [
     <div class="kq-portal-workspace">
         <aside class="kq-portal-sidebar" aria-label="Client dashboard navigation">
             <button class="kq-menu-toggle" type="button" data-portal-menu-toggle data-menu-label="Client menu" aria-label="Open Client menu" aria-controls="client-navigation" aria-expanded="false">
-                <span class="kq-menu-toggle-icon" aria-hidden="true"><span></span><span></span><span></span></span>
+                <svg class="kq-menu-toggle-crown" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19.5h18l-1.65-9.2-4.45 3.05L12 5.2l-2.9 8.15-4.45-3.05L3 19.5Z"/><path d="M5.2 21.5h13.6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.5"/></svg>
                 <span>Client menu</span>
             </button>
             <div class="kq-portal-sidebar-heading">Client menu</div>
@@ -534,6 +534,9 @@ $progressStages = [
                 <a href="#client-overview">Overview</a>
                 <a href="#transaction-tracking">Transaction tracking</a>
                 <a href="#viewing-requests">Viewing requests</a>
+                <button type="button" data-bs-toggle="modal" data-bs-target="#allNotificationsModal">
+                    Notifications<?= !empty($unreadNotificationCount) ? ' (' . (int) $unreadNotificationCount . ' unread)' : '' ?>
+                </button>
             </nav>
         </aside>
         <div class="kq-portal-main">

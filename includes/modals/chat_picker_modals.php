@@ -102,7 +102,7 @@ $navClientTransactions = $navClientTransactions ?? [];
                     Please sign in or create a KingQuiry client account to chat directly with our licensed Sales Agents, schedule tripping viewings, and track purchases.
                 </p>
                 <div class="d-flex flex-column gap-2">
-                    <a href="client_login.php" class="btn btn-primary fw-semibold py-2">
+                    <a href="login.php" class="btn btn-primary fw-semibold py-2">
                         Sign In to Your Account &rarr;
                     </a>
                     <a href="register.php" class="btn btn-outline-primary fw-semibold py-2">
@@ -124,7 +124,7 @@ if (typeof window.openPropertyChat !== 'function') {
         if (guestModal) {
             bootstrap.Modal.getOrCreateInstance(guestModal).show();
         } else {
-            window.location.href = 'client_login.php';
+            window.location.href = 'login.php';
         }
     };
 }

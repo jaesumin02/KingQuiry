@@ -10,16 +10,30 @@ $token = is_string($_POST['token'] ?? null)
     : (is_string($_GET['token'] ?? null) ? $_GET['token'] : '');
 $tokenIsValid = preg_match('/\A[a-f0-9]{64}\z/i', $token) === 1;
 $tokenHash = $tokenIsValid ? hash('sha256', $token) : '';
+$loginRoutes = [
+    'Admin' => 'login.php',
+    'Sales Agent' => 'login.php',
+    'Client' => 'login.php',
+];
+$loginPage = 'login.php';
 if ($tokenIsValid && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     $validTokenStmt = $conn->prepare(
-        'SELECT 1 FROM password_reset_tokens
-         WHERE tokenHash = ? AND expiresAt > CURRENT_TIMESTAMP
+        'SELECT u.role
+         FROM password_reset_tokens r
+         JOIN users u ON u.userID = r.userID
+         WHERE r.tokenHash = ? AND r.expiresAt > CURRENT_TIMESTAMP
+           AND u.accountStatus = \'Active\'
          LIMIT 1'
     );
     $validTokenStmt->bind_param('s', $tokenHash);
     $validTokenStmt->execute();
-    $tokenIsValid = (bool) $validTokenStmt->get_result()->fetch_row();
+    $validTokenUser = $validTokenStmt->get_result()->fetch_assoc();
     $validTokenStmt->close();
+    $tokenIsValid = $validTokenUser !== null;
+    if ($validTokenUser) {
+        $role = normalize_role_name((string) $validTokenUser['role']);
+        $loginPage = $loginRoutes[$role] ?? 'login.php';
+    }
 }
 $error = '';
 $success = false;
@@ -40,8 +54,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $conn->begin_transaction();
             try {
                 $tokenStmt = $conn->prepare(
-                    'SELECT userID FROM password_reset_tokens
-                     WHERE tokenHash = ? AND expiresAt > CURRENT_TIMESTAMP
+                    'SELECT u.userID, u.role
+                     FROM password_reset_tokens r
+                     JOIN users u ON u.userID = r.userID
+                     WHERE r.tokenHash = ? AND r.expiresAt > CURRENT_TIMESTAMP
+                       AND u.accountStatus = \'Active\'
                      LIMIT 1 FOR UPDATE'
                 );
                 $tokenStmt->bind_param('s', $tokenHash);
@@ -54,10 +71,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $error = 'This reset link is invalid or has expired. Request a new one.';
                 } else {
                     $userId = (int) $resetRecord['userID'];
+                    $role = normalize_role_name((string) $resetRecord['role']);
+                    $loginPage = $loginRoutes[$role] ?? 'login.php';
                     $passwordHash = password_hash($newPassword, PASSWORD_DEFAULT);
-                    if ($passwordHash === false) {
-                        throw new RuntimeException('Unable to securely hash the replacement password.');
-                    }
                     $updateStmt = $conn->prepare("UPDATE users SET passwordHash = ? WHERE userID = ? AND accountStatus = 'Active'");
                     $updateStmt->bind_param('si', $passwordHash, $userId);
                     $updateStmt->execute();
@@ -70,10 +86,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $deleteResetStmt->bind_param('i', $userId);
                     $deleteResetStmt->execute();
                     $deleteResetStmt->close();
+                    $deleteOtpStmt = $conn->prepare('DELETE FROM password_reset_otps WHERE userID = ?');
+                    $deleteOtpStmt->bind_param('i', $userId);
+                    $deleteOtpStmt->execute();
+                    $deleteOtpStmt->close();
                     $deleteChallengeStmt = $conn->prepare('DELETE FROM login_2fa_challenges WHERE userID = ?');
                     $deleteChallengeStmt->bind_param('i', $userId);
                     $deleteChallengeStmt->execute();
                     $deleteChallengeStmt->close();
+                    $deletePhoneVerifyStmt = $conn->prepare('DELETE FROM phone_verification_otps WHERE userID = ?');
+                    $deletePhoneVerifyStmt->bind_param('i', $userId);
+                    $deletePhoneVerifyStmt->execute();
+                    $deletePhoneVerifyStmt->close();
                     $conn->commit();
                     $success = true;
                 }
@@ -94,7 +118,7 @@ include __DIR__ . '/includes/header.php';
         <?php if ($success): ?>
             <h1 class="h3 fw-bold">Password updated</h1>
             <p class="text-muted">Your password has been changed. Sign in with your new password.</p>
-            <a class="btn btn-primary fw-semibold" href="client_login.php?password_reset=1">Return to sign in</a>
+            <a class="btn btn-primary fw-semibold" href="<?= htmlspecialchars($loginPage, ENT_QUOTES, 'UTF-8') ?>?password_reset=1">Return to sign in</a>
         <?php else: ?>
             <h1 class="h3 fw-bold">Choose a new password</h1>
             <p class="text-muted">Reset links expire after 30 minutes and can only be used once.</p>

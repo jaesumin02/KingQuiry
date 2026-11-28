@@ -2,6 +2,8 @@
 -- Automatically creates and selects the target database if not already selected.
 -- Import only into an empty or disposable database. The demo-data section at
 -- the end resets seeded application records before loading its sample dataset.
+-- Includes the current auth, recovery, phone-verification, and property-document
+-- schema. Existing-database-only upgrade scripts remain under database/migrations/.
 
 CREATE DATABASE IF NOT EXISTS `kingquiry_db` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE `kingquiry_db`;
@@ -17,6 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
     fullname VARCHAR(100) NOT NULL,
     email VARCHAR(100) NOT NULL,
     phone VARCHAR(30) DEFAULT NULL,
+    phoneVerifiedAt DATETIME DEFAULT NULL,
     address VARCHAR(255) DEFAULT NULL,
     passwordHash VARCHAR(255) NOT NULL,
     role ENUM('Client', 'Agent', 'Admin') DEFAULT 'Client',
@@ -47,6 +50,28 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
     KEY idx_password_reset_user (userID),
     KEY idx_password_reset_expiry (expiresAt),
     CONSTRAINT fk_password_reset_user FOREIGN KEY (userID) REFERENCES users (userID) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS password_reset_otps (
+    userID INT NOT NULL,
+    codeHash VARCHAR(255) NOT NULL,
+    attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    expiresAt DATETIME NOT NULL,
+    createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (userID),
+    KEY idx_password_reset_otp_expiry (expiresAt),
+    CONSTRAINT fk_password_reset_otp_user FOREIGN KEY (userID) REFERENCES users (userID) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS phone_verification_otps (
+    userID INT NOT NULL,
+    codeHash VARCHAR(255) NOT NULL,
+    attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    expiresAt DATETIME NOT NULL,
+    createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (userID),
+    KEY idx_phone_verification_otp_expiry (expiresAt),
+    CONSTRAINT fk_phone_verification_otp_user FOREIGN KEY (userID) REFERENCES users (userID) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS property_locations (
@@ -439,6 +464,7 @@ TRUNCATE TABLE `properties`;
 TRUNCATE TABLE `users`;
 
 -- 2. Users: 1 Admin, 3 Licensed Sales Agents, 12 Filipino Buyers/Clients
+-- Demo phone values are sample data; phoneVerifiedAt intentionally remains NULL.
 INSERT INTO `users` (`userID`, `fullname`, `email`, `phone`, `address`, `passwordHash`, `role`, `accountStatus`, `createdAt`) VALUES
 (1, 'Kings Administrator', 'admin@kingquiry.ph', '09171234567', 'Batangas City, Batangas', '$2y$10$5UfyMtDSYy5JctaCNDNOT.xX9GFhm0UMHJsBDCBqG21Y7UJu534OW', 'Admin', 'Active', '2024-12-01 08:00:00'),
 (2, 'Juan Dela Cruz', 'juan.agent@kingquiry.ph', '09181112233', 'Lipa City, Batangas', '$2y$10$5UfyMtDSYy5JctaCNDNOT.xX9GFhm0UMHJsBDCBqG21Y7UJu534OW', 'Agent', 'Active', '2024-12-01 08:30:00'),
