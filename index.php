@@ -537,7 +537,7 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0);
             <?php foreach ($featuredProperties as $featuredProperty):
                 $featuredImage = basename((string) ($featuredProperty['image'] ?? ''));
                 if ($featuredImage === '' || $featuredImage === 'default.jpg') {
-                    $featuredImage = property_representative_image((string) $featuredProperty['propertyType']) ?? '';
+                    $featuredImage = property_category_image((string) $featuredProperty['propertyType']) ?? '';
                 }
                 $featuredImagePath = __DIR__ . '/assets/images/' . $featuredImage;
                 $hasFeaturedImage = $featuredImage !== '' && $featuredImage !== 'default.jpg' && is_file($featuredImagePath);
@@ -699,7 +699,7 @@ $isFiltered = ($search !== '' || $category !== '' || $locationFilter > 0);
             <?php
             $imageName = basename((string) ($row['image'] ?? ''));
             if ($imageName === '' || $imageName === 'default.jpg') {
-                $imageName = property_representative_image((string) $row['propertyType']) ?? '';
+                $imageName = property_category_image((string) $row['propertyType']) ?? '';
             }
             $imagePath = __DIR__ . '/assets/images/' . $imageName;
             $hasImage = $imageName !== '' && $imageName !== 'default.jpg' && is_file($imagePath);

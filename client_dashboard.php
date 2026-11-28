@@ -642,15 +642,15 @@ $progressStages = [
                         <?php
                         $propImage = basename((string) ($tracking['image'] ?? ''));
                         if ($propImage === '' || $propImage === 'default.jpg' || !is_file(__DIR__ . '/assets/images/' . $propImage)) {
-                            $propImage = function_exists('property_representative_image') ? (property_representative_image((string) ($tracking['propertyType'] ?? '')) ?? '') : '';
+                            $propImage = function_exists('property_category_image') ? (property_category_image((string) ($tracking['propertyType'] ?? '')) ?? '') : '';
                         }
                         $hasPropImage = $propImage !== '' && is_file(__DIR__ . '/assets/images/' . $propImage);
-                        $propImgSrc = $hasPropImage ? ('assets/images/' . rawurlencode($propImage)) : 'assets/images/representative-residential-01.jpg';
+                        $propImgSrc = $hasPropImage ? ('assets/images/' . rawurlencode($propImage)) : 'assets/images/residential-property-01.jpg';
                         ?>
                         <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
                             <div class="d-flex align-items-start gap-3">
                                 <div class="rounded-3 overflow-hidden flex-shrink-0 border shadow-sm position-relative" style="width: 58px; height: 58px; background: rgba(0,0,0,0.04);">
-                                    <img src="<?= htmlspecialchars($propImgSrc, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($tracking['title'], ENT_QUOTES, 'UTF-8') ?>" class="w-100 h-100" style="object-fit: cover;" loading="lazy" onerror="this.onerror=null;this.src='assets/images/representative-residential-01.jpg';">
+                                    <img src="<?= htmlspecialchars($propImgSrc, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($tracking['title'], ENT_QUOTES, 'UTF-8') ?>" class="w-100 h-100" style="object-fit: cover;" loading="lazy" onerror="this.onerror=null;this.src='assets/images/residential-property-01.jpg';">
                                 </div>
                                 <div>
                                     <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
@@ -734,7 +734,7 @@ $progressStages = [
                                 <!-- Property Overview Banner -->
                                 <div class="d-flex align-items-center gap-3 p-2 p-sm-3 mb-3 bg-body-tertiary border rounded-3">
                                     <div class="rounded-3 overflow-hidden flex-shrink-0 border shadow-sm" style="width: 64px; height: 64px;">
-                                        <img src="<?= htmlspecialchars($propImgSrc, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($tracking['title'], ENT_QUOTES, 'UTF-8') ?>" class="w-100 h-100" style="object-fit: cover;" onerror="this.onerror=null;this.src='assets/images/representative-residential-01.jpg';">
+                                        <img src="<?= htmlspecialchars($propImgSrc, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($tracking['title'], ENT_QUOTES, 'UTF-8') ?>" class="w-100 h-100" style="object-fit: cover;" onerror="this.onerror=null;this.src='assets/images/residential-property-01.jpg';">
                                     </div>
                                     <div class="flex-grow-1 overflow-hidden">
                                         <h6 class="fw-bold mb-1 text-dark text-truncate"><?= htmlspecialchars($tracking['title'], ENT_QUOTES, 'UTF-8') ?></h6>

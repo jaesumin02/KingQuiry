@@ -365,10 +365,10 @@ include 'includes/header.php';
                         : $transaction['location'];
                     $propImage = basename((string) ($transaction['image'] ?? ''));
                     if ($propImage === '' || $propImage === 'default.jpg' || !is_file(__DIR__ . '/assets/images/' . $propImage)) {
-                        $propImage = function_exists('property_representative_image') ? (property_representative_image((string) ($transaction['propertyType'] ?? '')) ?? '') : '';
+                        $propImage = function_exists('property_category_image') ? (property_category_image((string) ($transaction['propertyType'] ?? '')) ?? '') : '';
                     }
                     $hasPropImage = $propImage !== '' && is_file(__DIR__ . '/assets/images/' . $propImage);
-                    $propImgSrc = $hasPropImage ? ('assets/images/' . rawurlencode($propImage)) : 'assets/images/representative-residential-01.jpg';
+                    $propImgSrc = $hasPropImage ? ('assets/images/' . rawurlencode($propImage)) : 'assets/images/residential-property-01.jpg';
                     $txSummary = $paymentSummariesByTransaction[$tId] ?? ['verifiedTotal' => 0.0, 'verifiedCount' => 0, 'pendingTotal' => 0.0, 'pendingCount' => 0];
                     $txVerifiedPaid = (float) $txSummary['verifiedTotal'];
                     $txTargetPrice = $transaction['salePrice'] !== null ? (float) $transaction['salePrice'] : (float) ($transaction['listingPrice'] ?? 0);
@@ -379,7 +379,7 @@ include 'includes/header.php';
                         <td>
                             <div class="d-flex align-items-start gap-3">
                                 <div class="rounded-3 overflow-hidden flex-shrink-0 border shadow-sm position-relative" style="width: 64px; height: 64px; background: rgba(0,0,0,0.04);">
-                                    <img src="<?= htmlspecialchars($propImgSrc, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($transaction['title'], ENT_QUOTES, 'UTF-8') ?>" class="w-100 h-100" style="object-fit: cover;" loading="lazy" onerror="this.onerror=null;this.src='assets/images/representative-residential-01.jpg';">
+                                    <img src="<?= htmlspecialchars($propImgSrc, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($transaction['title'], ENT_QUOTES, 'UTF-8') ?>" class="w-100 h-100" style="object-fit: cover;" loading="lazy" onerror="this.onerror=null;this.src='assets/images/residential-property-01.jpg';">
                                 </div>
                                 <div class="flex-grow-1">
                                     <strong><?= htmlspecialchars($transaction['clientName'], ENT_QUOTES, 'UTF-8') ?></strong>
@@ -498,10 +498,10 @@ include 'includes/header.php';
         $txPaidPercent = $txTargetPrice > 0 ? min(100, (int) round(($txVerifiedPaid / $txTargetPrice) * 100)) : 0;
         $propImage = basename((string) ($transaction['image'] ?? ''));
         if ($propImage === '' || $propImage === 'default.jpg' || !is_file(__DIR__ . '/assets/images/' . $propImage)) {
-            $propImage = function_exists('property_representative_image') ? (property_representative_image((string) ($transaction['propertyType'] ?? '')) ?? '') : '';
+            $propImage = function_exists('property_category_image') ? (property_category_image((string) ($transaction['propertyType'] ?? '')) ?? '') : '';
         }
         $hasPropImage = $propImage !== '' && is_file(__DIR__ . '/assets/images/' . $propImage);
-        $propImgSrc = $hasPropImage ? ('assets/images/' . rawurlencode($propImage)) : 'assets/images/representative-residential-01.jpg';
+        $propImgSrc = $hasPropImage ? ('assets/images/' . rawurlencode($propImage)) : 'assets/images/residential-property-01.jpg';
     ?>
         <div class="modal fade" id="recordNextModal<?= $tId ?>" tabindex="-1" aria-labelledby="recordNextModalLabel<?= $tId ?>" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
@@ -538,7 +538,7 @@ include 'includes/header.php';
                         <div class="card p-3 mb-3 bg-light border-0 rounded-3">
                             <div class="d-flex align-items-center gap-3 mb-3 pb-2 border-bottom">
                                 <div class="rounded-3 overflow-hidden flex-shrink-0 border shadow-sm position-relative" style="width: 58px; height: 58px; background: rgba(0,0,0,0.04);">
-                                    <img src="<?= htmlspecialchars($propImgSrc, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($transaction['title'], ENT_QUOTES, 'UTF-8') ?>" class="w-100 h-100" style="object-fit: cover;" onerror="this.onerror=null;this.src='assets/images/representative-residential-01.jpg';">
+                                    <img src="<?= htmlspecialchars($propImgSrc, ENT_QUOTES, 'UTF-8') ?>" alt="<?= htmlspecialchars($transaction['title'], ENT_QUOTES, 'UTF-8') ?>" class="w-100 h-100" style="object-fit: cover;" onerror="this.onerror=null;this.src='assets/images/residential-property-01.jpg';">
                                 </div>
                                 <div class="flex-grow-1 overflow-hidden">
                                     <h6 class="fw-bold mb-0 text-dark"><?= htmlspecialchars($transaction['title'], ENT_QUOTES, 'UTF-8') ?></h6>
@@ -764,7 +764,7 @@ include 'includes/header.php';
                                                 <select id="modal-res-method-<?= $tId ?>" name="paymentMethod" class="form-select form-select-sm">
                                                     <?php foreach ($allSchemes as $sKey => $sVal): ?>
                                                         <option value="<?= htmlspecialchars($sKey, ENT_QUOTES, 'UTF-8') ?>" <?= strcasecmp($agreedMethod, $sKey) === 0 ? 'selected' : '' ?>>
-                                                            <?= htmlspecialchars($sVal['badge'] . ' — ' . $sVal['short'], ENT_QUOTES, 'UTF-8') ?>
+                                                            <?= htmlspecialchars($sVal['badge'], ENT_QUOTES, 'UTF-8') ?>
                                                         </option>
                                                     <?php endforeach; ?>
                                                 </select>
@@ -979,7 +979,7 @@ include 'includes/header.php';
                                                 <select id="modal-payment-method-<?= $tId ?>" name="paymentMethod" class="form-select form-select-sm">
                                                     <?php foreach ($allSchemes as $sKey => $sVal): ?>
                                                         <option value="<?= htmlspecialchars($sKey, ENT_QUOTES, 'UTF-8') ?>" <?= strcasecmp($agreedMethod, $sKey) === 0 ? 'selected' : '' ?>>
-                                                            <?= htmlspecialchars($sVal['badge'] . ' — ' . $sVal['short'], ENT_QUOTES, 'UTF-8') ?>
+                                                            <?= htmlspecialchars($sVal['badge'], ENT_QUOTES, 'UTF-8') ?>
                                                         </option>
                                                     <?php endforeach; ?>
                                                 </select>
@@ -1052,7 +1052,7 @@ include 'includes/header.php';
                                                 <select id="modal-payment-method-<?= $tId ?>" name="paymentMethod" class="form-select form-select-sm" data-payment-scheme-select="<?= $tId ?>">
                                                     <?php foreach ($allSchemes as $sKey => $sVal): ?>
                                                         <option value="<?= htmlspecialchars($sKey, ENT_QUOTES, 'UTF-8') ?>" <?= strcasecmp($agreedMethod, $sKey) === 0 ? 'selected' : '' ?>>
-                                                            <?= htmlspecialchars($sVal['badge'] . ' — ' . $sVal['short'], ENT_QUOTES, 'UTF-8') ?>
+                                                            <?= htmlspecialchars($sVal['badge'], ENT_QUOTES, 'UTF-8') ?>
                                                         </option>
                                                     <?php endforeach; ?>
                                                 </select>
@@ -1188,7 +1188,7 @@ include 'includes/header.php';
                                                 <select id="modal-final-payment-method-<?= $tId ?>" name="paymentMethod" class="form-select form-select-sm">
                                                     <?php foreach ($allSchemes as $sKey => $sVal): ?>
                                                         <option value="<?= htmlspecialchars($sKey, ENT_QUOTES, 'UTF-8') ?>" <?= strcasecmp($agreedMethod, $sKey) === 0 ? 'selected' : '' ?>>
-                                                            <?= htmlspecialchars($sVal['badge'] . ' — ' . $sVal['short'], ENT_QUOTES, 'UTF-8') ?>
+                                                            <?= htmlspecialchars($sVal['badge'], ENT_QUOTES, 'UTF-8') ?>
                                                         </option>
                                                     <?php endforeach; ?>
                                                 </select>

@@ -47,6 +47,12 @@ body.admin-control-room {
     z-index: 1050;
 }
 
+.kq-navbar-crown {
+    color: #d8ad63;
+    font-size: 1.35rem;
+    line-height: 1;
+}
+
 .navbar-collapse.show,
 .navbar-collapse.collapsing {
     position: relative;

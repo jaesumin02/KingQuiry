@@ -40,6 +40,10 @@ kq_regenerate_session_after_login([
 ]);
 expect_true(session_id() !== $sessionIdBeforeLogin, 'Login must rotate the session ID.');
 expect_true(!isset($_SESSION['user']['passwordHash']), 'Password hashes must not be stored in the session.');
+expect_true(kq_user_requires_two_factor(['role' => 'Admin']), 'Administrator accounts must require email two-factor authentication.');
+expect_true(kq_user_requires_two_factor(['role' => 'Agent']), 'Sales-agent accounts must require email two-factor authentication.');
+expect_true(kq_user_requires_two_factor(['role' => 'Client', 'twoFactorEnabled' => 1]), 'Clients who enable two-factor authentication must receive the sign-in challenge.');
+expect_true(!kq_user_requires_two_factor(['role' => 'Client', 'twoFactorEnabled' => 0]), 'Client two-factor authentication must remain optional.');
 putenv('KINGQUIRY_RATE_LIMIT_SECRET=first-test-secret-with-at-least-32-bytes');
 $firstRateLimitKey = kq_rate_limit_key_hash('login-ip', '192.0.2.1');
 putenv('KINGQUIRY_RATE_LIMIT_SECRET=second-test-secret-with-at-least-32-bytes');
@@ -133,29 +137,29 @@ expect_true(
     'Recommendation percentages must not impose a misleading minimum score.'
 );
 foreach (property_type_values() as $propertyType) {
-    $representativeImage = property_representative_image($propertyType);
+    $categoryImage = property_category_image($propertyType);
     expect_true(
         in_array($propertyType, property_type_values(), true)
             && property_type_label($propertyType) !== ''
-            && $representativeImage !== null
-            && is_file(__DIR__ . '/../assets/images/' . $representativeImage)
-            && get_property_image_credit($representativeImage) !== null,
-        $propertyType . ' must have a selectable category and a credited representative image.'
+            && $categoryImage !== null
+            && is_file(__DIR__ . '/../assets/images/' . $categoryImage)
+            && get_property_image_credit($categoryImage) !== null,
+        $propertyType . ' must have a selectable category image with a credit.'
     );
 }
-$additionalRepresentativeImages = [
-    'representative-beach-05.jpg',
-    'representative-beach-06.jpg',
-    'representative-beach-07.jpg',
-    'representative-commercial-05.jpg',
-    'representative-commercial-06.jpg',
-    'representative-commercial-07.jpg',
-    'representative-condo-05.jpg',
-    'representative-farm-05.jpg',
-    'representative-residential-06.jpg',
-    'representative-residential-07.jpg',
+$additionalCategoryImages = [
+    'beach-property-05.jpg',
+    'beach-property-06.jpg',
+    'beach-property-07.jpg',
+    'commercial-property-05.jpg',
+    'commercial-property-06.jpg',
+    'commercial-property-07.jpg',
+    'condo-property-05.jpg',
+    'farm-property-05.jpg',
+    'residential-property-06.jpg',
+    'residential-property-07.jpg',
 ];
-foreach ($additionalRepresentativeImages as $image) {
+foreach ($additionalCategoryImages as $image) {
     expect_true(
         is_file(__DIR__ . '/../assets/images/' . $image)
             && get_property_image_credit($image) !== null,
@@ -264,6 +268,6 @@ $fakeFiles = [
 $normalized = normalize_uploaded_files($fakeFiles);
 expect_true(count($normalized) === 2, 'normalize_uploaded_files must split multi-upload files properly.');
 expect_true($normalized[0]['name'] === 'photo1.jpg' && $normalized[1]['name'] === 'photo2.png', 'normalize_uploaded_files must retain original file names.');
-expect_true(property_representative_image('Residential') === 'representative-residential-01.jpg', 'Representative image fallback must return correct filename.');
+expect_true(property_category_image('Residential') === 'residential-property-01.jpg', 'Property category fallback must return the category image filename.');
 
 fwrite(STDOUT, "Production baseline checks passed.\n");

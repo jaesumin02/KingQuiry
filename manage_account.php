@@ -2,9 +2,7 @@
 include 'config/db.php';
 require_once 'includes/auth.php';
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+kq_start_session();
 
 $currentUser = $_SESSION['user'] ?? null;
 if (!$currentUser || empty($currentUser['userID'])) {
@@ -15,8 +13,45 @@ if (!$currentUser || empty($currentUser['userID'])) {
 $currentRole = normalized_user_role($currentUser);
 $userID = (int) $currentUser['userID'];
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_two_factor'])) {
+    if (!has_valid_csrf_token()) {
+        $_SESSION['flash_error'] = 'Your session expired. Refresh the page and try again.';
+    } elseif ($currentRole !== 'Client') {
+        $_SESSION['flash_error'] = 'Two-factor authentication is required for staff accounts and cannot be changed here.';
+    } else {
+        $twoFactorChoice = filter_var($_POST['twoFactorEnabled'] ?? null, FILTER_VALIDATE_INT);
+        $currentPassword = is_string($_POST['current_password'] ?? null) ? $_POST['current_password'] : '';
+        $credentialStmt = $conn->prepare(
+            'SELECT passwordHash, accountStatus, role
+             FROM users WHERE userID = ? LIMIT 1'
+        );
+        $credentialStmt->bind_param('i', $userID);
+        $credentialStmt->execute();
+        $credential = $credentialStmt->get_result()->fetch_assoc();
+        $credentialStmt->close();
+
+        if (!in_array($twoFactorChoice, [0, 1], true)) {
+            $_SESSION['flash_error'] = 'Choose a valid two-factor authentication setting.';
+        } elseif (!$credential || ($credential['accountStatus'] ?? 'Inactive') !== 'Active' || normalize_role_name((string) $credential['role']) !== 'Client') {
+            $_SESSION['flash_error'] = 'This account cannot change its two-factor authentication setting.';
+        } elseif ($currentPassword === '' || !password_verify($currentPassword, (string) $credential['passwordHash'])) {
+            $_SESSION['flash_error'] = 'Enter your current password to change this security setting.';
+        } else {
+            $updateTwoFactorStmt = $conn->prepare('UPDATE users SET twoFactorEnabled = ? WHERE userID = ?');
+            $updateTwoFactorStmt->bind_param('ii', $twoFactorChoice, $userID);
+            $updateTwoFactorStmt->execute();
+            $_SESSION['flash_success'] = $twoFactorChoice === 1
+                ? 'Two-factor authentication is enabled. A code will be emailed at each sign-in.'
+                : 'Two-factor authentication is disabled for your client account.';
+        }
+    }
+
+    header('Location: manage_account.php');
+    exit();
+}
+
 // Fetch latest user details from DB
-$stmt = $conn->prepare('SELECT userID, fullname, email, phone, address, role, accountStatus, createdAt FROM users WHERE userID = ? LIMIT 1');
+$stmt = $conn->prepare('SELECT userID, fullname, email, phone, address, role, accountStatus, twoFactorEnabled, createdAt FROM users WHERE userID = ? LIMIT 1');
 $stmt->bind_param('i', $userID);
 $stmt->execute();
 $dbUser = $stmt->get_result()->fetch_assoc();
@@ -81,6 +116,33 @@ include 'includes/header.php';
                 <div class="text-dark"><?= !empty($currentUser['createdAt']) ? date('M j, Y', strtotime((string) $currentUser['createdAt'])) : 'N/A' ?></div>
             </div>
         </div>
+    </div>
+
+    <div class="card p-4 mb-4 border shadow-sm rounded-4">
+        <h2 class="h5 fw-bold mb-2">Two-factor authentication</h2>
+        <?php if ($currentRole === 'Client'): ?>
+            <p class="text-muted small mb-3">Optional for client accounts. When enabled, a one-time email code is required after your password at each sign-in.</p>
+            <form method="POST" class="row g-3 align-items-end">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
+                <input type="hidden" name="update_two_factor" value="1">
+                <div class="col-sm-6">
+                    <label class="form-label fw-semibold" for="two-factor-choice">Client 2FA</label>
+                    <select class="form-select" name="twoFactorEnabled" id="two-factor-choice" required>
+                        <option value="0" <?= empty($currentUser['twoFactorEnabled']) ? 'selected' : '' ?>>Disabled (optional)</option>
+                        <option value="1" <?= !empty($currentUser['twoFactorEnabled']) ? 'selected' : '' ?>>Enabled</option>
+                    </select>
+                </div>
+                <div class="col-sm-6">
+                    <label class="form-label fw-semibold" for="two-factor-current-password">Current password</label>
+                    <input class="form-control" type="password" name="current_password" id="two-factor-current-password" autocomplete="current-password" required>
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-outline-primary fw-semibold">Save security setting</button>
+                </div>
+            </form>
+        <?php else: ?>
+            <p class="text-muted small mb-0">Required for administrator and sales-agent accounts. A one-time code is emailed at each sign-in.</p>
+        <?php endif; ?>
     </div>
 
     <!-- Change Password Card -->

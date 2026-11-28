@@ -1,237 +1,237 @@
 <?php
-function property_representative_image(string $propertyType): ?string
+function property_category_image(string $propertyType): ?string
 {
-    $representativeImages = [
-        'Residential' => 'representative-residential-01.jpg',
-        'Commercial' => 'representative-commercial-01.jpg',
-        'Farmlot' => 'representative-farm-01.jpg',
-        'Beachlot' => 'representative-beach-01.jpg',
-        'Condo' => 'representative-condo-01.jpg',
-        'House and Lot' => 'representative-residential-02.jpg',
-        'Townhouse' => 'representative-residential-04.jpg',
-        'Apartment' => 'representative-condo-03.jpg',
-        'Warehouse' => 'representative-commercial-03.jpg',
-        'Office Space' => 'representative-commercial-04.jpg',
-        'Resort' => 'representative-beach-04.jpg',
+    $categoryImages = [
+        'Residential' => 'residential-property-01.jpg',
+        'Commercial' => 'commercial-property-01.jpg',
+        'Farmlot' => 'farm-property-01.jpg',
+        'Beachlot' => 'beach-property-01.jpg',
+        'Condo' => 'condo-property-01.jpg',
+        'House and Lot' => 'residential-property-02.jpg',
+        'Townhouse' => 'residential-property-04.jpg',
+        'Apartment' => 'condo-property-03.jpg',
+        'Warehouse' => 'commercial-property-03.jpg',
+        'Office Space' => 'commercial-property-04.jpg',
+        'Resort' => 'beach-property-04.jpg',
     ];
 
-    return $representativeImages[$propertyType] ?? null;
+    return $categoryImages[$propertyType] ?? null;
 }
 
 function get_property_image_credit(string $filename): ?array
 {
     static $credits = [
-        'representative-beach-01.jpg' => [
+        'beach-property-01.jpg' => [
             'title' => 'Wonga Beach, Qld, Australia',
             'creator' => 'jemasmith',
             'sourceUrl' => 'https://www.flickr.com/photos/26085795@N02/5151233404',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-beach-02.jpg' => [
+        'beach-property-02.jpg' => [
             'title' => 'Beach',
             'creator' => 'Corey Leopold',
             'sourceUrl' => 'https://www.flickr.com/photos/97708873@N00/180337697',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-beach-03.jpg' => [
+        'beach-property-03.jpg' => [
             'title' => 'Limestone above the Beach',
             'creator' => 'trishhartmann',
             'sourceUrl' => 'https://www.flickr.com/photos/21078769@N00/12015008074',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-beach-04.jpg' => [
+        'beach-property-04.jpg' => [
             'title' => 'Moorea Island, French Polynesia',
             'creator' => 'dany13',
             'sourceUrl' => 'https://www.flickr.com/photos/11493299@N00/8044046451',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-beach-05.jpg' => [
+        'beach-property-05.jpg' => [
             'title' => 'PEI Beach - Basin Head',
             'creator' => 'Bold Frontiers',
             'sourceUrl' => 'https://www.flickr.com/photos/82955120@N05/7731186444',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-beach-06.jpg' => [
+        'beach-property-06.jpg' => [
             'title' => 'Shade On The Beach',
             'creator' => 'kenteegardin',
             'sourceUrl' => 'https://www.flickr.com/photos/26373139@N08/6669041987',
             'license' => 'CC BY-SA 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by-sa/2.0/',
         ],
-        'representative-beach-07.jpg' => [
+        'beach-property-07.jpg' => [
             'title' => 'Dominican-Republic - Bayahibe',
             'creator' => 'Traveller-Reini',
             'sourceUrl' => 'https://www.flickr.com/photos/129472585@N03/16274828284',
             'license' => 'CC BY-SA 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by-sa/2.0/',
         ],
-        'representative-farm-01.jpg' => [
+        'farm-property-01.jpg' => [
             'title' => "The Nation's Salad Bowl",
             'creator' => 'Malcolm Carlaw',
             'sourceUrl' => 'https://www.flickr.com/photos/48865807@N06/16712216257',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-farm-02.jpg' => [
+        'farm-property-02.jpg' => [
             'title' => 'Sakura Rice Fields',
             'creator' => 'Follow Your Nose',
             'sourceUrl' => 'https://www.flickr.com/photos/31816015@N02/4845499708',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-farm-03.jpg' => [
+        'farm-property-03.jpg' => [
             'title' => 'Recently sown paddy fields in Sindh, Pakistan',
             'creator' => 'DFID - UK Department for International Development',
             'sourceUrl' => 'https://www.flickr.com/photos/14214150@N02/5331068220',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-farm-04.jpg' => [
+        'farm-property-04.jpg' => [
             'title' => 'Rice field terrace',
             'creator' => 'Jo@net',
             'sourceUrl' => 'https://www.flickr.com/photos/15411972@N00/5797060215',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-farm-05.jpg' => [
+        'farm-property-05.jpg' => [
             'title' => 'Simple Landscape',
             'creator' => 'DavidMartynHunt',
             'sourceUrl' => 'https://www.flickr.com/photos/35395389@N00/1306006614',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-condo-01.jpg' => [
+        'condo-property-01.jpg' => [
             'title' => 'Edifício Copan',
             'creator' => 'Rodrigo_Soldon',
             'sourceUrl' => 'https://www.flickr.com/photos/8865243@N02/3407218439',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-condo-02.jpg' => [
+        'condo-property-02.jpg' => [
             'title' => 'Changi Rise, Singapore',
             'creator' => 'alantankenghoe',
             'sourceUrl' => 'https://www.flickr.com/photos/57785759@N06/5468009204',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-condo-03.jpg' => [
+        'condo-property-03.jpg' => [
             'title' => 'Apartment Building in Havana',
             'creator' => 'vxla',
             'sourceUrl' => 'https://www.flickr.com/photos/14812197@N00/9712701695',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-condo-04.jpg' => [
+        'condo-property-04.jpg' => [
             'title' => 'Stamford Gardens, Milverton',
             'creator' => 'lydia_shiningbrightly',
             'sourceUrl' => 'https://www.flickr.com/photos/31917220@N07/3017010538',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-condo-05.jpg' => [
+        'condo-property-05.jpg' => [
             'title' => 'Hugo Häring, Siemensstadt Housing, 1929',
             'creator' => 'seier+seier',
             'sourceUrl' => 'https://www.flickr.com/photos/94852245@N00/2565057817',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-residential-01.jpg' => [
+        'residential-property-01.jpg' => [
             'title' => 'Three gables, 10 windows, blue shutters',
             'creator' => 'Wonderlane',
             'sourceUrl' => 'https://www.flickr.com/photos/71401718@N00/4670406821',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-residential-02.jpg' => [
+        'residential-property-02.jpg' => [
             'title' => "Won't you be my neighbor?",
             'creator' => 'Design By Zouny',
             'sourceUrl' => 'https://www.flickr.com/photos/47440581@N07/4349026082',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-residential-03.jpg' => [
+        'residential-property-03.jpg' => [
             'title' => 'Gray house, Dutch style dual gables',
             'creator' => 'Wonderlane',
             'sourceUrl' => 'https://www.flickr.com/photos/71401718@N00/4670417601',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-residential-04.jpg' => [
+        'residential-property-04.jpg' => [
             'title' => 'Tacoma',
             'creator' => 'Hugo-90',
             'sourceUrl' => 'https://www.flickr.com/photos/32109282@N00/3341771067',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-residential-05.jpg' => [
+        'residential-property-05.jpg' => [
             'title' => 'Las Colinas, aerial',
             'creator' => 'La Citta Vita',
             'sourceUrl' => 'https://www.flickr.com/photos/49539505@N04/6039810461',
             'license' => 'CC BY-SA 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by-sa/2.0/',
         ],
-        'representative-residential-06.jpg' => [
+        'residential-property-06.jpg' => [
             'title' => 'York Cottage and the lower lake at Sandringham',
             'creator' => 'ell brown',
             'sourceUrl' => 'https://www.flickr.com/photos/39415781@N06/4574794418',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-residential-07.jpg' => [
+        'residential-property-07.jpg' => [
             'title' => 'House near NMU',
             'creator' => 'mrkumm',
             'sourceUrl' => 'https://www.flickr.com/photos/73319630@N00/3716836335',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-commercial-01.jpg' => [
+        'commercial-property-01.jpg' => [
             'title' => 'Green Roof, Vancouver BC',
             'creator' => 'NNECAPA',
             'sourceUrl' => 'https://www.flickr.com/photos/23163410@N02/2830785109',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-commercial-02.jpg' => [
+        'commercial-property-02.jpg' => [
             'title' => 'Matarazzo Building (Sao Paulo City Hall)',
             'creator' => 'Diego3336',
             'sourceUrl' => 'https://www.flickr.com/photos/31018257@N00/10879504754',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-commercial-03.jpg' => [
+        'commercial-property-03.jpg' => [
             'title' => 'Cognizant Pune Delivery Center',
             'creator' => 'Cognizant Technology Solutions',
             'sourceUrl' => 'https://www.flickr.com/photos/43262583@N05/3986486156',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-commercial-04.jpg' => [
+        'commercial-property-04.jpg' => [
             'title' => 'Federal Building',
             'creator' => 'Dano',
             'sourceUrl' => 'https://www.flickr.com/photos/36101697408@N01/409202019',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-commercial-05.jpg' => [
+        'commercial-property-05.jpg' => [
             'title' => 'Glass Office Building',
             'creator' => 'ricardodiaz11',
             'sourceUrl' => 'https://www.flickr.com/photos/41652235@N00/4485128485',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-commercial-06.jpg' => [
+        'commercial-property-06.jpg' => [
             'title' => 'Office Buildings',
             'creator' => 'oatsy40',
             'sourceUrl' => 'https://www.flickr.com/photos/68089229@N06/9569863543',
             'license' => 'CC BY 2.0',
             'licenseUrl' => 'https://creativecommons.org/licenses/by/2.0/',
         ],
-        'representative-commercial-07.jpg' => [
+        'commercial-property-07.jpg' => [
             'title' => 'Night Illuminated Office Building',
             'creator' => 'OiMax',
             'sourceUrl' => 'https://www.flickr.com/photos/72396314@N00/37254613004',
@@ -431,8 +431,8 @@ function delete_property_gallery_image(mysqli $conn, int $imageId, ?int $propert
 
     if ($deleted) {
         $path = $imageRow['imagePath'];
-        // Only unlink if not a seeded representative image
-        if (!str_starts_with($path, 'representative-') && $path !== 'default.jpg') {
+        // Category sample images are shared assets and must not be deleted with a gallery entry.
+        if (get_property_image_credit($path) === null && $path !== 'default.jpg') {
             $fullPath = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR . 'images' . DIRECTORY_SEPARATOR . $path;
             if (is_file($fullPath)) {
                 @unlink($fullPath);

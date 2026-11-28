@@ -36,6 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (isset($_POST['add_property'])) {
         $title = is_string($_POST['title'] ?? null) ? trim($_POST['title']) : '';
         $description = is_string($_POST['description'] ?? null) ? trim($_POST['description']) : '';
+        $availableDocuments = is_string($_POST['availableDocuments'] ?? null) ? trim($_POST['availableDocuments']) : '';
         $price = filter_var($_POST['price'] ?? null, FILTER_VALIDATE_FLOAT);
         $areaSqm = filter_var($_POST['areaSqm'] ?? null, FILTER_VALIDATE_FLOAT);
         $locationId = filter_var($_POST['locationID'] ?? null, FILTER_VALIDATE_INT);
@@ -57,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $longitude = null;
         }
 
-        if (strlen($title) < 3 || strlen($title) > 150 || strlen($description) < 10 || strlen($description) > 10000) {
+        if (strlen($title) < 3 || strlen($title) > 150 || strlen($description) < 10 || strlen($description) > 10000 || strlen($availableDocuments) > 5000) {
             $formError = 'Enter a title (3-150 characters) and a description (10-10,000 characters).';
         } elseif ($price === false || $price <= 0 || $price > 9999999999.99 || $areaSqm === false || $areaSqm < 0.01 || $areaSqm > 1000000) {
             $formError = 'Enter a valid total price and a land area between 0 and 1,000,000 sq.m.';
@@ -80,10 +81,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $imageName = store_property_image($_FILES['propertyImage'] ?? []);
                 $stmt = $conn->prepare(
-                    "INSERT INTO properties (title, description, price, pricePerSqm, location, propertyType, landCharacteristics, locationID, latitude, longitude, barangay, areaSqm, image)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                    "INSERT INTO properties (title, description, availableDocuments, price, pricePerSqm, location, propertyType, landCharacteristics, locationID, latitude, longitude, barangay, areaSqm, image)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 );
-                $stmt->bind_param('ssddsssiddsds', $title, $description, $price, $pricePerSqm, $canonicalLocation, $propertyType, $landCharacteristics, $locationId, $latitude, $longitude, $barangay, $areaSqm, $imageName);
+                $stmt->bind_param('sssddsssiddsds', $title, $description, $availableDocuments, $price, $pricePerSqm, $canonicalLocation, $propertyType, $landCharacteristics, $locationId, $latitude, $longitude, $barangay, $areaSqm, $imageName);
                 try {
                     $stmt->execute();
                     $newPropertyId = (int) $conn->insert_id;
@@ -120,6 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $editPropertyId = filter_var($_POST['propertyID'] ?? null, FILTER_VALIDATE_INT);
         $title = is_string($_POST['title'] ?? null) ? trim($_POST['title']) : '';
         $description = is_string($_POST['description'] ?? null) ? trim($_POST['description']) : '';
+        $availableDocuments = is_string($_POST['availableDocuments'] ?? null) ? trim($_POST['availableDocuments']) : '';
         $price = filter_var($_POST['price'] ?? null, FILTER_VALIDATE_FLOAT);
         $areaSqm = filter_var($_POST['areaSqm'] ?? null, FILTER_VALIDATE_FLOAT);
         $locationId = filter_var($_POST['locationID'] ?? null, FILTER_VALIDATE_INT);
@@ -148,7 +150,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($editPropertyId === false || $editPropertyId <= 0) {
             $formError = 'Choose a valid property to edit.';
-        } elseif (strlen($title) < 3 || strlen($title) > 150 || strlen($description) < 10 || strlen($description) > 10000) {
+        } elseif (strlen($title) < 3 || strlen($title) > 150 || strlen($description) < 10 || strlen($description) > 10000 || strlen($availableDocuments) > 5000) {
             $formError = 'Enter a title (3-150 characters) and a description (10-10,000 characters).';
         } elseif ($price === false || $price <= 0 || $price > 9999999999.99 || $areaSqm === false || $areaSqm < 0.01 || $areaSqm > 1000000) {
             $formError = 'Enter a valid total price and a land area between 0 and 1,000,000 sq.m.';
@@ -197,15 +199,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pricePerSqm = round((float) $price / (float) $areaSqm, 2);
                     $updateStmt = $conn->prepare(
                         'UPDATE properties
-                         SET title = ?, description = ?, price = ?, pricePerSqm = ?, location = ?, propertyType = ?,
+                         SET title = ?, description = ?, availableDocuments = ?, price = ?, pricePerSqm = ?, location = ?, propertyType = ?,
                              landCharacteristics = ?, locationID = ?, latitude = ?, longitude = ?, barangay = ?,
                              areaSqm = ?, image = COALESCE(?, image)
                          WHERE propertyID = ? AND isDeleted = 0'
                     );
                     $updateStmt->bind_param(
-                        'ssddsssiddsdsi',
+                        'sssddsssiddsdsi',
                         $title,
                         $description,
+                        $availableDocuments,
                         $price,
                         $pricePerSqm,
                         $canonicalLocation,
@@ -552,7 +555,7 @@ if (isset($_GET['edit_property']) || isset($_POST['update_property'])) {
 }
 $propertyFormValues = $editingProperty ?? [];
 if (isset($_POST['update_property'])) {
-    foreach (['title', 'description', 'price', 'areaSqm', 'locationID', 'propertyType', 'landCharacteristics', 'barangay', 'latitude', 'longitude'] as $formField) {
+    foreach (['title', 'description', 'availableDocuments', 'price', 'areaSqm', 'locationID', 'propertyType', 'landCharacteristics', 'barangay', 'latitude', 'longitude'] as $formField) {
         if (is_scalar($_POST[$formField] ?? null)) {
             $propertyFormValues[$formField] = (string) $_POST[$formField];
         }
@@ -1137,7 +1140,8 @@ $recentAuditLogs = $auditLogsRes ? $auditLogsRes->fetch_all(MYSQLI_ASSOC) : [];
                 </div>
             <?php endif; endif; ?>
 
-            <div class="col-12"><label class="form-label fw-semibold" for="property-description">Description</label><textarea id="property-description" name="description" class="form-control" rows="4" required minlength="10" maxlength="10000" placeholder="Share accurate property details, terms, documents available, and viewing instructions."><?= htmlspecialchars((string) ($propertyFormValues['description'] ?? ''), ENT_QUOTES, 'UTF-8') ?></textarea></div>
+            <div class="col-12"><label class="form-label fw-semibold" for="property-available-documents">Available documents <span class="text-muted fw-normal">(optional; list only documents confirmed by the owner)</span></label><textarea id="property-available-documents" name="availableDocuments" class="form-control" rows="2" maxlength="5000" placeholder="e.g. TCT, tax declaration, survey plan"><?= htmlspecialchars((string) ($propertyFormValues['availableDocuments'] ?? ''), ENT_QUOTES, 'UTF-8') ?></textarea><div class="form-text">Listing statements do not verify ownership or legal status. Buyers should independently verify documents.</div></div>
+            <div class="col-12"><label class="form-label fw-semibold" for="property-description">Description</label><textarea id="property-description" name="description" class="form-control" rows="4" required minlength="10" maxlength="10000" placeholder="Share accurate property details, terms, and viewing instructions."><?= htmlspecialchars((string) ($propertyFormValues['description'] ?? ''), ENT_QUOTES, 'UTF-8') ?></textarea></div>
         </div>
         <?php if ($editingProperty): ?>
             <button type="submit" name="update_property" class="btn btn-primary mt-3 px-4">Save listing changes</button>

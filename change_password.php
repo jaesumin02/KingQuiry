@@ -2,9 +2,7 @@
 require_once __DIR__ . '/config/db.php';
 require_once __DIR__ . '/includes/auth.php';
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+kq_start_session();
 
 $currentUser = $_SESSION['user'] ?? null;
 $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
@@ -76,11 +74,22 @@ if ($error === '') {
         if ($newHash === false) {
             $error = 'Failed to securely hash password. Please try again.';
         } else {
-            $updateStmt = $conn->prepare('UPDATE users SET passwordHash = ? WHERE userID = ?');
-            $updateStmt->bind_param('si', $newHash, $userID);
-            if ($updateStmt->execute()) {
-                if (isset($_SESSION['user'])) {
-                }
+            try {
+                $conn->begin_transaction();
+                $updateStmt = $conn->prepare('UPDATE users SET passwordHash = ? WHERE userID = ?');
+                $updateStmt->bind_param('si', $newHash, $userID);
+                $updateStmt->execute();
+
+                $revokeResetTokensStmt = $conn->prepare('DELETE FROM password_reset_tokens WHERE userID = ?');
+                $revokeResetTokensStmt->bind_param('i', $userID);
+                $revokeResetTokensStmt->execute();
+                $revokeResetTokensStmt->close();
+                $revokeChallengesStmt = $conn->prepare('DELETE FROM login_2fa_challenges WHERE userID = ?');
+                $revokeChallengesStmt->bind_param('i', $userID);
+                $revokeChallengesStmt->execute();
+                $revokeChallengesStmt->close();
+                $conn->commit();
+
                 $successMsg = 'Password updated successfully!';
                 if ($isAjax) {
                     apply_secure_headers('application/json');
@@ -90,8 +99,10 @@ if ($error === '') {
                 $_SESSION['flash_success'] = $successMsg;
                 header('Location: manage_account.php');
                 exit();
-            } else {
-                $error = 'Failed to update password in database.';
+            } catch (Throwable $exception) {
+                $conn->rollback();
+                error_log('KingQuiry account password update failed: ' . $exception->getMessage());
+                $error = 'Failed to update password. Please try again.';
             }
         }
     }

@@ -24,10 +24,10 @@ $navClientTransactions = $navClientTransactions ?? [];
                         $agentName = (string) $tx['agentName'];
                         $propImage = basename((string) ($tx['image'] ?? ''));
                         if ($propImage === '' || $propImage === 'default.jpg' || !is_file(__DIR__ . '/../../assets/images/' . $propImage)) {
-                            $propImage = function_exists('property_representative_image') ? (property_representative_image((string) ($tx['propertyType'] ?? '')) ?? '') : '';
+                            $propImage = function_exists('property_category_image') ? (property_category_image((string) ($tx['propertyType'] ?? '')) ?? '') : '';
                         }
                         $hasPropImage = $propImage !== '' && is_file(__DIR__ . '/../../assets/images/' . $propImage);
-                        $propImgSrc = $hasPropImage ? ('assets/images/' . rawurlencode($propImage)) : 'assets/images/representative-residential-01.jpg';
+                        $propImgSrc = $hasPropImage ? ('assets/images/' . rawurlencode($propImage)) : 'assets/images/residential-property-01.jpg';
                     ?>
                         <div class="card p-3 border shadow-sm rounded-3 bg-body">
                             <div class="d-flex align-items-center justify-content-between gap-3">

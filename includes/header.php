@@ -12,7 +12,7 @@ if ($currentPageName === '' || $currentPageName === 'kingquiry') {
     $currentPageName = 'index.php';
 }
 $isAuthPage = in_array($currentPageName, ['register.php', 'client_login.php', 'agent_login.php', 'admin_login.php', 'login.php'], true);
-$needsLeaflet = in_array($currentPageName, ['property_detail.php', 'agent_dashboard.php', 'admin_dashboard.php'], true);
+$needsLeaflet = in_array($currentPageName, ['property_detail.php', 'property_map.php', 'agent_dashboard.php', 'admin_dashboard.php'], true);
 $adminPage = ($currentRole === 'Admin' && function_exists('kq_admin_pages')) ? (kq_admin_pages()[$currentPageName] ?? null) : null;
 $isAdminControlRoom = $adminPage !== null;
 $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
@@ -683,13 +683,16 @@ $displayName = is_array($currentUser) && !empty($currentUser['fullname'])
                     <time class="kq-live-clock-time" id="kq-live-clock-time" datetime="<?= htmlspecialchars($clockNow->format(DateTimeInterface::ATOM), ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($clockNow->format('h:i:s A'), ENT_QUOTES, 'UTF-8') ?></time>
                 </div>
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
+                    <i class="bi bi-crown-fill kq-navbar-crown" aria-hidden="true"></i>
                 </button>
             </div>
             <div class="collapse navbar-collapse justify-content-end order-xxl-2" id="navbarNav">
                 <ul class="navbar-nav">
                     <li class="nav-item">
                         <a class="nav-link<?= $currentPageName === 'index.php' ? ' active' : '' ?>" href="index.php"<?= $currentPageName === 'index.php' ? ' aria-current="page"' : '' ?>>Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link<?= $currentPageName === 'property_map.php' ? ' active' : '' ?>" href="property_map.php"<?= $currentPageName === 'property_map.php' ? ' aria-current="page"' : '' ?>>Map Explorer</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link<?= $currentPageName === 'resources.php' ? ' active' : '' ?>" href="resources.php"<?= $currentPageName === 'resources.php' ? ' aria-current="page"' : '' ?>>Resources &amp; Guides</a>

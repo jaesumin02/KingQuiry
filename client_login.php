@@ -4,9 +4,7 @@ require_once 'includes/auth.php';
 require_once 'includes/login_human_check.php';
 require_once 'includes/rate_limit.php';
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+kq_start_session();
 
 apply_secure_headers();
 $loginHumanChallenge = issue_login_human_challenge();
@@ -36,6 +34,13 @@ include 'includes/header.php';
             <div class="alert alert-danger" role="alert"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>
         <?php endif; ?>
 
+        <?php if (!empty($_GET['password_reset'])): ?>
+            <div class="alert alert-success" role="status">Your password has been reset. You can now sign in.</div>
+        <?php endif; ?>
+
+        <?php if (!empty($_SESSION['pending_2fa_user_id'])): ?>
+            <?php include 'includes/login_2fa_form.php'; ?>
+        <?php else: ?>
         <form method="POST" autocomplete="off" class="kq-auth-form">
             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
 
@@ -55,15 +60,20 @@ include 'includes/header.php';
             <?php include 'includes/login_human_check_field.php'; ?>
 
             <div class="kq-form-options">
+                <a class="kq-link" href="forgot_password.php">Forgot password?</a>
+                <span class="mx-1" aria-hidden="true">·</span>
                 <a class="kq-link" href="#contactUsModal" data-bs-toggle="modal" data-bs-target="#contactUsModal">Need help signing in? Contact support</a>
             </div>
 
             <button type="submit" class="kq-auth-submit">Sign in</button>
         </form>
+        <?php endif; ?>
 
+        <?php if (empty($_SESSION['pending_2fa_user_id'])): ?>
         <div class="kq-auth-register">
             New to KingQuiry? <a href="register.php">Create an account</a>
         </div>
+        <?php endif; ?>
     </aside>
 </div>
 

@@ -288,6 +288,171 @@ function kq_log_auth_event(mysqli $conn, int $userId, string $event): void
     }
 }
 
+function kq_user_requires_two_factor(array $user): bool
+{
+    $role = normalized_user_role($user);
+    return $role === 'Admin'
+        || $role === 'Sales Agent'
+        || ($role === 'Client' && (int) ($user['twoFactorEnabled'] ?? 0) === 1);
+}
+
+function kq_send_login_two_factor_code(mysqli $conn, array $user): bool
+{
+    $userId = (int) ($user['userID'] ?? 0);
+    $email = trim((string) ($user['email'] ?? ''));
+    if ($userId <= 0 || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+        return false;
+    }
+
+    $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    $codeHash = password_hash($code, PASSWORD_DEFAULT);
+    $stmt = $conn->prepare(
+        'INSERT INTO login_2fa_challenges (userID, codeHash, attempts, expiresAt, createdAt)
+         VALUES (?, ?, 0, DATE_ADD(CURRENT_TIMESTAMP, INTERVAL 10 MINUTE), CURRENT_TIMESTAMP)
+         ON DUPLICATE KEY UPDATE codeHash = VALUES(codeHash), attempts = 0,
+             expiresAt = VALUES(expiresAt), createdAt = CURRENT_TIMESTAMP'
+    );
+    $stmt->bind_param('is', $userId, $codeHash);
+    $stmt->execute();
+    $stmt->close();
+
+    require_once __DIR__ . '/notifications.php';
+    $sent = send_property_email_log(
+        $conn,
+        $userId,
+        'Your KingQuiry sign-in code',
+        "Your KingQuiry verification code is {$code}. It expires in 10 minutes. If you did not attempt to sign in, you can ignore this message."
+    );
+    if (!$sent) {
+        $deleteStmt = $conn->prepare('DELETE FROM login_2fa_challenges WHERE userID = ?');
+        $deleteStmt->bind_param('i', $userId);
+        $deleteStmt->execute();
+        $deleteStmt->close();
+        return false;
+    }
+
+    kq_regenerate_session_id_or_fail('Unable to secure the pending KingQuiry sign-in.');
+    unset($_SESSION['user']);
+    $_SESSION['pending_2fa_user_id'] = $userId;
+    $_SESSION['pending_2fa_expires_at'] = time() + 600;
+    $_SESSION['pending_2fa_identifier'] = strtolower(trim((string) ($_POST['identifier'] ?? $_POST['email'] ?? '')));
+    $_SESSION['pending_2fa_ip'] = is_string($_SERVER['REMOTE_ADDR'] ?? null) ? $_SERVER['REMOTE_ADDR'] : '';
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    return true;
+}
+
+function kq_clear_pending_two_factor(mysqli $conn): void
+{
+    $userId = filter_var($_SESSION['pending_2fa_user_id'] ?? null, FILTER_VALIDATE_INT);
+    if ($userId !== false && $userId > 0) {
+        $stmt = $conn->prepare('DELETE FROM login_2fa_challenges WHERE userID = ?');
+        $stmt->bind_param('i', $userId);
+        $stmt->execute();
+        $stmt->close();
+    }
+
+    unset(
+        $_SESSION['pending_2fa_user_id'],
+        $_SESSION['pending_2fa_expires_at'],
+        $_SESSION['pending_2fa_identifier'],
+        $_SESSION['pending_2fa_ip']
+    );
+}
+
+function kq_complete_user_login(mysqli $conn, array $user): void
+{
+    kq_regenerate_session_after_login($user);
+    kq_log_auth_event($conn, (int) $user['userID'], 'login');
+    if (function_exists('update_user_presence')) {
+        update_user_presence($conn, (int) $user['userID'], true, 'online');
+    }
+
+    $normalizedRole = normalized_user_role($user);
+    $destination = $normalizedRole === 'Admin'
+        ? 'admin_dashboard.php'
+        : ($normalizedRole === 'Sales Agent' ? 'agent_dashboard.php' : 'index.php');
+    header('Location: ' . $destination);
+    exit();
+}
+
+function kq_verify_login_two_factor(mysqli $conn): string
+{
+    $userId = filter_var($_SESSION['pending_2fa_user_id'] ?? null, FILTER_VALIDATE_INT);
+    $expiresAt = (int) ($_SESSION['pending_2fa_expires_at'] ?? 0);
+    if ($userId === false || $userId <= 0 || $expiresAt < time()) {
+        kq_clear_pending_two_factor($conn);
+        return 'Your verification code expired. Sign in again to receive a new code.';
+    }
+
+    $stmt = $conn->prepare(
+        'UPDATE login_2fa_challenges
+         SET attempts = attempts + 1
+         WHERE userID = ? AND expiresAt > CURRENT_TIMESTAMP AND attempts < 5'
+    );
+    $stmt->bind_param('i', $userId);
+    $stmt->execute();
+    $updated = $stmt->affected_rows === 1;
+    $stmt->close();
+    if (!$updated) {
+        kq_clear_pending_two_factor($conn);
+        return 'Your verification code expired or was used too many times. Sign in again to receive a new code.';
+    }
+
+    $code = is_string($_POST['verification_code'] ?? null) ? trim($_POST['verification_code']) : '';
+    $challengeStmt = $conn->prepare(
+        'SELECT codeHash, attempts
+         FROM login_2fa_challenges
+         WHERE userID = ? AND expiresAt > CURRENT_TIMESTAMP
+         LIMIT 1'
+    );
+    $challengeStmt->bind_param('i', $userId);
+    $challengeStmt->execute();
+    $challenge = $challengeStmt->get_result()->fetch_assoc();
+    $challengeStmt->close();
+
+    if (!$challenge || !preg_match('/\\A[0-9]{6}\\z/', $code) || !password_verify($code, (string) $challenge['codeHash'])) {
+        if ($challenge && (int) $challenge['attempts'] >= 5) {
+            kq_clear_pending_two_factor($conn);
+            return 'Too many incorrect codes. Sign in again to receive a new code.';
+        }
+        return 'The verification code is incorrect or expired.';
+    }
+
+    $userStmt = $conn->prepare(
+        'SELECT userID, fullname, email, role, accountStatus, twoFactorEnabled
+         FROM users WHERE userID = ? LIMIT 1'
+    );
+    $userStmt->bind_param('i', $userId);
+    $userStmt->execute();
+    $user = $userStmt->get_result()->fetch_assoc();
+    $userStmt->close();
+    if (!$user || ($user['accountStatus'] ?? 'Active') !== 'Active') {
+        kq_clear_pending_two_factor($conn);
+        return 'This account is unavailable. Please contact the KingQuiry administrator.';
+    }
+
+    $consumeStmt = $conn->prepare(
+        'DELETE FROM login_2fa_challenges
+         WHERE userID = ? AND codeHash = ? AND expiresAt > CURRENT_TIMESTAMP'
+    );
+    $consumeStmt->bind_param('is', $userId, $challenge['codeHash']);
+    $consumeStmt->execute();
+    $consumed = $consumeStmt->affected_rows === 1;
+    $consumeStmt->close();
+    if (!$consumed) {
+        kq_clear_pending_two_factor($conn);
+        return 'Your verification code was already used or expired. Sign in again to receive a new code.';
+    }
+
+    $identifier = (string) ($_SESSION['pending_2fa_identifier'] ?? '');
+    $ipAddress = (string) ($_SESSION['pending_2fa_ip'] ?? '');
+    kq_clear_pending_two_factor($conn);
+    if (function_exists('kq_clear_login_rate_limits')) {
+        kq_clear_login_rate_limits($conn, $identifier, $ipAddress);
+    }
+    kq_complete_user_login($conn, $user);
+}
+
 function kq_process_user_login(mysqli $conn): string
 {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -296,6 +461,17 @@ function kq_process_user_login(mysqli $conn): string
 
     if (!has_valid_csrf_token()) {
         return 'Your session expired. Refresh the page and try again.';
+    }
+
+    if (isset($_POST['cancel_2fa'])) {
+        kq_clear_pending_two_factor($conn);
+        return '';
+    }
+    if (isset($_POST['verify_2fa'])) {
+        return kq_verify_login_two_factor($conn);
+    }
+    if (!empty($_SESSION['pending_2fa_user_id'])) {
+        return 'Enter the verification code sent to your email to finish signing in.';
     }
 
     if (function_exists('verify_login_human_challenge') && !verify_login_human_challenge($_POST)) {
@@ -322,25 +498,22 @@ function kq_process_user_login(mysqli $conn): string
 
         if ($result->num_rows === 1) {
             $user = $result->fetch_assoc();
-            $normalizedRole = normalized_user_role($user);
             if (password_verify($password, $user['passwordHash'])) {
                 if (($user['accountStatus'] ?? 'Active') === 'Inactive') {
                     return 'This account is inactive. Please contact the KingQuiry administrator.';
                 }
 
+                if (kq_user_requires_two_factor($user)) {
+                    if (!kq_send_login_two_factor_code($conn, $user)) {
+                        error_log('KingQuiry login verification code could not be delivered.');
+                        return 'Unable to send a verification code. Please try again later or contact support.';
+                    }
+                    return '';
+                }
                 if (function_exists('kq_clear_login_rate_limits')) {
                     kq_clear_login_rate_limits($conn, $identifier, $loginIpAddress);
                 }
-                kq_regenerate_session_after_login($user);
-                kq_log_auth_event($conn, (int) $user['userID'], 'login');
-                if (function_exists('update_user_presence')) {
-                    update_user_presence($conn, (int) $user['userID'], true, 'online');
-                }
-                $destination = $normalizedRole === 'Admin'
-                    ? 'admin_dashboard.php'
-                    : ($normalizedRole === 'Sales Agent' ? 'agent_dashboard.php' : 'index.php');
-                header('Location: ' . $destination);
-                exit();
+                kq_complete_user_login($conn, $user);
             }
         }
     }

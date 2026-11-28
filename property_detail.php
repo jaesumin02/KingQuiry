@@ -509,7 +509,7 @@ include 'includes/header.php';
             $galleryImages = get_property_gallery_images($conn, $propertyID);
             $imageName = basename((string) ($property['image'] ?? ''));
             if ($imageName === '' || $imageName === 'default.jpg') {
-                $imageName = property_representative_image((string) $property['propertyType']) ?? '';
+                $imageName = property_category_image((string) $property['propertyType']) ?? '';
             }
             if (empty($galleryImages) && $imageName !== '') {
                 $galleryImages = [
@@ -592,6 +592,8 @@ include 'includes/header.php';
 
             <h3 class="h5 fw-bold">Description</h3>
             <p class="text-muted mb-0"><?= nl2br(htmlspecialchars($property['description'], ENT_QUOTES, 'UTF-8')) ?></p>
+            <h3 class="h5 fw-bold mt-4">Available documents</h3>
+            <p class="text-muted mb-0"><?= !empty($property['availableDocuments']) ? nl2br(htmlspecialchars((string) $property['availableDocuments'], ENT_QUOTES, 'UTF-8')) : 'No documents have been listed. Confirm document availability and legal status directly with the owner and relevant authorities.' ?></p>
 
             <!-- Land Estimation Formula & Acquisition Terms Calculator -->
             <div class="card p-3 p-lg-4 mt-4 border rounded-3 bg-light-subtle shadow-sm">

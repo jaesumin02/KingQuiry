@@ -4,7 +4,7 @@
 Land Properties. It provides a public property catalog and different pages for
 clients, sales agents, and administrators.
 
-- **Last reviewed:** 2026-11-27
+- **Last reviewed:** 2026-11-28
 - **Application type:** Server-rendered PHP website
 - **Database:** MySQL, accessed with PHP `mysqli`
 - **Local development environment:** XAMPP
@@ -32,10 +32,14 @@ required:
 
 The import includes demonstration records for local testing, including
 pre-configured accounts and historical transactions. These are sample records,
-not live business data. Listing photos marked representative may not depict
-the exact property. Change or remove the demo accounts before any public
+not live business data. Category sample photos may not depict the exact
+property. Change or remove the demo accounts before any public
 deployment. If the XAMPP folder or database credentials differ, update the settings in
 `config/db.php` or set the documented `KINGQUIRY_DB_*` environment variables.
+Set `KINGQUIRY_APP_URL` in `.env` to the public base URL for password-reset
+links. In development, verification codes and password-reset links are written
+to `logs/email_notifications.log`. Production delivery requires a working PHP
+mail transport, a valid `KINGQUIRY_MAIL_FROM`, and an HTTPS application URL.
 
 In development, the application initializes the schema only when the selected
 database is empty and can attempt idempotent setup for missing required tables
@@ -43,6 +47,11 @@ and columns. Production mode disables request-time database/schema changes and
 requires the expected schema to be present. Back up and review any existing
 database before applying a migration; `database/schema.sql` is for a fresh
 installation, not a versioned migration for a live database.
+For an existing production database, back it up and apply both
+[`database/migrations/2026-11-28-auth-and-property-documents.sql`](database/migrations/2026-11-28-auth-and-property-documents.sql)
+and
+[`database/migrations/2026-11-28-property-image-filenames.sql`](database/migrations/2026-11-28-property-image-filenames.sql)
+once before deploying these changes.
 
 The complete system-analysis report, diagrams, user guide, test evidence, and
 remaining stakeholder-evidence checklist are in
@@ -100,8 +109,11 @@ form validation and database CRUD operations are not listed as algorithms.
 ### Public catalog
 
 - Browse property listings and filter by keyword, category, or location.
+- Open the Map Explorer, select a property pin or listing, and follow its link
+  to the property details.
 - Use the simplified shared navigation on desktop, or its three-line menu on
-  narrower screens. The Home link beside the logo opens Home; Agents is under About Us > Our Team.
+  narrower screens, where the three-line menu control is shown as a crown. The
+  Home link beside the logo opens Home; Agents is under About Us > Our Team.
   Public links and account actions remain available without crowding the row.
 - Signed-in users have a Dashboard link across shared pages; Contact Us and
   utility controls are separated toward the right on desktop.
@@ -113,7 +125,8 @@ form validation and database CRUD operations are not listed as algorithms.
 - Sort properties by price (ascending or descending), alphabetical title (A to Z or Z to A), or newest listings.
 - Configurable per-page viewing limits (10 properties by default, 6, 15, 24, or all) with responsive numbered pagination and next/previous page navigation.
 - Open a property's details, price, price per square meter, land characteristics,
-  and description.
+  description, and any documents the owner says are available. Document claims
+  are not verified by the application.
 - See optional property images from `assets/images/`.
 - View the latest client appointment tracking details on the catalog when signed
   in as a client.
@@ -137,6 +150,9 @@ form validation and database CRUD operations are not listed as algorithms.
 - Log in with an email address or the part of the email address before `@`.
 - Passwords entered during registration are stored using PHP's
   `password_hash()` and checked with `password_verify()`.
+- Administrator and sales-agent sign-ins require a one-time email code. Clients
+  may enable the same two-factor check from Manage Account.
+- All portals provide an email password-reset link that expires after 30 minutes.
 - The signed-in user's role determines the dashboard they are sent to:
   administrator, sales agent, or client.
 - A signed-in user who opens the login page is redirected to their role-based

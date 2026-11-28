@@ -100,6 +100,8 @@ function ensure_required_database_tables(mysqli $connection, bool $allowSchemaCh
 {
     $requiredTables = [
         'users',
+        'login_2fa_challenges',
+        'password_reset_tokens',
         'property_locations',
         'properties',
         'property_images',
@@ -238,6 +240,28 @@ function ensure_required_database_tables(mysqli $connection, bool $allowSchemaCh
                 CONSTRAINT `fk_dm_sender` FOREIGN KEY (`senderID`) REFERENCES `users` (`userID`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
 
+            'login_2fa_challenges' => "CREATE TABLE IF NOT EXISTS `login_2fa_challenges` (
+                `userID` INT NOT NULL,
+                `codeHash` VARCHAR(255) NOT NULL,
+                `attempts` TINYINT UNSIGNED NOT NULL DEFAULT 0,
+                `expiresAt` DATETIME NOT NULL,
+                `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`userID`),
+                KEY `idx_login_2fa_expiry` (`expiresAt`),
+                CONSTRAINT `fk_login_2fa_user` FOREIGN KEY (`userID`) REFERENCES `users` (`userID`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
+            'password_reset_tokens' => "CREATE TABLE IF NOT EXISTS `password_reset_tokens` (
+                `tokenHash` CHAR(64) NOT NULL,
+                `userID` INT NOT NULL,
+                `expiresAt` DATETIME NOT NULL,
+                `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`tokenHash`),
+                KEY `idx_password_reset_user` (`userID`),
+                KEY `idx_password_reset_expiry` (`expiresAt`),
+                CONSTRAINT `fk_password_reset_user` FOREIGN KEY (`userID`) REFERENCES `users` (`userID`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+
             'property_images' => "CREATE TABLE IF NOT EXISTS `property_images` (
                 `imageID` INT NOT NULL AUTO_INCREMENT,
                 `propertyID` INT NOT NULL,
@@ -271,11 +295,14 @@ function ensure_required_database_tables(mysqli $connection, bool $allowSchemaCh
             'property_transactions' => ['assignedAgentID'],
             'security_rate_limits' => ['key_hash', 'window_started_at', 'attempts', 'expires_at'],
             'user_notifications' => ['notificationID', 'userID', 'title', 'message', 'link', 'type', 'isRead', 'createdAt'],
+            'login_2fa_challenges' => ['userID', 'codeHash', 'attempts', 'expiresAt', 'createdAt'],
+            'password_reset_tokens' => ['tokenHash', 'userID', 'expiresAt', 'createdAt'],
         ]);
     }
 
     ensure_appointment_agent_column($connection, $allowSchemaChanges);
     ensure_property_coordinates_columns($connection, $allowSchemaChanges);
+    ensure_property_available_documents_column($connection, $allowSchemaChanges);
     ensure_property_trashbin_columns($connection, $allowSchemaChanges);
     ensure_user_management_columns($connection, $allowSchemaChanges);
     ensure_transaction_extended_columns($connection, $allowSchemaChanges);
@@ -322,6 +349,7 @@ function ensure_user_management_columns(mysqli $connection, bool $allowSchemaCha
             'phone' => 'VARCHAR(30) DEFAULT NULL',
             'address' => 'VARCHAR(255) DEFAULT NULL',
             'accountStatus' => "ENUM('Active', 'Inactive') NOT NULL DEFAULT 'Active'",
+            'twoFactorEnabled' => 'TINYINT(1) NOT NULL DEFAULT 0',
         ];
         foreach ($cols as $col => $def) {
             $check = $connection->query("SHOW COLUMNS FROM `users` LIKE '{$col}'");
@@ -339,6 +367,23 @@ function ensure_user_management_columns(mysqli $connection, bool $allowSchemaCha
             throw new RuntimeException('Unable to verify user management schema.', 0, $exception);
         }
     }
+}
+
+function ensure_property_available_documents_column(mysqli $connection, bool $allowSchemaChanges): void
+{
+    static $ensured = false;
+    if ($ensured) {
+        return;
+    }
+
+    $check = $connection->query("SHOW COLUMNS FROM `properties` LIKE 'availableDocuments'");
+    if ($check && $check->num_rows === 0) {
+        if (!$allowSchemaChanges) {
+            throw new RuntimeException('The production database is missing properties.availableDocuments. Apply the documented migration.');
+        }
+        $connection->query('ALTER TABLE `properties` ADD COLUMN `availableDocuments` TEXT DEFAULT NULL AFTER `description`');
+    }
+    $ensured = true;
 }
 
 function ensure_transaction_extended_columns(mysqli $connection, bool $allowSchemaChanges): void

@@ -154,7 +154,7 @@ To develop and document a role-based web system that centralizes property discov
 1. The application does not process a card, bank transfer, check, cash, or e-wallet payment. A Client can report an offline payment; staff must verify it against the real-world payment evidence and records.
 2. Chat replies are produced by an Administrator when available; otherwise, the built-in assistant uses ordered keyword rules and preset responses. It is not an external generative-AI service.
 3. Listing estimates are indicative, depend on available listing data, and are not formal appraisals or guarantees of sale price.
-4. A listing photo may be an attributed representative image and may not depict the exact property. The user must verify listing details with staff.
+4. A category sample photo may be an attributed stock image and may not depict the exact property. The user must verify listing details with staff.
 5. The map can use approximate municipality-center coordinates when an exact property coordinate is not provided. It must not be treated as a surveyed boundary or exact legal location.
 6. The system does not perform legal title searches, certify ownership, calculate all taxes or closing costs, or replace legal, financial, or real-estate professional advice.
 7. Public listing content is limited to data entered in KingQuiry. External social-media posts, calendars, and contact channels are not automatically synchronized.
@@ -178,7 +178,7 @@ This is a project-level analysis of the current implementation, not a market stu
 | Train staff to maintain consistent property, inquiry, viewing, payment, and transaction records. | Incorrect or outdated listing details may mislead prospective buyers if staff do not verify them. |
 | Conduct an authenticated user-acceptance test and use the findings to improve portal workflows. | Unauthorized access, weak hosting configuration, database exposure, or compromised credentials could expose personal information. |
 | Add approved real operational data and measure response and completion times with privacy controls. | External CDN, hosting, database, or network outages may reduce availability. |
-| Extend integrations only after the organization approves the relevant security and operational requirements. | Treating an estimate, representative image, approximate map pin, or payment report as a verified fact creates business and legal risk. |
+| Extend integrations only after the organization approves the relevant security and operational requirements. | Treating an estimate, category sample image, approximate map pin, or payment report as a verified fact creates business and legal risk. |
 
 ## 1.5 Proposed Work Schedule
 
@@ -883,7 +883,7 @@ The local PHP CLI emitted a duplicate OpenSSL-module-load warning during PHP che
 2. Search by keyword or choose the category and location filters.
 3. Select a sort order and page-size option. The results are displayed in the catalog results area.
 4. Open **View property details** to inspect the listing, price, area, location, description, photo credit, and map information.
-5. Treat any comparable estimate as indicative only. A representative image or approximate map pin is not proof of the exact property's condition or boundary.
+5. Treat any comparable estimate as indicative only. A category sample image or approximate map pin is not proof of the exact property's condition or boundary.
 6. Read **Resources & Guides** and contact staff using the available contact details for information requiring verification.
 
 ## B. Client: Register, Request, and Track
